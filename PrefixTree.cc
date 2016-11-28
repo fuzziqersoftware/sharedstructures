@@ -44,6 +44,65 @@ uint64_t PrefixTree::base() const {
 }
 
 
+PrefixTree::LookupResult::LookupResult() : type(ResultValueType::Null) { }
+PrefixTree::LookupResult::LookupResult(const char* s) :
+    type(ResultValueType::String), as_string(s) { }
+PrefixTree::LookupResult::LookupResult(const void* s, size_t size) :
+    type(ResultValueType::String), as_string((const char*)s, size) { }
+PrefixTree::LookupResult::LookupResult(const string& s) :
+    type(ResultValueType::String), as_string(s) { }
+PrefixTree::LookupResult::LookupResult(int64_t i) : type(ResultValueType::Int),
+    as_int(i) { }
+PrefixTree::LookupResult::LookupResult(double d) :
+    type(ResultValueType::Double), as_double(d) { }
+PrefixTree::LookupResult::LookupResult(bool b) : type(ResultValueType::Bool),
+    as_bool(b) { }
+
+
+bool PrefixTree::LookupResult::operator==(const LookupResult& other) const {
+  if (this->type != other.type) {
+    return false;
+  }
+  switch (this->type) {
+    case ResultValueType::Missing:
+      // there's no way to construct one of these with a Missing type
+      throw invalid_argument("LookupResult has Missing type");
+    case ResultValueType::String:
+      return this->as_string == other.as_string;
+    case ResultValueType::Int:
+      return this->as_int == other.as_int;
+    case ResultValueType::Double:
+      return this->as_double == other.as_double;
+    case ResultValueType::Bool:
+      return this->as_bool == other.as_bool;
+    case ResultValueType::Null:
+      return true;
+  }
+}
+
+bool PrefixTree::LookupResult::operator!=(const LookupResult& other) const {
+  return !this->operator==(other);
+}
+
+string PrefixTree::LookupResult::str() const {
+  switch (this->type) {
+    case ResultValueType::Missing:
+      // there's no way to construct one of these with a Missing type
+      throw invalid_argument("LookupResult has Missing type");
+    case ResultValueType::String:
+      return string_printf("<String:%s>", this->as_string.c_str());
+    case ResultValueType::Int:
+      return string_printf("<Int:%lld>", this->as_int);
+    case ResultValueType::Double:
+      return string_printf("<Double:%lf>", this->as_double);
+    case ResultValueType::Bool:
+      return string_printf("<Bool:%d>", this->as_bool);
+    case ResultValueType::Null:
+      return "<Null>";
+  }
+}
+
+
 void PrefixTree::insert(const void* k, size_t k_size, const void* v,
     size_t v_size) {
   auto g = this->pool->write_lock();
@@ -225,6 +284,37 @@ void PrefixTree::insert(const string& k) {
   this->insert(k.data(), k.size());
 }
 
+void PrefixTree::insert(const void* k, size_t k_size, const LookupResult& r) {
+  switch (r.type) {
+    case ResultValueType::Missing:
+      // there's no way to construct one of these with a Missing type. uh... I
+      // guess this means the key should be deleted?
+      this->erase(k, k_size);
+      break;
+    case ResultValueType::String:
+      this->insert(k, k_size, r.as_string.data(), r.as_string.size());
+      break;
+    case ResultValueType::Int:
+      this->insert(k, k_size, r.as_int);
+      break;
+    case ResultValueType::Double:
+      this->insert(k, k_size, r.as_double);
+      break;
+    case ResultValueType::Bool:
+      this->insert(k, k_size, r.as_bool);
+      break;
+    case ResultValueType::Null:
+      this->insert(k, k_size);
+      break;
+    default:
+      throw invalid_argument("insert with LookupResult of unknown type");
+  }
+}
+
+void PrefixTree::insert(const string& k, const LookupResult& r) {
+  this->insert(k.data(), k.size(), r);
+}
+
 
 bool PrefixTree::erase(const void* k, size_t k_size) {
   auto g = this->pool->write_lock();
@@ -320,65 +410,6 @@ PrefixTree::ResultValueType PrefixTree::type(const void* k, size_t k_size) const
 
 PrefixTree::ResultValueType PrefixTree::type(const string& key) const {
   return this->type(key.data(), key.size());
-}
-
-
-PrefixTree::LookupResult::LookupResult() : type(ResultValueType::Null) { }
-PrefixTree::LookupResult::LookupResult(const char* s) :
-    type(ResultValueType::String), as_string(s) { }
-PrefixTree::LookupResult::LookupResult(const void* s, size_t size) :
-    type(ResultValueType::String), as_string((const char*)s, size) { }
-PrefixTree::LookupResult::LookupResult(const string& s) :
-    type(ResultValueType::String), as_string(s) { }
-PrefixTree::LookupResult::LookupResult(int64_t i) : type(ResultValueType::Int),
-    as_int(i) { }
-PrefixTree::LookupResult::LookupResult(double d) :
-    type(ResultValueType::Double), as_double(d) { }
-PrefixTree::LookupResult::LookupResult(bool b) : type(ResultValueType::Bool),
-    as_bool(b) { }
-
-
-bool PrefixTree::LookupResult::operator==(const LookupResult& other) const {
-  if (this->type != other.type) {
-    return false;
-  }
-  switch (this->type) {
-    case ResultValueType::Missing:
-      // there's no way to construct one of these with a Missing type
-      throw invalid_argument("LookupResult has Missing type");
-    case ResultValueType::String:
-      return this->as_string == other.as_string;
-    case ResultValueType::Int:
-      return this->as_int == other.as_int;
-    case ResultValueType::Double:
-      return this->as_double == other.as_double;
-    case ResultValueType::Bool:
-      return this->as_bool == other.as_bool;
-    case ResultValueType::Null:
-      return true;
-  }
-}
-
-bool PrefixTree::LookupResult::operator!=(const LookupResult& other) const {
-  return !this->operator==(other);
-}
-
-string PrefixTree::LookupResult::str() const {
-  switch (this->type) {
-    case ResultValueType::Missing:
-      // there's no way to construct one of these with a Missing type
-      throw invalid_argument("LookupResult has Missing type");
-    case ResultValueType::String:
-      return string_printf("<String:%s>", this->as_string.c_str());
-    case ResultValueType::Int:
-      return string_printf("<Int:%lld>", this->as_int);
-    case ResultValueType::Double:
-      return string_printf("<Double:%lf>", this->as_double);
-    case ResultValueType::Bool:
-      return string_printf("<Bool:%d>", this->as_bool);
-    case ResultValueType::Null:
-      return "<Null>";
-  }
 }
 
 

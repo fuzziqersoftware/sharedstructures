@@ -35,42 +35,6 @@ public:
   // to open it again later.
   uint64_t base() const;
 
-  // insert/overwrite a key with a string value.
-  void insert(const void* k, size_t k_size, const void* v, size_t v_size);
-  void insert(const void* k, size_t k_size, const std::string& v);
-  void insert(const std::string& k, const void* v, size_t v_size);
-  void insert(const std::string& k, const std::string& v);
-  void insert(const void* k, size_t k_size, const struct iovec *iov,
-      size_t iovcnt);
-  void insert(const std::string& k, const struct iovec *iov, size_t iovcnt);
-
-  // insert/overwrite a key with an integer value.
-  void insert(const void* k, size_t k_size, int64_t v);
-  void insert(const std::string& k, int64_t v);
-
-  // insert/overwrite a key with a floating-point value.
-  void insert(const void* k, size_t k_size, double v);
-  void insert(const std::string& k, double v);
-
-  // insert/overwrite a key with a boolean value.
-  void insert(const void* k, size_t k_size, bool v);
-  void insert(const std::string& k, bool v);
-
-  // insert/overwrite a key with a null value.
-  void insert(const void* k, size_t k_size);
-  void insert(const std::string& k);
-
-  // delete a key.
-  bool erase(const void* k, size_t k_size);
-  bool erase(const std::string& k);
-
-  // deletes all the keys in the prefix tree.
-  void clear();
-
-  // returns true if a key exists.
-  bool exists(const void* k, size_t k_size);
-  bool exists(const std::string& k);
-
   enum class ResultValueType {
     Missing = 0,
     String  = 1,
@@ -79,12 +43,6 @@ public:
     Bool    = 4,
     Null    = 5,
   };
-
-  // returns the type of a key, or Missing if it doesn't exist. this is slightly
-  // slower than exists() for keys that aren't Int, Bool or Null since it
-  // requires an extra memory access.
-  ResultValueType type(const void* k, size_t k_size) const;
-  ResultValueType type(const std::string& k) const;
 
   struct LookupResult {
     ResultValueType type;
@@ -107,7 +65,53 @@ public:
     std::string str() const;
   };
 
-  // returns the value of a key. throw std::out_of_range if the key is missing.
+  // inserts/overwrites a key with a string value.
+  void insert(const void* k, size_t k_size, const void* v, size_t v_size);
+  void insert(const void* k, size_t k_size, const std::string& v);
+  void insert(const std::string& k, const void* v, size_t v_size);
+  void insert(const std::string& k, const std::string& v);
+  void insert(const void* k, size_t k_size, const struct iovec *iov,
+      size_t iovcnt);
+  void insert(const std::string& k, const struct iovec *iov, size_t iovcnt);
+
+  // inserts/overwrites a key with an integer value.
+  void insert(const void* k, size_t k_size, int64_t v);
+  void insert(const std::string& k, int64_t v);
+
+  // inserts/overwrites a key with a floating-point value.
+  void insert(const void* k, size_t k_size, double v);
+  void insert(const std::string& k, double v);
+
+  // inserts/overwrites a key with a boolean value.
+  void insert(const void* k, size_t k_size, bool v);
+  void insert(const std::string& k, bool v);
+
+  // inserts/overwrites a key with a null value.
+  void insert(const void* k, size_t k_size);
+  void insert(const std::string& k);
+
+  // inserts/overwrites a key with the result of a previous lookup.
+  void insert(const void* k, size_t k_size, const LookupResult& res);
+  void insert(const std::string& k, const LookupResult& res);
+
+  // deletes a key.
+  bool erase(const void* k, size_t k_size);
+  bool erase(const std::string& k);
+
+  // deletes all the keys in the prefix tree.
+  void clear();
+
+  // checks if a key exists.
+  bool exists(const void* k, size_t k_size);
+  bool exists(const std::string& k);
+
+  // returns the type of a key, or Missing if it doesn't exist. this is slightly
+  // slower than exists() for keys that aren't Int, Bool or Null since it
+  // requires an extra memory access.
+  ResultValueType type(const void* k, size_t k_size) const;
+  ResultValueType type(const std::string& k) const;
+
+  // returns the value of a key. throws std::out_of_range if the key is missing.
   LookupResult at(const void* k, size_t k_size) const;
   LookupResult at(const std::string& key) const;
 
