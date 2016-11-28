@@ -3,9 +3,17 @@ CXX=g++
 CXXFLAGS=-I/usr/local/include -std=c++14 -g -Wall -Werror -arch i386 -arch x86_64
 LDFLAGS=-L/usr/local/lib -std=c++14 -lstdc++ -lphosg -g -arch i386 -arch x86_64
 
+INSTALL_DIR=/usr/local
+INCLUDE_INSTALL_DIR=/usr/local/include
+
 PYTHON_INCLUDES=$(shell python-config --includes)
 
 all: cpp_only py_only
+
+install: libsharedstructures.a
+	mkdir -p $(INSTALL_DIR)/include/sharedstructures
+	cp libsharedstructures.a $(INSTALL_DIR)/lib/
+	cp -r *.hh $(INSTALL_DIR)/include/sharedstructures/
 
 cpp_only: libsharedstructures.a cpp_test
 
