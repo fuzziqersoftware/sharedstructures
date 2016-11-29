@@ -15,14 +15,24 @@ using namespace sharedstructures;
 
 class TestClass {
 public:
-  TestClass() : member_variable(1) {
+  TestClass() : member_variable(1), f_calls(0), const_f_calls(0) {
     this->instance_count++;
   }
   ~TestClass() {
     this->instance_count--;
   }
 
+  void f() {
+    this->f_calls++;
+  }
+
+  void f() const {
+    this->const_f_calls++;
+  }
+
   size_t member_variable;
+  size_t f_calls;
+  mutable size_t const_f_calls;
 
   static size_t instance_count;
 };
@@ -61,7 +71,7 @@ void run_basic_test() {
 
   // make sure the block is writable, lolz
   char* data = pool.at<char>(off);
-  data[0] = 1;
+  check_fill_area(data, 100);
   pool.free(off);
   expect_eq(0, pool.bytes_allocated());
   expect_eq(orig_free_bytes, pool.bytes_free());
@@ -81,6 +91,33 @@ void run_basic_test() {
   expect_lt(1024 * 128, pool.size());
   pool.free(off);
   expect_eq(1024 * 128 + 4096, pool.size());
+}
+
+void run_smart_pointer_test() {
+  printf("-- smart pointer\n");
+
+  Pool pool("test-pool", 1024 * 1024); // 1MB
+
+  // make sure allocate_object/free_object call constructors/destructors
+  expect_eq(0, TestClass::instance_count);
+  auto t = pool.allocate_object_ptr<TestClass>();
+  expect_eq(1, TestClass::instance_count);
+
+  expect_eq(0, t->f_calls);
+  expect_eq(0, t->const_f_calls);
+  t->f();
+  expect_eq(1, t->f_calls);
+  expect_eq(0, t->const_f_calls);
+
+  const Pool::PoolPointer<TestClass> t2 = t;
+  expect_eq(1, t2->f_calls);
+  expect_eq(0, t2->const_f_calls);
+  t2->f();
+  expect_eq(1, t->f_calls);
+  expect_eq(1, t->const_f_calls);
+
+  pool.free_object_ptr<TestClass>(t);
+  expect_eq(0, TestClass::instance_count);
 }
 
 void run_expansion_boundary_test_with_size(Pool& pool, size_t size) {
@@ -110,6 +147,7 @@ int main(int argc, char* argv[]) {
   try {
     Pool::delete_pool("test-pool");
     run_basic_test();
+    run_smart_pointer_test();
     run_expansion_boundary_test();
     printf("all tests passed\n");
 

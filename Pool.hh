@@ -28,7 +28,7 @@ public:
   ~Pool();
 
 
-  // accessor functions.
+  // basic accessor functions.
   // the return values of the functions in this section are invalidated by any
   // action that causes the pool to change size or be remapped. these are:
   // - allocate/allocate_object
@@ -49,11 +49,61 @@ public:
   }
 
 
+  // full-featured accessor.
+  // in most situations you can treat this like a normal pointer, except that
+  // it's not affected by pool remaps (so you don't have to worry about calling
+  // at<T>() again after each allocate/free call). this is slightly slower than
+  // at<T>() since it requires extra memory accesses; if your code is very
+  // performance-sensitive, use at<T>() instead.
+
+  template <typename T>
+  class PoolPointer {
+  public:
+    PoolPointer(Pool* pool, uint64_t offset) : pool(pool), offset(offset) { }
+    PoolPointer(const PoolPointer&) = default;
+    PoolPointer(PoolPointer&&) = default;
+    ~PoolPointer() = default;
+
+    T& operator*() {
+      return *this->pool->template at<T>(this->offset);
+    }
+    const T& operator*() const {
+      return *this->pool->template at<T>(this->offset);
+    }
+    T* operator->() {
+      return this->pool->template at<T>(this->offset);
+    }
+    const T* operator->() const {
+      return this->pool->template at<T>(this->offset);
+    }
+    T& operator[](size_t index) {
+      return *this->pool->template at<T>(this->offset + index * sizeof(T));
+    }
+    const T& operator[](size_t index) const {
+      return *this->pool->template at<T>(this->offset + index * sizeof(T));
+    }
+    operator T*() {
+      return this->pool->template at<T>(this->offset);
+    }
+    operator T*() const {
+      return this->pool->template at<T>(this->offset);
+    }
+
+  private:
+    Pool* pool;
+    uint64_t offset;
+  };
+
+
   // allocator functions.
-  // there are two sets of these. allocate/free behave like malloc/free but deal
-  // with offsets instead of pointers. allocate_object/free_object behave like
-  // the new/delete operators (they call object constructors/destructors) but
-  // also deal with offsets instead of pointers.
+  // there are three sets of these.
+  // - allocate/free behave like malloc/free but deal with raw offsets instead
+  //   of pointers.
+  // - allocate_object/free_object behave like the new/delete operators (they
+  //   call object constructors/destructors) but also deal with offsets instead
+  //   of pointers.
+  // - allocate_object_ptr and free_object_ptr deal with PoolPointer instances,
+  //   but otherwise behave like allocate_object/free_object.
   // TODO: the allocator algorithm is currently linear-time; this can be slow
   // when a large number of objects are allocated.
   // TODO: support shrinking the pool by truncating unused space at the end
@@ -67,6 +117,12 @@ public:
     new (this->at<T>(off)) T(std::forward<Args>(args)...);
     return off;
   }
+  template <typename T, typename... Args>
+  PoolPointer<T> allocate_object_ptr(Args... args, size_t size = 0) {
+    uint64_t off = this->allocate(size ? size : sizeof(T));
+    new (this->at<T>(off)) T(std::forward<Args>(args)...);
+    return PoolPointer<T>(this, off);
+  }
 
   void free(uint64_t x);
 
@@ -74,6 +130,9 @@ public:
     T* x = (T*)off;
     x->T::~T();
     this->free(off);
+  }
+  template <typename T> void free_object_ptr(T* ptr) {
+    this->free_object<T>(this->at(ptr));
   }
 
   // returns the size of the allocated block starting at offset
