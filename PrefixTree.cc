@@ -199,8 +199,9 @@ void PrefixTree::insert(const void* k, size_t k_size, int64_t v) {
   // otherwise, we have to explicitly allocate space for it :(
   } else {
     uint64_t value_offset = this->pool->allocate(sizeof(NumberData));
-    this->pool->at<NumberData>(value_offset)->as_int = v;
-    this->pool->at<NumberData>(value_offset)->is_double = false;
+    NumberData* num = this->pool->at<NumberData>(value_offset);
+    num->as_int = v;
+    num->is_double = false;
     *this->pool->at<uint64_t>(value_slot_offset) = value_offset |
         (int64_t)StoredValueType::Number;
   }
@@ -313,6 +314,120 @@ void PrefixTree::insert(const void* k, size_t k_size, const LookupResult& r) {
 
 void PrefixTree::insert(const string& k, const LookupResult& r) {
   this->insert(k.data(), k.size(), r);
+}
+
+
+int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
+  auto g = this->pool->write_lock();
+
+  // get or create the value slot
+  auto traverse_ret = this->traverse(k, k_size, true);
+  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t contents = *this->pool->at<uint64_t>(value_slot_offset);
+  StoredValueType type = this->type_for_slot_contents(contents);
+
+  int64_t value;
+  if (type == StoredValueType::Int) {
+    // value is stored directly in the slot
+    value = this->value_for_slot_contents(contents) >> 3;
+    if (value & 0x1000000000000000) {
+      value |= 0xE000000000000000; // sign-extend the last 3 bits
+    }
+
+  } else if (type == StoredValueType::Number) {
+    // value is stored indirectly in a NumberData struct
+    NumberData* num = this->pool->at<NumberData>(this->value_for_slot_contents(contents));
+    if (num->is_double) {
+      // key exists but is a Double
+      throw out_of_range(string((const char*)k, k_size));
+    }
+    value = num->as_int;
+
+  } else if (!contents) {
+    // key didn't exist; we'll create it now
+    value = 0;
+    this->increment_item_count(1);
+
+  } else {
+    // key exists but is the wrong type
+    throw out_of_range(string((const char*)k, k_size));
+  }
+
+  value += delta;
+
+  // if the first 4 bits of the value match, then the resulting type is Int
+  uint8_t high_bits = (value >> 60) & 0x0F;
+  if ((high_bits == 0x00) || (high_bits == 0x0F)) {
+    // delete the NumberData struct if present and replace it with an inline Int
+    if (type == StoredValueType::Number) {
+      this->pool->free(this->value_for_slot_contents(contents));
+    }
+    *this->pool->at<uint64_t>(value_slot_offset) = (value << 3) |
+        (int64_t)StoredValueType::Int;
+
+  // otherwise, the resulting type is Number
+  } else {
+    // if the type is already Number, just update it
+    if (type == StoredValueType::Number) {
+      this->pool->at<NumberData>(this->value_for_slot_contents(contents))->as_int = value;
+
+    // else, create a Number, put the value there, and link the slot to it
+    } else {
+      uint64_t value_offset = this->pool->allocate(sizeof(NumberData));
+      NumberData* num = this->pool->at<NumberData>(value_offset);
+      num->as_int = value;
+      num->is_double = false;
+      *this->pool->at<uint64_t>(value_slot_offset) = value_offset |
+          (int64_t)StoredValueType::Number;
+    }
+  }
+
+  return value;
+}
+
+int64_t PrefixTree::incr(const string& k, int64_t delta) {
+  return this->incr(k.data(), k.size(), delta);
+}
+
+double PrefixTree::incr(const void* k, size_t k_size, double delta) {
+  auto g = this->pool->write_lock();
+
+  // get or create the value slot
+  auto traverse_ret = this->traverse(k, k_size, true);
+  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t contents = *this->pool->at<uint64_t>(value_slot_offset);
+  StoredValueType type = this->type_for_slot_contents(contents);
+
+  if (type == StoredValueType::Number) {
+    // value is stored indirectly in a NumberData struct
+    NumberData* num = this->pool->at<NumberData>(this->value_for_slot_contents(contents));
+    if (!num->is_double) {
+      // key exists but is an Int
+      throw out_of_range(string((const char*)k, k_size));
+    }
+    num->as_double += delta;
+    return num->as_double;
+
+  } else if (!contents) {
+    // key didn't exist; we'll create it now
+    uint64_t value_offset = this->pool->allocate(sizeof(NumberData));
+    NumberData* num = this->pool->at<NumberData>(value_offset);
+    num->as_double = delta;
+    num->is_double = true;
+    *this->pool->at<uint64_t>(value_slot_offset) = value_offset |
+        (int64_t)StoredValueType::Number;
+
+    this->increment_item_count(1);
+    return delta;
+
+  } else {
+    // key exists but is the wrong type
+    throw out_of_range(string((const char*)k, k_size));
+  }
+}
+
+double PrefixTree::incr(const string& k, double delta) {
+  return this->incr(k.data(), k.size(), delta);
 }
 
 

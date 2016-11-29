@@ -13,6 +13,7 @@
 using namespace std;
 
 using namespace sharedstructures;
+using LookupResult = PrefixTree::LookupResult;
 
 
 shared_ptr<PrefixTree> get_or_create_tree(const char* name) {
@@ -31,7 +32,7 @@ void expect_key_missing(const shared_ptr<PrefixTree> table, const void* k,
 
 
 void verify_state(
-    const unordered_map<string, PrefixTree::LookupResult>& expected,
+    const unordered_map<string, LookupResult>& expected,
     const shared_ptr<PrefixTree> table,
     size_t expected_node_size) {
   expect_eq(expected.size(), table->size());
@@ -69,7 +70,7 @@ void run_basic_test() {
   expect_eq(3, table->size());
   expect_eq(4, table->node_size());
 
-  PrefixTree::LookupResult r;
+  LookupResult r;
   r.type = PrefixTree::ResultValueType::String;
   r.as_string = "value1";
   expect_eq(r, table->at("key1", 4));
@@ -126,7 +127,7 @@ void run_reorganization_test() {
   size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
 
   // initial state: empty
-  unordered_map<string, PrefixTree::LookupResult> expected_state;
+  unordered_map<string, LookupResult> expected_state;
   verify_state(expected_state, table, 1);
 
   // <> null
@@ -237,7 +238,7 @@ void run_types_test() {
 
   // uncomment this to easily see the difference between result types
   // TODO: make this a helper function or something
-  //PrefixTree::LookupResult l(2.38);
+  //LookupResult l(2.38);
   //auto r = table->at("key-double", 10);
   //string ls = l.str(), rs = r.str();
   //fprintf(stderr, "%s vs %s\n", ls.c_str(), rs.c_str());
@@ -266,16 +267,16 @@ void run_types_test() {
     table->at("key-missing", 11);
     expect(false);
   } catch (const out_of_range& e) { }
-  expect_eq(PrefixTree::LookupResult("value-string"),
+  expect_eq(LookupResult("value-string"),
       table->at("key-string", 10));
-  expect_eq(PrefixTree::LookupResult((int64_t)1024 * 1024 * -3),
+  expect_eq(LookupResult((int64_t)1024 * 1024 * -3),
       table->at("key-int", 7));
-  expect_eq(PrefixTree::LookupResult((int64_t)0x9999999999999999),
+  expect_eq(LookupResult((int64_t)0x9999999999999999),
       table->at("key-int-long", 12));
-  expect_eq(PrefixTree::LookupResult(2.38), table->at("key-double", 10));
-  expect_eq(PrefixTree::LookupResult(true), table->at("key-true", 8));
-  expect_eq(PrefixTree::LookupResult(false), table->at("key-false", 9));
-  expect_eq(PrefixTree::LookupResult(), table->at("key-null", 8));
+  expect_eq(LookupResult(2.38), table->at("key-double", 10));
+  expect_eq(LookupResult(true), table->at("key-true", 8));
+  expect_eq(LookupResult(false), table->at("key-false", 9));
+  expect_eq(LookupResult(), table->at("key-null", 8));
 
   // make sure type() returns the same types as at()
   // note: type() doesn't throw for missing keys, but at() does
@@ -308,6 +309,86 @@ void run_types_test() {
   expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
 }
 
+void run_incr_test() {
+  printf("-- incr\n");
+
+  auto table = get_or_create_tree("test-table");
+
+  size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
+
+  expect_eq(0, table->size());
+  table->insert("key-int", 7, (int64_t)10);
+  table->insert("key-int-long", 12, (int64_t)0x3333333333333333);
+  table->insert("key-double", 10, 1.0);
+  expect_eq(3, table->size());
+
+  // incr should create the key if it doesn't exist
+  expect_eq(100, table->incr("key-int2", 8, (int64_t)100));
+  expect_eq(0x5555555555555555, table->incr("key-int-long2", 13, (int64_t)0x5555555555555555));
+  expect_eq(10.0, table->incr("key-double2", 11, 10.0));
+  expect_eq(LookupResult((int64_t)100), table->at("key-int2", 8));
+  expect_eq(LookupResult((int64_t)0x5555555555555555), table->at("key-int-long2", 13));
+  expect_eq(LookupResult(10.0), table->at("key-double2", 11));
+  expect_eq(6, table->size());
+
+  // incr should return the new value of the key
+  expect_eq(99, table->incr("key-int2", 8, (int64_t)-1));
+  expect_eq(0.0, table->incr("key-double2", 11, -10.0));
+  expect_eq(LookupResult((int64_t)99), table->at("key-int2", 8));
+  expect_eq(LookupResult(0.0), table->at("key-double2", 11));
+  expect_eq(6, table->size());
+
+  // test incr() on keys of the wrong type
+  table->insert("key-null", 8);
+  table->insert("key-string", 10, "value-string", 12);
+  expect_eq(8, table->size());
+  try {
+    table->incr("key-null", 8, 13.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-null", 8, (int64_t)13);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-string", 10, 13.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-string", 10, (int64_t)13);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-int", 7, 13.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-int-long", 12, 13.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-int-long2", 13, 13.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table->incr("key-double", 10, (int64_t)13);
+    expect(false);
+  } catch (const out_of_range& e) { }
+
+  // test converting integers between Int and Number
+  expect_eq(0xAAAAAAAAAAAAAAAA, table->incr("key-int", 7, (int64_t)0xAAAAAAAAAAAAAAA0));
+  expect_eq(8, table->size());
+  expect_eq(3, table->incr("key-int-long", 12, (int64_t)-0x3333333333333330));
+  expect_eq(8, table->size());
+
+  // we're done here
+  table->clear();
+  expect_eq(0, table->size());
+
+  // the empty table should not leak any allocated memory
+  expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
+}
+
 void run_concurrent_readers_test() {
   printf("-- concurrent readers\n");
 
@@ -330,7 +411,7 @@ void run_concurrent_readers_test() {
     do {
       try {
         auto res = table->at("key1", 4);
-        if (res == PrefixTree::LookupResult((int64_t)value)) {
+        if (res == LookupResult((int64_t)value)) {
           value++;
         }
       } catch (const out_of_range& e) {
@@ -376,6 +457,7 @@ int main(int argc, char* argv[]) {
     run_basic_test();
     run_reorganization_test();
     run_types_test();
+    run_incr_test();
     run_concurrent_readers_test();
     printf("all tests passed\n");
 

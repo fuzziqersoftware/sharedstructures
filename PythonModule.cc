@@ -13,6 +13,9 @@ using ResultValueType = sharedstructures::PrefixTree::ResultValueType;
 
 
 
+// TODO: make sure long is supported everywhere int is supported
+
+
 
 // helper functions
 
@@ -692,6 +695,69 @@ static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
   return Py_None;
 }
 
+static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+
+  char* k;
+  Py_ssize_t k_size;
+  PyObject* delta_obj;
+  if (!PyArg_ParseTuple(args, "s#O", &k, &k_size, &delta_obj)) {
+    return NULL;
+  }
+
+  if (PyInt_Check(delta_obj)) {
+    int64_t delta = PyInt_AsLong(delta_obj);
+    if ((delta == -1) && PyErr_Occurred()) {
+      return NULL;
+    }
+    int64_t ret;
+    try {
+      ret = self->table.incr(k, k_size, delta);
+    } catch (const out_of_range& e) {
+      PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
+      return NULL;
+    }
+
+    return PyInt_FromLong(ret);
+  }
+
+  if (PyLong_Check(delta_obj)) {
+    int64_t delta = PyLong_AsLongLong(delta_obj);
+    if ((delta == -1) && PyErr_Occurred()) {
+      return NULL;
+    }
+    int64_t ret;
+    try {
+      ret = self->table.incr(k, k_size, delta);
+    } catch (const out_of_range& e) {
+      PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
+      return NULL;
+    }
+
+    return PyInt_FromLong(ret);
+  }
+
+  if (PyFloat_Check(delta_obj)) {
+    double delta = PyFloat_AsDouble(delta_obj);
+    if ((delta == -1.0) && PyErr_Occurred()) {
+      return NULL;
+    }
+    double ret;
+    try {
+      ret = self->table.incr(k, k_size, delta);
+    } catch (const out_of_range& e) {
+      PyErr_SetString(PyExc_ValueError, "incr (float) against key of different type");
+      return NULL;
+    }
+
+    return PyFloat_FromDouble(ret);
+  }
+
+  PyErr_SetString(PyExc_TypeError, "incr delta must be numeric");
+  return NULL;
+}
+
 static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
     bool return_keys, bool return_values) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -748,6 +814,8 @@ static PyMethodDef sharedstructures_PrefixTree_methods[] = {
       "Returns the amount of free space in the underlying shared memory pool."},
   {"pool_allocated_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_allocated_bytes, METH_NOARGS,
       "Returns the amount of allocated space (without overhead) in the underlying shared memory pool."},
+  {"incr", (PyCFunction)sharedstructures_PrefixTree_incr, METH_VARARGS,
+      "Atomically increments an int or float value."},
   {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS,
       "Deletes all entries in the table."},
   {"iterkeys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,

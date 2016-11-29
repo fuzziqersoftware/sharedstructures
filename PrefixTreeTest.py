@@ -217,6 +217,109 @@ def run_complex_types_test():
   verify_state(expected, table)
 
 
+def run_incr_test():
+  print("-- incr")
+  table = sharedstructures.PrefixTree('test-table')
+  expected = {}
+
+  def insert_both(k, v):
+    table[k] = v
+    expected[k] = v
+
+  def delete_both(k):
+    del table[k]
+    del expected[k]
+
+  assert 0 == len(table)
+  table['key-int'] = 10
+  table['key-int-long'] = 0x3333333333333333
+  table['key-double'] = 1.0
+  assert 3 == len(table)
+
+  # giving garbage to incr() should cause a TypeError
+  try:
+    table.incr('key-missing', 'not a number, lolz')
+    assert False
+  except TypeError:
+    pass
+  try:
+    table.incr('key-missing', {'still': 'not', 'a': 'number'})
+    assert False
+  except TypeError:
+    pass
+
+  # incr should create the key if it doesn't exist
+  assert 100 == table.incr('key-int2', 100)
+  assert 0x5555555555555555 == table.incr('key-int-long2', 0x5555555555555555)
+  assert 10.0 == table.incr('key-double2', 10.0)
+  assert 100 == table['key-int2']
+  assert 0x5555555555555555 == table['key-int-long2']
+  assert 10.0 == table['key-double2']
+  assert 6 == len(table)
+
+  # incr should return the new value of the key
+  assert 99 == table.incr('key-int2', -1)
+  assert 0.0 == table.incr('key-double2', -10.0)
+  assert 99 == table['key-int2']
+  assert 0.0 == table['key-double2']
+  assert 6 == len(table)
+
+  # test incr() on keys of the wrong type
+  table['key-null'] = None
+  table['key-string'] = 'value-string'
+  assert 8 == len(table)
+  try:
+    table.incr('key-null', 13.0)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-null', 13)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-string', 13.0)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-string', 13)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-int', 13.0)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-int-long', 13.0)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-int-long2', 13.0)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr('key-double', 13)
+    assert False
+  except ValueError:
+    pass
+
+  # test converting integers between Int and Number
+  assert 0x2AAAAAAAAAAAAAAA == table.incr('key-int', 0x2AAAAAAAAAAAAAA0)
+  assert 8 == len(table)
+  assert 3 == table.incr('key-int-long', -0x3333333333333330)
+  assert 8 == len(table)
+
+  # we're done here
+  table.clear()
+  assert len(table) == 0
+
+
 def run_concurrent_readers_test():
   print('-- concurrent readers')
 
@@ -273,6 +376,7 @@ def main():
     run_reorganization_test()
     run_types_test()
     run_complex_types_test()
+    run_incr_test()
     run_concurrent_readers_test()
     print('all tests passed')
     return 0

@@ -96,6 +96,14 @@ public:
   void insert(const void* k, size_t k_size, const LookupResult& res);
   void insert(const std::string& k, const LookupResult& res);
 
+  // atomically increments the value of a numeric key, returning the new value.
+  // if the key is missing, creates it with the given value. if the key is the
+  // wrong type, throws out_of_range.
+  int64_t incr(const void* k, size_t k_size, int64_t delta);
+  int64_t incr(const std::string& k, int64_t delta);
+  double incr(const void* k, size_t k_size, double delta);
+  double incr(const std::string& k, double delta);
+
   // deletes a key.
   bool erase(const void* k, size_t k_size);
   bool erase(const std::string& k);
