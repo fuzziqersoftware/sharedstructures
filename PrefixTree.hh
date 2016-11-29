@@ -1,3 +1,5 @@
+#pragma once
+
 #include <stdint.h>
 #include <sys/uio.h> // for iov
 
