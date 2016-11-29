@@ -16,14 +16,21 @@ public:
   Pool() = delete;
   Pool(const Pool&) = delete;
   Pool(Pool&&) = delete;
-  explicit Pool(const std::string& name, size_t max_size = 0);
+  // open or create an existing pool.
+  // if file is true, the pool is backed by the file given by `name`. if file is
+  // false, the pool is backed by a shared memory object named `name`. on mac os
+  // x, file = false isn't supported (and we assume file == true always) because
+  // shared memory objects can't be resized after creation. if max_size is not
+  // 0, this process will not expand the pool beyond that size (but it can open
+  // an existing pool larger than that size, and another process that opened the
+  // pool with a larger max_size can expand it).
+  explicit Pool(const std::string& name, size_t max_size = 0, bool file = true);
   ~Pool();
 
 
   // accessor functions.
   // the return values of the functions in this section are invalidated by any
-  // action that causes the pool to change size or be reallocated. these actions
-  // are:
+  // action that causes the pool to change size or be remapped. these are:
   // - allocate/allocate_object
   // - free/free_object
   // - read_lock/write_lock

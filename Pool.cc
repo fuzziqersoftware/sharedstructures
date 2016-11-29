@@ -20,7 +20,7 @@ using namespace std;
 
 namespace sharedstructures {
 
-Pool::Pool(const string& name, size_t max_size) : name(name),
+Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     max_size(max_size) {
 
   // on Linux, shared memory objects can be resized at any time just by calling
@@ -28,7 +28,7 @@ Pool::Pool(const string& name, size_t max_size) : name(name),
   // shared memory object, so we instead have to memory-map a file on disk.
   int (*open_segment)(const char*, int, ...) = shm_open;
   int (*unlink_segment)(const char*) = shm_unlink;
-  if (MAP_HASSEMAPHORE) {
+  if (MAP_HASSEMAPHORE || file) {
     open_segment = open;
     unlink_segment = unlink;
   }
