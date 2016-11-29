@@ -332,6 +332,11 @@ size_t HashTable::size() const {
   return this->pool->at<HashTableBase>(this->base_offset)->item_count[0];
 }
 
+uint8_t HashTable::bits() const {
+  auto g = this->pool->read_lock();
+  return this->pool->at<HashTableBase>(this->base_offset)->bits[0];
+}
+
 void HashTable::print(FILE* stream) const {
   auto g = this->pool->read_lock();
 

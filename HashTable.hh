@@ -53,6 +53,7 @@ public:
 
   // inspection methods.
   size_t size() const; // key count
+  uint8_t bits() const; // hash bucket count factor
 
   void print(FILE* stream) const;
 

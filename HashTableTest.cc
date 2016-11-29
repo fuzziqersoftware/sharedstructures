@@ -42,6 +42,7 @@ void run_basic_test() {
   size_t initial_pool_allocated = pool->bytes_allocated();
 
   expect_eq(0, table.size());
+  expect_eq(6, table.bits());
 
   table.insert("key1", 4, "value1", 6);
   expected.emplace("key1", "value1");
