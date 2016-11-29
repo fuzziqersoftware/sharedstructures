@@ -193,8 +193,8 @@ void PrefixTree::insert(const void* k, size_t k_size, int64_t v) {
   // retrieving the value, so it's safe to store it in the slot directly
   uint8_t high_bits = (v >> 60) & 0x0F;
   if ((high_bits == 0x00) || (high_bits == 0x0F)) {
-    *this->pool->at<uint64_t>(value_slot_offset) = (v << 3) |
-        (int64_t)StoredValueType::Int;
+    *this->pool->at<int64_t>(value_slot_offset) = (v << 3) |
+      (int64_t)StoredValueType::Int;
 
   // otherwise, we have to explicitly allocate space for it :(
   } else {
@@ -362,7 +362,7 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
     if (type == StoredValueType::Number) {
       this->pool->free(this->value_for_slot_contents(contents));
     }
-    *this->pool->at<uint64_t>(value_slot_offset) = (value << 3) |
+    *this->pool->at<int64_t>(value_slot_offset) = (value << 3) |
         (int64_t)StoredValueType::Int;
 
   // otherwise, the resulting type is Number
@@ -603,16 +603,21 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
   }
   const Node* n = this->pool->at<Node>(node_offset);
   print_indent(stream, indent);
-  fprintf(stream, "%02hhX @ %llX (%02hhX, %02hhX), from=(%llX:%02hhX)%s\n",
-      k, node_offset, n->start, n->end, n->parent_offset, n->parent_slot,
-      n->value ? " +" : "");
+  fprintf(stream, "%02hhX @ %llX (%02hhX, %02hhX), from=(%llX:%02hhX)",
+      k, node_offset, n->start, n->end, n->parent_offset, n->parent_slot);
+  if (n->value) {
+    StoredValueType t = this->type_for_slot_contents(n->value);
+    fprintf(stream, " +%d@%llX\n", (int)t, this->value_for_slot_contents(n->value));
+  } else {
+    fputc('\n', stream);
+  }
   for (uint16_t x = 0; x < (n->end - n->start + 1); x++) {
     uint64_t contents = n->children[x];
     StoredValueType type = this->type_for_slot_contents(contents);
     if (type != StoredValueType::SubNode) {
       print_indent(stream, indent + 2);
       uint64_t value = this->value_for_slot_contents(contents);
-      fprintf(stream, "(%X) + %d @ %llX\n", x + n->start, type, value);
+      fprintf(stream, "(%X) +%d@%llX\n", x + n->start, type, value);
     } else if (contents) {
       this->print(stream, x + n->start, contents, indent + 2);
     }

@@ -65,7 +65,11 @@ PyObject* sharedstructures_internal_get_python_object_for_result(
       }
 
     case ResultValueType::Int:
-      return PyInt_FromLong(res.as_int);
+      if (res.as_int > PyInt_GetMax()) {
+        return PyLong_FromLongLong(res.as_int);
+      } else {
+        return PyInt_FromLong(res.as_int);
+      }
 
     case ResultValueType::Double:
       return PyFloat_FromDouble(res.as_double);
@@ -602,31 +606,53 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
       PyErr_SetObject(PyExc_KeyError, key);
       return -1;
     }
+    return 0;
+  }
 
-  } else if (value == Py_None) {
+  if (value == Py_None) {
     self->table.insert(k.first, k.second);
+    return 0;
+  }
 
-  } else if (value == Py_True) {
+  if (value == Py_True) {
     self->table.insert(k.first, k.second, true);
+    return 0;
+  }
 
-  } else if (value == Py_False) {
+  if (value == Py_False) {
     self->table.insert(k.first, k.second, false);
+    return 0;
+  }
 
-  } else if (PyInt_Check(value)) {
+  if (PyInt_Check(value)) {
     int64_t raw_value = PyInt_AsLong(value);
     if ((raw_value == -1) && PyErr_Occurred()) {
       return -1;
     }
     self->table.insert(k.first, k.second, raw_value);
+    return 0;
+  }
 
-  } else if (PyFloat_Check(value)) {
+  if (PyLong_Check(value)) {
+    int64_t raw_value = PyLong_AsLongLong(value);
+    if ((raw_value == -1) && PyErr_Occurred()) {
+      PyErr_Clear(); // we'll insert it as a marshalled string instead
+    } else {
+      self->table.insert(k.first, k.second, raw_value);
+      return 0;
+    }
+  }
+
+  if (PyFloat_Check(value)) {
     double raw_value = PyFloat_AsDouble(value);
     if ((raw_value == -1.0) && PyErr_Occurred()) {
       return -1;
     }
     self->table.insert(k.first, k.second, raw_value);
+    return 0;
+  }
 
-  } else if (PyUnicode_Check(value)) {
+  if (PyUnicode_Check(value)) {
     Py_ssize_t size = PyUnicode_GetSize(value);
     if (size < 0) {
       return -1;
@@ -637,8 +663,10 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     insert_data += '\x01';
     insert_data.append((const char*)data, size * sizeof(Py_UNICODE));
     self->table.insert(k.first, k.second, insert_data.data(), insert_data.size());
+    return 0;
+  }
 
-  } else if (PyString_Check(value)) {
+  if (PyString_Check(value)) {
     char* data;
     Py_ssize_t size;
     if (PyString_AsStringAndSize(value, &data, &size) == -1) {
@@ -653,28 +681,29 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
       insert_data.append(data, size);
       self->table.insert(k.first, k.second, insert_data.data(), insert_data.size());
     }
-
-  } else {
-    PyObject* marshalled_obj = PyMarshal_WriteObjectToString(value,
-        Py_MARSHAL_VERSION);
-    if (!marshalled_obj) {
-      // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-      // here we assume it does
-      return -1;
-    }
-
-    char format = 2;
-    struct iovec iov[2];
-    iov[0].iov_base = &format;
-    iov[0].iov_len = 1;
-    if (PyString_AsStringAndSize(marshalled_obj, (char**)(&iov[1].iov_base),
-        (Py_ssize_t*)&iov[1].iov_len) == -1) {
-      Py_DECREF(marshalled_obj);
-      return -1;
-    }
-    self->table.insert(k.first, k.second, iov, 2);
-    Py_DECREF(marshalled_obj);
+    return 0;
   }
+
+  // no types matches, so we'll marshal instead
+  PyObject* marshalled_obj = PyMarshal_WriteObjectToString(value,
+      Py_MARSHAL_VERSION);
+  if (!marshalled_obj) {
+    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+    // here we assume it does
+    return -1;
+  }
+
+  char format = 2;
+  struct iovec iov[2];
+  iov[0].iov_base = &format;
+  iov[0].iov_len = 1;
+  if (PyString_AsStringAndSize(marshalled_obj, (char**)(&iov[1].iov_base),
+      (Py_ssize_t*)&iov[1].iov_len) == -1) {
+    Py_DECREF(marshalled_obj);
+    return -1;
+  }
+  self->table.insert(k.first, k.second, iov, 2);
+  Py_DECREF(marshalled_obj);
 
   return 0;
 }
@@ -706,22 +735,6 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
     return NULL;
   }
 
-  if (PyInt_Check(delta_obj)) {
-    int64_t delta = PyInt_AsLong(delta_obj);
-    if ((delta == -1) && PyErr_Occurred()) {
-      return NULL;
-    }
-    int64_t ret;
-    try {
-      ret = self->table.incr(k, k_size, delta);
-    } catch (const out_of_range& e) {
-      PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
-      return NULL;
-    }
-
-    return PyInt_FromLong(ret);
-  }
-
   if (PyLong_Check(delta_obj)) {
     int64_t delta = PyLong_AsLongLong(delta_obj);
     if ((delta == -1) && PyErr_Occurred()) {
@@ -735,7 +748,31 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
       return NULL;
     }
 
-    return PyInt_FromLong(ret);
+    if (ret > PyInt_GetMax()) {
+      return PyLong_FromLongLong(ret);
+    } else {
+      return PyInt_FromLong(ret);
+    }
+  }
+
+  if (PyInt_Check(delta_obj)) {
+    int64_t delta = PyInt_AsLong(delta_obj);
+    if ((delta == -1) && PyErr_Occurred()) {
+      return NULL;
+    }
+    int64_t ret;
+    try {
+      ret = self->table.incr(k, k_size, delta);
+    } catch (const out_of_range& e) {
+      PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
+      return NULL;
+    }
+
+    if (ret > PyInt_GetMax()) {
+      return PyLong_FromLongLong(ret);
+    } else {
+      return PyInt_FromLong(ret);
+    }
   }
 
   if (PyFloat_Check(delta_obj)) {

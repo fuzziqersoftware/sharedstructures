@@ -273,41 +273,49 @@ def run_incr_test():
     assert False
   except ValueError:
     pass
+  assert None == table['key-null']
   try:
     table.incr('key-null', 13)
     assert False
   except ValueError:
     pass
+  assert None == table['key-null']
   try:
     table.incr('key-string', 13.0)
     assert False
   except ValueError:
     pass
+  assert 'value-string' == table['key-string']
   try:
     table.incr('key-string', 13)
     assert False
   except ValueError:
     pass
+  assert 'value-string' == table['key-string']
   try:
     table.incr('key-int', 13.0)
     assert False
   except ValueError:
     pass
+  assert 10 == table['key-int']
   try:
     table.incr('key-int-long', 13.0)
     assert False
   except ValueError:
     pass
+  assert 0x3333333333333333 == table['key-int-long']
   try:
     table.incr('key-int-long2', 13.0)
     assert False
   except ValueError:
     pass
+  assert 0x5555555555555555 == table['key-int-long2']
   try:
     table.incr('key-double', 13)
     assert False
   except ValueError:
     pass
+  assert 1.0 == table['key-double']
 
   # test converting integers between Int and Number
   assert 0x2AAAAAAAAAAAAAAA == table.incr('key-int', 0x2AAAAAAAAAAAAAA0)
@@ -382,7 +390,7 @@ def main():
     return 0
 
   finally:
-    sharedstructures.delete_pool('test-table')
+    pass #sharedstructures.delete_pool('test-table')
 
 
 if __name__ == '__main__':

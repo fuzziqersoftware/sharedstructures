@@ -156,6 +156,7 @@ private:
     uint8_t start;
     uint8_t end;
     uint8_t parent_slot;
+    uint8_t unused[5]; // force an 8-byte alignment for the rest of the struct
     uint64_t parent_offset;
 
     uint64_t value;
@@ -195,8 +196,8 @@ private:
 
   struct TreeBase {
     // note: if fields are added here, update the size in the constructor
-    size_t item_count;
-    size_t node_count;
+    uint64_t item_count;
+    uint64_t node_count;
     Node root;
 
     TreeBase();
