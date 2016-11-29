@@ -38,16 +38,18 @@ osx_cpp32_test: cpp_test
 
 
 sharedstructures.so: $(OBJECTS) PythonModule.o
-	$(CXX) $(LDFLAGS) -g -bundle -undefined dynamic_lookup -g PythonModule.o Pool.o PrefixTree.o -o sharedstructures.so
+	$(CXX) $(LDFLAGS) -g -bundle -undefined dynamic_lookup -g PythonModule.o $(OBJECTS) -o sharedstructures.so
 
 PythonModule.o: PythonModule.cc
 	$(CXX) $(CXXFLAGS) -fno-strict-aliasing -fno-common -dynamic -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
 
 
 py_test:
+	python HashTableTest.py
 	python PrefixTreeTest.py
 
 osx_py32_test: py_test
+	arch -32 python HashTableTest.py
 	arch -32 python PrefixTreeTest.py
 
 
