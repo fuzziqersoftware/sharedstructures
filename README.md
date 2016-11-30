@@ -5,12 +5,11 @@ sharedstructures is a library for storing data structures in automatically-creat
 ## Building
 
 - Build and install phosg (https://github.com/fuzziqersoftware/phosg)
-- Build the C++ and Python libraries and test them by running `make`.
--- If you don't have Python headers installed, you can build the C++ libraries only by running `make cpp_only`.
+- Build the C++ and Python libraries and test them by running `make`. If you don't have Python headers installed, you can build the C++ libraries only by running `make cpp_only`.
 - If you're running on Mac OS X, run `make osx_cpp32_test osx_py32_test` to run the tests in 32-bit mode.
 - Run `sudo make install`.
 
-If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.11.
+If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.11 and Ubuntu 16.04.
 
 ## Interface
 
