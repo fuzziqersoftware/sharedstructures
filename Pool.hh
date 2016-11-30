@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include <atomic>
 #include <memory>
 #include <phosg/Filesystem.hh>
 #include <string>
@@ -39,10 +40,10 @@ public:
 
   // converts an offset into a usable pointer
   template <typename T> T* at(uint64_t offset) {
-    return (T*)(&this->data->data[offset]);
+    return (T*)((uint8_t*)this->data + offset);
   }
   template <typename T> const T* at(uint64_t offset) const {
-    return (T*)(&this->data->data[offset]);
+    return (T*)((uint8_t*)this->data + offset);
   }
 
   // converts a usable pointer into an offset
@@ -167,7 +168,7 @@ public:
   // deletes a pool (without opening it). if the pool is not open by any other
   // processes, it's deleted immediately. if it is open somewhere, it's deleted
   // when all processes have closed it.
-  static bool delete_pool(const std::string& name);
+  static bool delete_pool(const std::string& name, bool file = true);
 
 
   // locking functions.
@@ -203,24 +204,21 @@ private:
 
   // pool structure
 
-  union Data {
-    uint8_t data[0];
-    struct {
-      std::atomic<uint64_t> size;
-      std::atomic<uint8_t> resize_lock; // 0 = unlocked, 1 = locked
-      std::atomic<uint8_t> read_lock; // 0 = unlocked, 1 = locked
-      std::atomic<uint8_t> write_lock; // 0 = unlocked, 1 = locked
-      std::atomic<uint64_t> num_readers;
+  struct Data {
+    std::atomic<uint64_t> size;
+    std::atomic<uint8_t> resize_lock; // 0 = unlocked, 1 = locked
+    std::atomic<uint8_t> read_lock; // 0 = unlocked, 1 = locked
+    std::atomic<uint8_t> write_lock; // 0 = unlocked, 1 = locked
+    std::atomic<uint64_t> num_readers;
 
-      uint64_t head;
-      uint64_t tail;
+    uint64_t head;
+    uint64_t tail;
 
-      std::atomic<uint64_t> base_object_offset;
-      std::atomic<uint64_t> bytes_allocated;
-      std::atomic<uint64_t> bytes_free;
+    std::atomic<uint64_t> base_object_offset;
+    std::atomic<uint64_t> bytes_allocated;
+    std::atomic<uint64_t> bytes_free;
 
-      uint8_t arena[0];
-    };
+    uint8_t arena[0];
   };
 
   scoped_fd fd;

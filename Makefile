@@ -1,12 +1,25 @@
 OBJECTS=Pool.o HashTable.o PrefixTree.o
-CXX=g++
-CXXFLAGS=-I/usr/local/include -std=c++14 -g -Wall -Werror -arch i386 -arch x86_64
-LDFLAGS=-L/usr/local/lib -std=c++14 -lstdc++ -lphosg -g -arch i386 -arch x86_64
+CXX=g++ -fPIC
+CXXFLAGS=-I/usr/local/include -std=c++14 -g -Wall -Werror
+LDFLAGS=-L/usr/local/lib -std=c++14 -lphosg -g
 
 INSTALL_DIR=/usr/local
-INCLUDE_INSTALL_DIR=/usr/local/include
 
 PYTHON_INCLUDES=$(shell python-config --includes)
+
+
+UNAME = $(shell uname -s)
+ifeq ($(UNAME),Darwin)
+	CXXFLAGS +=  -arch i386 -arch x86_64
+	LDFLAGS +=  -arch i386 -arch x86_64
+	PYTHON_MODULE_CXXFLAGS = -dynamic
+	PYTHON_MODULE_LDFLAGS = -bundle -undefined dynamic_lookup
+endif
+ifeq ($(UNAME),Linux)
+	LDFLAGS +=  -lrt
+	PYTHON_MODULE_CXXFLAGS =
+	PYTHON_MODULE_LDFLAGS = -shared
+endif
 
 all: cpp_only py_only
 
@@ -20,6 +33,7 @@ cpp_only: libsharedstructures.a cpp_test
 py_only: sharedstructures.so py_test
 
 libsharedstructures.a: $(OBJECTS)
+	rm -f libsharedstructures.a
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
@@ -34,14 +48,14 @@ osx_cpp32_test: cpp_test
 	arch -32 ./HashTableTest
 
 %Test: %Test.o $(OBJECTS)
-	$(CXX) $(LDFLAGS) $^ -o $@
+	$(CXX) $^ $(LDFLAGS) -o $@
 
 
 sharedstructures.so: $(OBJECTS) PythonModule.o
-	$(CXX) $(LDFLAGS) -g -bundle -undefined dynamic_lookup -g PythonModule.o $(OBJECTS) -o sharedstructures.so
+	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
 
 PythonModule.o: PythonModule.cc
-	$(CXX) $(CXXFLAGS) -fno-strict-aliasing -fno-common -dynamic -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
+	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
 
 
 py_test:

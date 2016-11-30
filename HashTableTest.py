@@ -10,11 +10,6 @@ def get_current_process_lsof():
   return subprocess.check_output(['lsof', '-p', str(os.getpid())])
 
 
-def diff(a, b):
-  import difflib
-  return '\n'.join(x.rstrip() for x in difflib.unified_diff(a.splitlines(), b.splitlines()))
-
-
 def expect_key_missing(table, k):
   try:
     table[k]
@@ -31,7 +26,7 @@ def verify_state(expected, table):
 
 def run_basic_test():
   print("-- basic")
-  before_lsof = get_current_process_lsof()
+  before_lsof_count = len(get_current_process_lsof().splitlines())
 
   table = sharedstructures.HashTable("test-table")
   expected = {}
@@ -75,10 +70,7 @@ def run_basic_test():
 
   # this will fail if the test prints anything after before_lsof is taken since
   # the stdout/stderr offsets will be different
-  after_lsof = get_current_process_lsof()
-  if before_lsof != after_lsof:
-    print(diff(before_lsof, after_lsof))
-    assert False
+  assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
 def run_collision_test():
@@ -130,6 +122,7 @@ def run_concurrent_readers_test():
     value = 100
     start_time = int(time.time() * 1000000)
     while (value < 110) and (int(time.time() * 1000000) < (start_time + 1000000)):
+      time.sleep(0.001)
       try:
         res = table['key1']
       except KeyError:

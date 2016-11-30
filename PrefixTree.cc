@@ -1,9 +1,12 @@
+#include "PrefixTree.hh"
+
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <algorithm>
 #include <phosg/Strings.hh>
-
-#include "PrefixTree.hh"
 
 using namespace std;
 
@@ -77,6 +80,8 @@ bool PrefixTree::LookupResult::operator==(const LookupResult& other) const {
       return this->as_bool == other.as_bool;
     case ResultValueType::Null:
       return true;
+    default:
+      return false;
   }
 }
 
@@ -99,6 +104,8 @@ string PrefixTree::LookupResult::str() const {
       return string_printf("<Bool:%d>", this->as_bool);
     case ResultValueType::Null:
       return "<Null>";
+    default:
+      return "<UnknownType>";
   }
 }
 
@@ -603,11 +610,11 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
   }
   const Node* n = this->pool->at<Node>(node_offset);
   print_indent(stream, indent);
-  fprintf(stream, "%02hhX @ %llX (%02hhX, %02hhX), from=(%llX:%02hhX)",
+  fprintf(stream, "%02hhX @ %" PRIu64 " (%02hhX, %02hhX), from=(%" PRIu64 ":%02hhX)",
       k, node_offset, n->start, n->end, n->parent_offset, n->parent_slot);
   if (n->value) {
     StoredValueType t = this->type_for_slot_contents(n->value);
-    fprintf(stream, " +%d@%llX\n", (int)t, this->value_for_slot_contents(n->value));
+    fprintf(stream, " +%d@%" PRIu64 "\n", (int)t, this->value_for_slot_contents(n->value));
   } else {
     fputc('\n', stream);
   }
@@ -617,7 +624,7 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
     if (type != StoredValueType::SubNode) {
       print_indent(stream, indent + 2);
       uint64_t value = this->value_for_slot_contents(contents);
-      fprintf(stream, "(%X) +%d@%llX\n", x + n->start, type, value);
+      fprintf(stream, "(%X) +%d@%" PRIu64 "\n", x + n->start, (int)type, value);
     } else if (contents) {
       this->print(stream, x + n->start, contents, indent + 2);
     }
@@ -643,7 +650,7 @@ PrefixTree::Node::Node() : start(0x00), end(0xFF), parent_slot(0),
 }
 
 bool PrefixTree::Node::has_children() const {
-  for (size_t x = 0; x < this->end - this->start + 1; x++) {
+  for (size_t x = 0; x < (size_t)(this->end - this->start + 1); x++) {
     if (this->children[x]) {
       return true;
     }

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <phosg/Time.hh>
@@ -138,8 +140,8 @@ void run_concurrent_readers_test() {
           value++;
           value_str = to_string(value);
         }
-      } catch (const out_of_range& e) {
-      }
+      } catch (const out_of_range& e) { }
+      usleep(0); // yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
     // we succeeded if we saw all the values from 100 to 110

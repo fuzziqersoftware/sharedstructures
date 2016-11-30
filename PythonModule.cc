@@ -2,6 +2,9 @@
 #include <Python.h>
 #include <marshal.h>
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+
 #include <utility>
 
 #include "HashTable.hh"
@@ -239,7 +242,7 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
 static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return PyString_FromFormat(
-      "<sharedstructures.HashTable on %s:%llu at %p>",
+      "<sharedstructures.HashTable on %s:%" PRIu64 " at %p>",
       self->pool_name.c_str(), self->table.base(), py_self);
 }
 
@@ -711,7 +714,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
 static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
   return PyString_FromFormat(
-      "<sharedstructures.PrefixTree on %s:%llu at %p>",
+      "<sharedstructures.PrefixTree on %s:%" PRIu64 " at %p>",
       self->pool_name.c_str(), self->table.base(), py_self);
 }
 

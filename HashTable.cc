@@ -1,5 +1,9 @@
 #include "HashTable.hh"
 
+#define __STDC_FORMAT_MACROS
+#include <inttypes.h>
+#include <string.h>
+
 using namespace std;
 
 namespace sharedstructures {
@@ -255,7 +259,7 @@ void HashTable::clear() {
     }
 
     uint64_t slots_offset = h->slots_offset[table_index];
-    for (size_t slot_id = 0; slot_id < (1 << bits); slot_id++) {
+    for (size_t slot_id = 0; slot_id < (size_t)(1 << bits); slot_id++) {
       Slot* slot = this->pool->at<Slot>(slots_offset + slot_id * sizeof(Slot));
       if (!slot->key_offset) {
         continue;
@@ -350,15 +354,15 @@ void HashTable::print(FILE* stream) const {
 
     uint64_t slots_offset = h->slots_offset[table_index];
     const Slot* slots = this->pool->at<Slot>(slots_offset);
-    fprintf(stream, "Table %zu: bits=%hhu, slots@%llX\n", table_index, bits,
+    fprintf(stream, "Table %zu: bits=%hhu, slots@%" PRIu64 "\n", table_index, bits,
         slots_offset);
 
-    for (size_t slot_id = 0; slot_id < (1 << bits); slot_id++) {
+    for (size_t slot_id = 0; slot_id < (size_t)(1 << bits); slot_id++) {
       if (!slots[slot_id].key_offset) {
         //fprintf(stream, "  Slot %zu: empty\n", slot_id);
 
       } else if (!(slots[slot_id].key_offset & 1)) {
-        fprintf(stream, "  Slot %zu: value=%llX:%llX\n", slot_id,
+        fprintf(stream, "  Slot %zu: value=%" PRIu64 ":%" PRIu64 "\n", slot_id,
             slots[slot_id].key_offset, slots[slot_id].key_size);
 
       } else {
@@ -367,7 +371,7 @@ void HashTable::print(FILE* stream) const {
         uint64_t indirect_offset = slots[slot_id].key_offset & (~1);
         while (indirect_offset) {
           const IndirectValue* indirect = this->pool->at<IndirectValue>(indirect_offset);
-          fprintf(stream, "    Indirect: @%llX, next=%llX, value=%llX:%llX\n",
+          fprintf(stream, "    Indirect: @%" PRIu64 ", next=%" PRIu64 ", value=%" PRIu64 ":%" PRIu64 "\n",
               indirect_offset, indirect->next, indirect->key_offset,
               indirect->key_size);
           indirect_offset = indirect->next;
@@ -395,7 +399,7 @@ uint64_t HashTable::create_hash_base(uint8_t bits) {
   h->item_count[1] = 0;
 
   Slot* slots = this->pool->at<Slot>(slots_offset);
-  for (size_t x = 0; x < (1 << bits); x++) {
+  for (size_t x = 0; x < (size_t)(1 << bits); x++) {
     slots[x].key_offset = 0;
     slots[x].key_size = 0;
   }

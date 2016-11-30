@@ -1,7 +1,10 @@
+#define __STDC_FORMAT_MACROS
 #include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 
 #include <phosg/Time.hh>
@@ -403,7 +406,7 @@ void run_concurrent_readers_test() {
   }
 
   if (child_pids.count(0)) {
-    // child process: try up to a second to get the key
+    // child process: try up to 3 seconds to get the key
     auto table = get_or_create_tree("test-table");
 
     int64_t value = 100;
@@ -414,8 +417,8 @@ void run_concurrent_readers_test() {
         if (res == LookupResult((int64_t)value)) {
           value++;
         }
-      } catch (const out_of_range& e) {
-      }
+      } catch (const out_of_range& e) { }
+      usleep(0); // yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
     // we succeeded if we saw all the values from 100 to 110
