@@ -37,7 +37,7 @@ libsharedstructures.a: $(OBJECTS)
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
-cpp_test: PoolTest HashTableTest PrefixTreeTest
+cpp_test: PoolTest HashTableTest PrefixTreeTest AllocatorBenchmark
 	./PoolTest
 	./PrefixTreeTest
 	./HashTableTest
@@ -48,6 +48,9 @@ osx_cpp32_test: cpp_test
 	arch -32 ./HashTableTest
 
 %Test: %Test.o $(OBJECTS)
+	$(CXX) $^ $(LDFLAGS) -o $@
+
+AllocatorBenchmark: AllocatorBenchmark.o $(OBJECTS)
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 

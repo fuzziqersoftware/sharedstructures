@@ -31,6 +31,11 @@ public:
   ~Pool();
 
 
+  // expands the pool to the given size. if the given size is smaller than the
+  // pool's size, does nothing.
+  void expand(size_t new_size);
+
+
   // basic accessor functions.
   // the return values of the functions in this section are invalidated by any
   // action that causes the pool to change size or be remapped. these are:
@@ -226,7 +231,6 @@ private:
   mutable size_t pool_size;
 
   void check_size_and_remap() const;
-  void expand_pool(size_t new_size);
 
 
   // locking primitives (super primitive)

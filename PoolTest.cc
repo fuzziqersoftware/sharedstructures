@@ -125,7 +125,7 @@ void run_expansion_boundary_test_with_size(Pool& pool, size_t size) {
   uint64_t data = pool.allocate(size);
   check_fill_area(pool.at<void>(data), size);
   pool.free(data);
-  expect_eq(free_bytes, pool.bytes_free());
+  expect_le(free_bytes, pool.bytes_free());
 }
 
 void run_expansion_boundary_test() {

@@ -134,7 +134,7 @@ uint64_t Pool::allocate(size_t size) {
   if (this->data->head == 0 && this->data->tail == 0) {
     size_t free_size = this->data->size - sizeof(Data);
     if (free_size < needed_size) {
-      this->expand_pool(needed_size + sizeof(Data));
+      this->expand(needed_size + sizeof(Data));
     }
 
     // just write the block struct, link it, and return
@@ -191,9 +191,9 @@ uint64_t Pool::allocate(size_t size) {
 
     size_t new_pool_size = this->data->tail + sizeof(AllocatedBlock) +
         tail->effective_size() + needed_size;
-    this->expand_pool(new_pool_size);
+    this->expand(new_pool_size);
 
-    // tail pointer may be invalid after expand_pool
+    // tail pointer may be invalid after expand
     tail = this->at<AllocatedBlock>(this->data->tail);
     candidate_offset = this->data->tail + sizeof(AllocatedBlock) +
         tail->effective_size();
@@ -311,7 +311,7 @@ void Pool::check_size_and_remap() const {
   }
 }
 
-void Pool::expand_pool(size_t new_size) {
+void Pool::expand(size_t new_size) {
   if (new_size < this->pool_size) {
     return;
   }
@@ -327,8 +327,9 @@ void Pool::expand_pool(size_t new_size) {
   // variable, its purpose is to make sure nobody sets the size again after we
   // do but before we call ftruncate.
   spinlock(&this->data->resize_lock);
+  int ftruncate_ret = ftruncate(this->fd, new_size);
+  this->data->bytes_free += (new_size - this->data->size);
   this->data->size = new_size;
-  int ftruncate_ret = ftruncate(this->fd, this->data->size);
   unlock(&this->data->resize_lock);
   if (ftruncate_ret) {
     throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
