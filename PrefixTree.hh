@@ -177,20 +177,13 @@ private:
     static size_t full_size();
   };
 
-  struct NumberData {
-    union {
-      int64_t as_int;
-      double as_double;
-    };
-    bool is_double;
-  };
-
   enum class StoredValueType {
     SubNode = 0,
     String  = 1,
-    Int     = 2, // 61-bit inlined int; for 64-bit ints and floats we use Number
-    Number  = 3,
-    Trivial = 4, // inlined int; 0=false, 1=true, 2=null
+    Int     = 2, // 61-bit inlined int; for 64-bit ints use LongInt
+    LongInt = 3,
+    Double  = 4,
+    Trivial = 5, // inlined int; 0=false, 1=true, 2=null
     // can be up to 7 (this is a 3-bit field)
   };
 
