@@ -157,17 +157,14 @@ private:
     uint8_t end;
     uint8_t parent_slot;
     uint8_t unused[5]; // force an 8-byte alignment for the rest of the struct
-    uint64_t parent_offset;
 
     uint64_t value;
     uint64_t children[0];
 
     // sets start, end, value, parent; doesn't initialize children
-    Node(uint8_t start, uint8_t end, uint8_t parent_slot,
-        uint64_t parent_offset, uint64_t value);
+    Node(uint8_t start, uint8_t end, uint8_t parent_slot, uint64_t value);
     // sets everything, including children. creates a node with one slot.
-    Node(uint8_t slot, uint8_t parent_slot, uint64_t parent_offset,
-        uint64_t value);
+    Node(uint8_t slot, uint8_t parent_slot, uint64_t value);
     // sets everything, including children. creates a node with all slots.
     Node();
 
@@ -199,9 +196,13 @@ private:
   void increment_item_count(ssize_t delta);
   void increment_node_count(ssize_t delta);
 
-  std::pair<uint64_t, uint64_t> traverse(const void* k, size_t k_size,
-      bool create);
-  std::pair<uint64_t, uint64_t> traverse(const void* k, size_t s) const;
+  struct Traversal {
+    uint64_t value_slot_offset;
+    std::vector<uint64_t> node_offsets;
+  };
+
+  Traversal traverse(const void* k, size_t s, bool with_nodes, bool create);
+  Traversal traverse(const void* k, size_t s, bool with_nodes) const;
 
   std::pair<std::string, LookupResult> next_key_value_internal(
       const void* current, size_t size, bool return_value) const;

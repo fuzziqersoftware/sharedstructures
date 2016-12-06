@@ -114,8 +114,7 @@ void PrefixTree::insert(const void* k, size_t k_size, const void* v,
     size_t v_size) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   this->clear_value_slot(value_slot_offset);
 
@@ -157,8 +156,7 @@ void PrefixTree::insert(const void* k, size_t k_size, const struct iovec* iov,
 
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   this->clear_value_slot(value_slot_offset);
 
@@ -191,8 +189,7 @@ void PrefixTree::insert(const string& k, const struct iovec* iov,
 void PrefixTree::insert(const void* k, size_t k_size, int64_t v) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   this->clear_value_slot(value_slot_offset);
 
@@ -221,8 +218,7 @@ void PrefixTree::insert(const string& k, int64_t v) {
 void PrefixTree::insert(const void* k, size_t k_size, double v) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   uint64_t contents = *this->pool->at<uint64_t>(value_slot_offset);
   StoredValueType type = this->type_for_slot_contents(contents);
@@ -263,8 +259,7 @@ void PrefixTree::insert(const string& k, double v) {
 void PrefixTree::insert(const void* k, size_t k_size, bool v) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   this->clear_value_slot(value_slot_offset);
   *this->pool->at<uint64_t>(value_slot_offset) = ((int)v << 3) |
@@ -280,8 +275,7 @@ void PrefixTree::insert(const string& k, bool v) {
 void PrefixTree::insert(const void* k, size_t k_size) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
 
   this->clear_value_slot(value_slot_offset);
   *this->pool->at<uint64_t>(value_slot_offset) = (2 << 3) |
@@ -330,8 +324,7 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
   auto g = this->pool->lock();
 
   // get or create the value slot
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
   uint64_t contents = *this->pool->at<uint64_t>(value_slot_offset);
   StoredValueType type = this->type_for_slot_contents(contents);
 
@@ -362,12 +355,14 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
   // if the first 4 bits of the value match, then the resulting type is Int
   uint8_t high_bits = (value >> 60) & 0x0F;
   if ((high_bits == 0x00) || (high_bits == 0x0F)) {
-    // delete the allocated storage if present and replace it with an inline Int
+    // replace the slot with an inline Int, then free the allocated storage
+    // (this order is important - if the process crashes between these two
+    // operations, we will leak memory but not leave an inconsistent tree)
+    *this->pool->at<int64_t>(value_slot_offset) = (value << 3) |
+        (int64_t)StoredValueType::Int;
     if (type == StoredValueType::LongInt) {
       this->pool->free(this->value_for_slot_contents(contents));
     }
-    *this->pool->at<int64_t>(value_slot_offset) = (value << 3) |
-        (int64_t)StoredValueType::Int;
 
   // otherwise, the resulting type is LongInt
   } else {
@@ -395,8 +390,7 @@ double PrefixTree::incr(const void* k, size_t k_size, double delta) {
   auto g = this->pool->lock();
 
   // get or create the value slot
-  auto traverse_ret = this->traverse(k, k_size, true);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false, true).value_slot_offset;
   uint64_t contents = *this->pool->at<uint64_t>(value_slot_offset);
   StoredValueType type = this->type_for_slot_contents(contents);
 
@@ -434,36 +428,42 @@ double PrefixTree::incr(const string& k, double delta) {
 bool PrefixTree::erase(const void* k, size_t k_size) {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size, false);
-  uint64_t value_slot_offset = traverse_ret.first;
-  uint64_t node_offset = traverse_ret.second;
+  auto t = this->traverse(k, k_size, true, false);
 
-  if (value_slot_offset == 0) {
+  if (t.value_slot_offset == 0) {
     return false; // key already doesn't exist
   }
-  bool ret = (value_slot_offset != 0);
 
-  this->clear_value_slot(value_slot_offset);
+  this->clear_value_slot(t.value_slot_offset);
 
-  // delete all empty nodes on the path, except the root
-  Node* node = this->pool->at<Node>(node_offset);
-  while (node_offset && node->parent_offset && !node->has_children()) {
+  // delete all empty nodes on the path, except the root, starting from the leaf
+  while (t.node_offsets.size() > 1) {
+    size_t num_nodes = t.node_offsets.size();
+    Node* parent_node = this->pool->at<Node>(t.node_offsets[num_nodes - 2]);
+    Node* node = this->pool->at<Node>(t.node_offsets.back());
+    if (node->has_children()) {
+      break;
+    }
 
     // the node has no children, but may have a value. unlink this node from the
     // parent and move its value to its slot in the parent
-    Node* parent_node = this->pool->at<Node>(node->parent_offset);
     parent_node->children[node->parent_slot - parent_node->start] = node->value;
 
-    // move up to the parent and delete the child node
-    uint64_t parent_offset = node->parent_offset;
-    this->pool->free_object<Node>(node_offset);
-    node_offset = parent_offset;
-    node = this->pool->at<Node>(node_offset);
-
+    // delete the child node
+    bool node_had_value = node->value != 0;
+    this->pool->free_object<Node>(t.node_offsets.back());
     this->increment_node_count(-1);
+
+    // if the node had a value, we're done - the parent node is not empty since
+    // we just put the value there
+    if (node_had_value) {
+      break;
+    }
+
+    t.node_offsets.pop_back();
   }
 
-  return ret;
+  return true;
 }
 
 bool PrefixTree::erase(const string& key) {
@@ -478,8 +478,8 @@ void PrefixTree::clear() {
 
 
 bool PrefixTree::exists(const void* k, size_t k_size) {
-  auto g = this->pool->read_lock();
-  return this->traverse(k, k_size, false).first;
+  auto g = this->pool->lock();
+  return this->traverse(k, k_size, false, false).value_slot_offset != 0;
 }
 
 bool PrefixTree::exists(const string& key) {
@@ -490,8 +490,7 @@ bool PrefixTree::exists(const string& key) {
 PrefixTree::ResultValueType PrefixTree::type(const void* k, size_t k_size) const {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size);
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false).value_slot_offset;
 
   if (!value_slot_offset) {
     return ResultValueType::Missing;
@@ -529,9 +528,7 @@ PrefixTree::ResultValueType PrefixTree::type(const string& key) const {
 PrefixTree::LookupResult PrefixTree::at(const void* k, size_t k_size) const {
   auto g = this->pool->lock();
 
-  auto traverse_ret = this->traverse(k, k_size);
-
-  uint64_t value_slot_offset = traverse_ret.first;
+  uint64_t value_slot_offset = this->traverse(k, k_size, false).value_slot_offset;
   if (!value_slot_offset) {
     throw out_of_range(string((const char*)k, k_size));
   }
@@ -601,11 +598,11 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
   }
   const Node* n = this->pool->at<Node>(node_offset);
   print_indent(stream, indent);
-  fprintf(stream, "%02hhX @ %" PRIu64 " (%02hhX, %02hhX), from=(%" PRIu64 ":%02hhX)",
-      k, node_offset, n->start, n->end, n->parent_offset, n->parent_slot);
+  fprintf(stream, "%02hhX(%c) @ %" PRIx64 " (%02hhX, %02hhX), from=%02hhX",
+      k, isprint(k) ? k : '?', node_offset, n->start, n->end, n->parent_slot);
   if (n->value) {
     StoredValueType t = this->type_for_slot_contents(n->value);
-    fprintf(stream, " +%d@%" PRIu64 "\n", (int)t, this->value_for_slot_contents(n->value));
+    fprintf(stream, " +%d@%" PRIx64 "\n", (int)t, this->value_for_slot_contents(n->value));
   } else {
     fputc('\n', stream);
   }
@@ -615,7 +612,9 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
     if (type != StoredValueType::SubNode) {
       print_indent(stream, indent + 2);
       uint64_t value = this->value_for_slot_contents(contents);
-      fprintf(stream, "(%X) +%d@%" PRIu64 "\n", x + n->start, (int)type, value);
+      uint8_t k = x + n->start;
+      fprintf(stream, "(%X(%c)) +%d@%" PRIx64 "\n", k, isprint(k) ? k : '?',
+          (int)type, value);
     } else if (contents) {
       this->print(stream, x + n->start, contents, indent + 2);
     }
@@ -624,17 +623,16 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
 
 
 PrefixTree::Node::Node(uint8_t start, uint8_t end, uint8_t parent_slot,
-    uint64_t parent_offset, uint64_t value) : start(start), end(end),
-    parent_slot(parent_slot), parent_offset(parent_offset), value(value) { }
+    uint64_t value) : start(start), end(end), parent_slot(parent_slot),
+    value(value) { }
 
 PrefixTree::Node::Node(uint8_t slot, uint8_t parent_slot,
-    uint64_t parent_offset, uint64_t value) : start(slot), end(slot),
-    parent_slot(parent_slot), parent_offset(parent_offset), value(value) {
+    uint64_t value) : start(slot), end(slot), parent_slot(parent_slot),
+    value(value) {
   this->children[0] = 0;
 }
 
-PrefixTree::Node::Node() : start(0x00), end(0xFF), parent_slot(0),
-    parent_offset(0), value(0) {
+PrefixTree::Node::Node() : start(0x00), end(0xFF), parent_slot(0), value(0) {
   for (uint16_t x = 0; x < 0x100; x++) {
     this->children[x] = 0;
   }
@@ -670,12 +668,19 @@ void PrefixTree::increment_node_count(ssize_t delta) {
 }
 
 
-pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
-    bool create) {
+PrefixTree::Traversal PrefixTree::traverse(const void* k, size_t s,
+    bool with_nodes, bool create) {
   uint8_t* k_data = (uint8_t*)k;
   uint8_t* k_end = k_data + s;
 
+  uint64_t parent_node_offset = 0;
   uint64_t node_offset = this->base_offset + offsetof(TreeBase, root);
+
+  Traversal t;
+  if (with_nodes) {
+    t.node_offsets.reserve(s);
+    t.node_offsets.emplace_back(node_offset);
+  }
 
   // follow links to the leaf node
   while (k_data != k_end) {
@@ -696,26 +701,32 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
     // of the key. if it's not the end, we may have to make some changes
     if (this->type_for_slot_contents(next_node_offset) != StoredValueType::SubNode) {
       if (k_data == k_end - 1) {
-        return make_pair(this->pool->at(&node->children[*k_data - node->start]),
-            node_offset);
+        t.value_slot_offset = this->pool->at(&node->children[*k_data - node->start]);
+        return t;
       } else {
         break;
       }
     }
 
     // the next node is a subnode, not a value - move down to it
+    if (with_nodes) {
+      t.node_offsets.emplace_back(next_node_offset);
+    }
+    parent_node_offset = node_offset;
     node_offset = next_node_offset;
     k_data++;
   }
 
   // if the node was found and it's not a value, return the value field
   if (k_data == k_end) {
-    return make_pair(node_offset + offsetof(Node, value), node_offset);
+    t.value_slot_offset = node_offset + offsetof(Node, value);
+    return t;
   }
 
   // the node wasn't found; fail if we're not supposed to create it
   if (!create) {
-    return make_pair(0, node_offset);
+    t.value_slot_offset = 0;
+    return t;
   }
 
   // if we get here, then the node doesn't exist and we should create it
@@ -732,15 +743,14 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
       // make a new node
       uint8_t new_start = extend_start ? *k_data : node->start;
       uint8_t new_end = (!extend_start) ? *k_data : node->end;
-      uint64_t new_node_offset = this->pool->allocate_object<Node, uint8_t, uint8_t, uint8_t, uint64_t, uint64_t>(
-          new_start, new_end, node->parent_slot, node->parent_offset, node->value,
+      uint64_t new_node_offset = this->pool->allocate_object<Node, uint8_t, uint8_t, uint8_t, uint64_t>(
+          new_start, new_end, node->parent_slot, node->value,
           Node::size_for_range(new_start, new_end));
       node = this->pool->at<Node>(node_offset); // may be invalidated by allocate()
       Node* new_node = this->pool->at<Node>(new_node_offset);
-      Node* parent_node = this->pool->at<Node>(node->parent_offset);
+      Node* parent_node = this->pool->at<Node>(parent_node_offset);
 
-      // copy the relevant data from the old node and update parent_offset for
-      // all the child nodes
+      // copy the relevant data from the old node
       uint16_t x = new_node->start;
       if (extend_start) {
         for (; x < node->start; x++) {
@@ -749,17 +759,11 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
         for (; x <= new_node->end; x++) {
           uint64_t contents = node->children[x - node->start];
           new_node->children[x - new_node->start] = contents;
-          if (contents && (this->type_for_slot_contents(contents) == StoredValueType::SubNode)) {
-            this->pool->at<Node>(contents)->parent_offset = new_node_offset;
-          }
         }
       } else {
         for (; x <= node->end; x++) {
           uint64_t contents = node->children[x - node->start];
           new_node->children[x - new_node->start] = contents;
-          if (contents && (this->type_for_slot_contents(contents) == StoredValueType::SubNode)) {
-            this->pool->at<Node>(contents)->parent_offset = new_node_offset;
-          }
         }
         for (; x <= new_node->end; x++) {
           new_node->children[x - new_node->start] = 0;
@@ -770,6 +774,11 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
       parent_node->children[new_node->parent_slot - parent_node->start] = new_node_offset;
       this->pool->free_object<Node>(node_offset);
       node_offset = new_node_offset;
+
+      // if we were collecting nodes, we just replaced the last one
+      if (with_nodes) {
+        t.node_offsets.back() = new_node_offset;
+      }
     }
   }
 
@@ -780,9 +789,8 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
     // allocate a node and make the current node point to it
     Node* node = this->pool->at<Node>(node_offset);
     uint64_t new_node_value = node->children[*k_data - node->start];
-    uint64_t new_node_offset = this->pool->allocate_object<Node, uint8_t, uint8_t, uint64_t, uint64_t>(
-        k_data[1], *k_data, node_offset, new_node_value,
-        Node::size_for_range(*k_data, *k_data));
+    uint64_t new_node_offset = this->pool->allocate_object<Node, uint8_t, uint8_t, uint64_t>(
+        k_data[1], *k_data, new_node_value, Node::size_for_range(*k_data, *k_data));
 
     // link to the new node from the parent
     node = this->pool->at<Node>(node_offset);
@@ -791,21 +799,25 @@ pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s,
     this->increment_node_count(1);
 
     // move down to that node
+    if (with_nodes) {
+      t.node_offsets.emplace_back(new_node_offset);
+    }
     node_offset = new_node_offset;
     k_data++;
   }
 
   // now `node` is the node that contains the slot we want
   Node* node = this->pool->at<Node>(node_offset);
-  return make_pair(this->pool->at(&node->children[*k_data - node->start]),
-      node_offset);
+  t.value_slot_offset = this->pool->at(&node->children[*k_data - node->start]);
+  return t;
 }
 
-pair<uint64_t, uint64_t> PrefixTree::traverse(const void* k, size_t s) const {
+PrefixTree::Traversal PrefixTree::traverse(const void* k, size_t s,
+    bool with_nodes) const {
   // traverse() is fairly long, so we don't want to duplicate implementation;
   // if create is false, it can be thought of as a const method because it
   // doesn't modify the tree in that case
-  return const_cast<PrefixTree*>(this)->traverse(k, s, false);
+  return const_cast<PrefixTree*>(this)->traverse(k, s, with_nodes, false);
 }
 
 
@@ -813,17 +825,20 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     const void* current, size_t size, bool return_value) const {
   uint64_t node_offset = this->base_offset + offsetof(TreeBase, root);
   int16_t slot_id = 0;
-  size_t key_length = 0;
 
-  auto g = this->pool->read_lock();
+  vector<uint64_t> node_offsets;
+  node_offsets.reserve(size);
+  node_offsets.emplace_back(node_offset);
+
+  auto g = this->pool->lock();
 
   // if current is NULL, then we're just starting the iteration - check the root
   // node's value, then find the next nonempty slot if needed
   if (!current) {
     Node* node = this->pool->at<Node>(node_offset);
     if (node->value) {
-      return make_pair("", return_value ? lookup_result_for_contents(node->value) :
-          LookupResult());
+      return make_pair("", return_value ?
+          lookup_result_for_contents(node->value) : LookupResult());
     }
 
   // current is not NULL - we're continuing iteration, or starting with a prefix
@@ -858,16 +873,16 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
       }
 
       // slot contains a subnode, not a value - move down to it
+      node_offsets.emplace_back(next_node_offset);
       node_offset = next_node_offset;
       k_data++;
-      key_length++;
     }
   }
 
   // we found the position in the tree that's immediately after the given key.
   // now find the next non-null value in the tree at or after that position.
   uint64_t value = 0;
-  while (node_offset) {
+  while (!node_offsets.empty()) {
     Node* node = this->pool->at<Node>(node_offset);
 
     // check the node's value if we need to
@@ -884,9 +899,12 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
 
     // if we're done with this node, go to the next slot in the parent node
     if (slot_id > node->end) {
-      node_offset = node->parent_offset;
+      node_offsets.pop_back();
+      if (node_offsets.empty()) {
+        break;
+      }
+      node_offset = node_offsets.back();
       slot_id = node->parent_slot + 1;
-      key_length--;
       continue;
     }
 
@@ -905,9 +923,9 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     }
 
     // the slot contains a subnode, so move to it and check if it has a value
-    node_offset = contents;
+    node_offset = this->value_for_slot_contents(contents);
+    node_offsets.emplace_back(node_offset);
     slot_id = -1;
-    key_length++;
   }
 
   // if we didn't find a value, we're done iterating the tree
@@ -917,16 +935,14 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
 
   // we did find a value - generate the key and return the key/value pair
   string key;
-  key.reserve(key_length);
+  key.reserve(node_offsets.size());
+  auto node_it = node_offsets.begin() + 1; // root node doesn't have a char
+  for (; node_it != node_offsets.end(); node_it++) {
+    key += (char)this->pool->at<Node>(*node_it)->parent_slot;
+  }
   if (slot_id >= 0) {
     key += (char)slot_id;
   }
-  Node* node = this->pool->at<Node>(node_offset);
-  while (node->parent_offset) {
-    key += (char)node->parent_slot;
-    node = this->pool->at<Node>(node->parent_offset);
-  }
-  reverse(key.begin(), key.end());
 
   return make_pair(key, return_value ? lookup_result_for_contents(value) :
       LookupResult());
@@ -993,18 +1009,20 @@ void PrefixTree::clear_node(uint64_t node_offset) {
 }
 
 void PrefixTree::clear_value_slot(uint64_t slot_offset) {
-  uint64_t* slot = this->pool->at<uint64_t>(slot_offset);
-  if (*slot == 0) {
+  uint64_t contents = *this->pool->at<uint64_t>(slot_offset);
+  if (contents == 0) {
     return; // slot is already empty
   }
 
-  switch (this->type_for_slot_contents(*slot)) {
+  switch (this->type_for_slot_contents(contents)) {
     case StoredValueType::SubNode: {
       // delete the entire subtree recursively
-      uint64_t node_offset = this->value_for_slot_contents(*slot);
+      uint64_t node_offset = this->value_for_slot_contents(contents);
       this->clear_node(node_offset);
+
+      // unlink the node and free the object
+      *this->pool->at<uint64_t>(slot_offset) = 0;
       this->pool->free(node_offset);
-      *slot = 0;
       this->increment_node_count(-1);
       break;
     }
@@ -1012,14 +1030,14 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
     case StoredValueType::String:
     case StoredValueType::LongInt:
     case StoredValueType::Double: {
-      // these types all point to a buffer; just free it and clear the pointer.
+      // these types all point to a buffer; just clear the pointer and free it.
       // the buffer can be null though (e.g. for empty strings or zero-valued
       // doubles)
-      uint64_t value_offset = this->value_for_slot_contents(*slot);
+      uint64_t value_offset = this->value_for_slot_contents(contents);
+      *this->pool->at<uint64_t>(slot_offset) = 0;
       if (value_offset) {
         this->pool->free(value_offset);
       }
-      *slot = 0;
       this->increment_item_count(-1);
       break;
     }
@@ -1027,7 +1045,7 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
     case StoredValueType::Int:
     case StoredValueType::Trivial:
       // these types don't have allocated storage; just clear the value
-      *slot = 0;
+      *this->pool->at<uint64_t>(slot_offset) = 0;
       this->increment_item_count(-1);
       break;
   }
