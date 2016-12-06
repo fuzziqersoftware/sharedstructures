@@ -23,20 +23,20 @@ static uint64_t fnv1a64(const void* data, size_t size,
 
 
 HashTable::HashTable(shared_ptr<Pool> pool, uint8_t bits) : pool(pool) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
   this->base_offset = this->create_hash_base(bits);
 }
 
 HashTable::HashTable(shared_ptr<Pool> pool, uint64_t base_offset, uint8_t bits)
     : pool(pool), base_offset(base_offset) {
   if (!this->base_offset) {
-    auto g = this->pool->read_lock();
+    auto g = this->pool->lock();
     this->base_offset = this->pool->base_object_offset();
   }
 
   if (!this->base_offset) {
 
-    auto g = this->pool->write_lock();
+    auto g = this->pool->lock();
     this->base_offset = this->pool->base_object_offset();
     if (!this->base_offset) {
       this->base_offset = this->create_hash_base(bits);
@@ -59,7 +59,7 @@ void HashTable::insert(const void* k, size_t k_size, const void* v,
     size_t v_size) {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   // create the new key-value pair and copy the data in
   uint64_t new_kv_pair_offset = this->pool->allocate(k_size + v_size);
@@ -164,7 +164,7 @@ void HashTable::insert(const string& k, const string& v) {
 bool HashTable::erase(const void* k, size_t k_size) {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   uint64_t deleted_offset = 0;
 
@@ -248,7 +248,7 @@ bool HashTable::erase(const std::string& k) {
 
 
 void HashTable::clear() {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   for (size_t table_index = 0; table_index < 2; table_index++) {
     HashTableBase* h = this->pool->at<HashTableBase>(this->base_offset);
@@ -303,7 +303,7 @@ void HashTable::clear() {
 bool HashTable::exists(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
   auto walk_ret = this->walk_tables(k, k_size, hash);
   return (walk_ret.first != 0);
 }
@@ -317,7 +317,7 @@ string HashTable::at(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
   {
-    auto g = this->pool->read_lock();
+    auto g = this->pool->lock();
     auto walk_ret = this->walk_tables(k, k_size, hash);
     if (walk_ret.first) {
       return string(this->pool->at<char>(walk_ret.first), walk_ret.second);
@@ -332,17 +332,17 @@ string HashTable::at(const std::string& k) const {
 
 
 size_t HashTable::size() const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
   return this->pool->at<HashTableBase>(this->base_offset)->item_count[0];
 }
 
 uint8_t HashTable::bits() const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
   return this->pool->at<HashTableBase>(this->base_offset)->bits[0];
 }
 
 void HashTable::print(FILE* stream) const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
 
   const HashTableBase* h = this->pool->at<HashTableBase>(this->base_offset);
   for (size_t table_index = 0; table_index < 2; table_index++) {

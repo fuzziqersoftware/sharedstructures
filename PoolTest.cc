@@ -4,6 +4,7 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
+#include <phosg/Process.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
@@ -140,6 +141,22 @@ void run_expansion_boundary_test() {
   run_expansion_boundary_test_with_size(pool, pool.bytes_free() + 0x08);
 }
 
+void run_lock_test() {
+  printf("-- lock\n");
+
+  Pool pool("test-pool", 1024 * 1024); // 1MB
+
+  // these values are implementation-dependent, sigh
+  uint64_t* lock_ptr = pool.at<uint64_t>(8);
+  uint64_t locked_value = (this_process_start_time() << 20) | getpid_cached();
+  expect_eq(0, *lock_ptr);
+  {
+    auto g = pool.lock();
+    expect_eq(locked_value, *lock_ptr);
+  }
+  expect_eq(0, *lock_ptr);
+}
+
 
 int main(int argc, char* argv[]) {
   int retcode = 0;
@@ -149,6 +166,7 @@ int main(int argc, char* argv[]) {
     run_basic_test();
     run_smart_pointer_test();
     run_expansion_boundary_test();
+    run_lock_test();
     printf("all tests passed\n");
 
   } catch (const exception& e) {

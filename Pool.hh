@@ -26,7 +26,10 @@ public:
   // shared memory objects can't be resized after creation. if max_size is not
   // 0, this process will not expand the pool beyond that size (but it can open
   // an existing pool larger than that size, and another process that opened the
-  // pool with a larger max_size can expand it).
+  // pool with a larger max_size can expand it). note that creating a new pool
+  // is not race-safe; if two processes try to create the pool at the same time,
+  // one will "win" and create the pool normally, but the other will see an
+  // inconsistent view of the pool and may fail in strange ways.
   explicit Pool(const std::string& name, size_t max_size = 0, bool file = true);
   ~Pool();
 
@@ -182,23 +185,22 @@ public:
   // pre-built libraries like pthreads ot std::mutex because they contain
   // pointers, and the pool can move around in a process' address space.
 
-  class pool_rw_guard {
+  class pool_guard {
   public:
-    pool_rw_guard() = delete;
-    pool_rw_guard(const pool_rw_guard&) = delete;
-    pool_rw_guard(pool_rw_guard&&);
-    pool_rw_guard(const Pool* pool, bool writing);
-    ~pool_rw_guard();
+    pool_guard() = delete;
+    pool_guard(const pool_guard&) = delete;
+    pool_guard(pool_guard&&);
+    pool_guard(const Pool* pool);
+    ~pool_guard();
+
+    bool stolen;
 
   private:
-    bool writing;
     const Pool* pool;
   };
 
-  // locks the entire pool for reading
-  pool_rw_guard read_lock() const;
-  // locks the entire pool for writing
-  pool_rw_guard write_lock();
+  // locks the entire pool
+  pool_guard lock() const;
 
 
 private:
@@ -211,17 +213,14 @@ private:
 
   struct Data {
     std::atomic<uint64_t> size;
-    std::atomic<uint8_t> resize_lock; // 0 = unlocked, 1 = locked
-    std::atomic<uint8_t> read_lock; // 0 = unlocked, 1 = locked
-    std::atomic<uint8_t> write_lock; // 0 = unlocked, 1 = locked
-    std::atomic<uint64_t> num_readers;
-
-    uint64_t head;
-    uint64_t tail;
+    std::atomic<uint64_t> data_lock;
 
     std::atomic<uint64_t> base_object_offset;
     std::atomic<uint64_t> bytes_allocated;
     std::atomic<uint64_t> bytes_free;
+
+    std::atomic<uint64_t> head;
+    std::atomic<uint64_t> tail;
 
     uint8_t arena[0];
   };
@@ -235,8 +234,8 @@ private:
 
   // locking primitives (super primitive)
 
-  static void spinlock(std::atomic<uint8_t>*);
-  static void unlock(std::atomic<uint8_t>*);
+  void process_spinlock_lock(uint64_t offset) const;
+  void process_spinlock_unlock(uint64_t offset) const;
 
 
   // struct that describes an allocated block. inside the pool, these form a

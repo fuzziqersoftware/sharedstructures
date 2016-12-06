@@ -6,10 +6,11 @@
 #include <unistd.h>
 
 #include <phosg/Filesystem.hh>
+#include <phosg/Process.hh>
 #include <phosg/Strings.hh>
 
 // this mmap flag is required on OSX but doesn't exist on Linux
-#ifndef MAP_HASSEMAPHORE
+#ifndef MACOSX
 #define MAP_HASSEMAPHORE 0
 #endif
 
@@ -58,9 +59,8 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
       throw cannot_open_file(this->name);
     }
 
-    // we did not create the shared memory object, so it should have a nonzero
-    // size. map it all into memory at once
-    this->pool_size = fstat(fd).st_size;
+    // we did not create the shared memory object; map it all into memory
+    this->pool_size = fstat(this->fd).st_size;
     this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (!this->data) {
@@ -87,28 +87,12 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
       throw runtime_error("mmap failed: " + string_for_error(errno));
     }
 
-    // according to POSIX, ftruncate() should fill the new space with zeroes,
-    // which means we would be holding all the locks already. if the environment
-    // isn't POSIX-compliant then these might not be zeroed, which would mean
-    // the locks could be available - in this case, creating a pool isn't safe
-    // to do concurrently, but there's nothing we can do about that.
-    this->data->resize_lock = 0;
-    this->data->read_lock = 0;
-    this->data->write_lock = 0;
-    this->data->num_readers = 0;
-
     this->data->size = this->pool_size;
-
-    // initialize the allocator
+    this->data->data_lock = 0;
     this->data->head = 0;
     this->data->tail = 0;
     this->data->bytes_allocated = 0;
     this->data->bytes_free = this->data->size - sizeof(Data);
-
-    // release all the locks
-    this->unlock(&this->data->resize_lock);
-    this->unlock(&this->data->read_lock);
-    this->unlock(&this->data->write_lock);
   }
 }
 
@@ -258,7 +242,6 @@ size_t Pool::block_size(uint64_t offset) const {
 }
 
 
-
 void Pool::set_base_object_offset(uint64_t offset) {
   this->data->base_object_offset = offset;
 }
@@ -266,7 +249,6 @@ void Pool::set_base_object_offset(uint64_t offset) {
 uint64_t Pool::base_object_offset() const {
   return this->data->base_object_offset;
 }
-
 
 
 size_t Pool::size() const {
@@ -282,7 +264,6 @@ size_t Pool::bytes_free() const {
 }
 
 
-
 bool Pool::delete_pool(const std::string& name, bool file) {
   int ret = unlink_segment(name.c_str(), file || MAP_HASSEMAPHORE);
   if (ret == 0) {
@@ -295,9 +276,9 @@ bool Pool::delete_pool(const std::string& name, bool file) {
 }
 
 
-
 void Pool::check_size_and_remap() const {
-  uint64_t new_pool_size = this->data->size.load();
+  uint64_t new_pool_size = this->pool_size ? this->data->size.load() :
+      fstat(this->fd).st_size;
   if (new_pool_size != this->pool_size) {
     munmap(this->data, this->pool_size);
 
@@ -322,87 +303,53 @@ void Pool::expand(size_t new_size) {
     throw runtime_error("can\'t expand pool beyond maximum size");
   }
 
-  // we can't use a guard object here because the lock moves in our address
-  // space during this procedure. the resize_lock doesn't protect the size
-  // variable, its purpose is to make sure nobody sets the size again after we
-  // do but before we call ftruncate.
-  spinlock(&this->data->resize_lock);
-  int ftruncate_ret = ftruncate(this->fd, new_size);
-  this->data->bytes_free += (new_size - this->data->size);
-  this->data->size = new_size;
-  unlock(&this->data->resize_lock);
-  if (ftruncate_ret) {
+  if (ftruncate(this->fd, new_size)) {
     throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
   }
+  this->data->bytes_free += (new_size - this->data->size);
+  this->data->size = new_size;
 
   // now the underlying shared memory object is larger; we need to recreate our
   // view of it
   this->check_size_and_remap(); // sets this->pool_size
 }
 
-Pool::pool_rw_guard::pool_rw_guard(pool_rw_guard&& other) :
-    writing(other.writing), pool(other.pool) {
+
+Pool::pool_guard::pool_guard(pool_guard&& other) : pool(other.pool) {
   other.pool = NULL;
 }
 
-Pool::pool_rw_guard::pool_rw_guard(const Pool* pool, bool writing) :
-    writing(writing), pool(pool) {
-
-  if (this->writing) {
-    Pool::spinlock(&this->pool->data->write_lock);
-
-  } else {
-    Pool::spinlock(&this->pool->data->read_lock);
-    if (++this->pool->data->num_readers == 1) {
-      Pool::spinlock(&this->pool->data->write_lock);
-    }
-    Pool::unlock(&this->pool->data->read_lock);
-  }
+Pool::pool_guard::pool_guard(const Pool* pool) : pool(pool) {
+  this->pool->process_spinlock_lock(offsetof(Pool::Data, data_lock));
 }
 
-Pool::pool_rw_guard::~pool_rw_guard() {
-  if (!this->pool) {
-    return;
-  }
-
-  if (this->writing) {
-    Pool::unlock(&this->pool->data->write_lock);
-
-  } else {
-    Pool::spinlock(&this->pool->data->read_lock);
-    if (--this->pool->data->num_readers == 0) {
-      Pool::unlock(&this->pool->data->write_lock);
-    }
-    Pool::unlock(&this->pool->data->read_lock);
-  }
+Pool::pool_guard::~pool_guard() {
+  this->pool->process_spinlock_unlock(offsetof(Pool::Data, data_lock));
 }
 
-
-Pool::pool_rw_guard Pool::read_lock() const {
+Pool::pool_guard Pool::lock() const {
   this->check_size_and_remap();
-  pool_rw_guard g(this, false);
+  pool_guard g(this);
   this->check_size_and_remap();
   return g;
 }
 
-Pool::pool_rw_guard Pool::write_lock() {
-  this->check_size_and_remap();
-  pool_rw_guard g(this, true);
-  this->check_size_and_remap();
-  return g;
-}
-
-
-void Pool::spinlock(std::atomic<uint8_t>* l) {
-  uint8_t x;
+void Pool::process_spinlock_lock(uint64_t offset) const {
+  atomic<uint64_t>* lock = const_cast<atomic<uint64_t>*>(
+      this->at<atomic<uint64_t>>(offset));
+  uint64_t desired_value = (this_process_start_time() << 20) | getpid_cached();
+  uint64_t expected_value;
   do {
-    x = 1;
-  } while (!l->compare_exchange_weak(x, 0));
+    expected_value = 0;
+  } while (!lock->compare_exchange_weak(expected_value, desired_value));
 }
 
-void Pool::unlock(std::atomic<uint8_t>* l) {
-  l->store(1);
+void Pool::process_spinlock_unlock(uint64_t offset) const {
+  atomic<uint64_t>* lock = const_cast<atomic<uint64_t>*>(
+      this->at<atomic<uint64_t>>(offset));
+  lock->store(0);
 }
+
 
 uint64_t Pool::AllocatedBlock::effective_size() {
   return (this->size + 7) & (~7);

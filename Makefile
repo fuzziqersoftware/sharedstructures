@@ -10,14 +10,15 @@ PYTHON_INCLUDES=$(shell python-config --includes)
 
 UNAME = $(shell uname -s)
 ifeq ($(UNAME),Darwin)
-	CXXFLAGS +=  -arch i386 -arch x86_64
+	CXXFLAGS +=  -arch i386 -arch x86_64 -DMACOSX
 	LDFLAGS +=  -arch i386 -arch x86_64
-	PYTHON_MODULE_CXXFLAGS = -dynamic
+	PYTHON_MODULE_CXXFLAGS = -dynamic -DMACOSX
 	PYTHON_MODULE_LDFLAGS = -bundle -undefined dynamic_lookup
 endif
 ifeq ($(UNAME),Linux)
+	CXXFLAGS +=  -DLINUX
 	LDFLAGS +=  -lrt
-	PYTHON_MODULE_CXXFLAGS =
+	PYTHON_MODULE_CXXFLAGS = -DLINUX
 	PYTHON_MODULE_LDFLAGS = -shared
 endif
 

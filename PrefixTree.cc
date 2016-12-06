@@ -14,7 +14,7 @@ namespace sharedstructures {
 
 
 PrefixTree::PrefixTree(shared_ptr<Pool> pool) : pool(pool) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
   this->base_offset = this->pool->allocate_object<TreeBase>(
       2 * sizeof(uint64_t) + Node::full_size());
 }
@@ -22,12 +22,12 @@ PrefixTree::PrefixTree(shared_ptr<Pool> pool) : pool(pool) {
 PrefixTree::PrefixTree(shared_ptr<Pool> pool, uint64_t base_offset) :
     pool(pool), base_offset(base_offset) {
   if (!this->base_offset) {
-    auto g = this->pool->read_lock();
+    auto g = this->pool->lock();
     this->base_offset = this->pool->base_object_offset();
   }
 
   if (!this->base_offset) {
-    auto g = this->pool->write_lock();
+    auto g = this->pool->lock();
     this->base_offset = this->pool->base_object_offset();
     if (!this->base_offset) {
       this->base_offset = this->pool->allocate_object<TreeBase>(
@@ -112,7 +112,7 @@ string PrefixTree::LookupResult::str() const {
 
 void PrefixTree::insert(const void* k, size_t k_size, const void* v,
     size_t v_size) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -155,7 +155,7 @@ void PrefixTree::insert(const void* k, size_t k_size, const struct iovec* iov,
     v_size += iov[x].iov_len;
   }
 
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -189,7 +189,7 @@ void PrefixTree::insert(const string& k, const struct iovec* iov,
 }
 
 void PrefixTree::insert(const void* k, size_t k_size, int64_t v) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -219,7 +219,7 @@ void PrefixTree::insert(const string& k, int64_t v) {
 }
 
 void PrefixTree::insert(const void* k, size_t k_size, double v) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -261,7 +261,7 @@ void PrefixTree::insert(const string& k, double v) {
 }
 
 void PrefixTree::insert(const void* k, size_t k_size, bool v) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -278,7 +278,7 @@ void PrefixTree::insert(const string& k, bool v) {
 }
 
 void PrefixTree::insert(const void* k, size_t k_size) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, true);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -327,7 +327,7 @@ void PrefixTree::insert(const string& k, const LookupResult& r) {
 
 
 int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   // get or create the value slot
   auto traverse_ret = this->traverse(k, k_size, true);
@@ -392,7 +392,7 @@ int64_t PrefixTree::incr(const string& k, int64_t delta) {
 }
 
 double PrefixTree::incr(const void* k, size_t k_size, double delta) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   // get or create the value slot
   auto traverse_ret = this->traverse(k, k_size, true);
@@ -432,7 +432,7 @@ double PrefixTree::incr(const string& k, double delta) {
 
 
 bool PrefixTree::erase(const void* k, size_t k_size) {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size, false);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -472,7 +472,7 @@ bool PrefixTree::erase(const string& key) {
 
 
 void PrefixTree::clear() {
-  auto g = this->pool->write_lock();
+  auto g = this->pool->lock();
   this->clear_node(this->base_offset + offsetof(TreeBase, root));
 }
 
@@ -488,7 +488,7 @@ bool PrefixTree::exists(const string& key) {
 
 
 PrefixTree::ResultValueType PrefixTree::type(const void* k, size_t k_size) const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size);
   uint64_t value_slot_offset = traverse_ret.first;
@@ -527,7 +527,7 @@ PrefixTree::ResultValueType PrefixTree::type(const string& key) const {
 
 
 PrefixTree::LookupResult PrefixTree::at(const void* k, size_t k_size) const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
 
   auto traverse_ret = this->traverse(k, k_size);
 
@@ -577,12 +577,12 @@ PrefixTreeIterator PrefixTree::end() const {
 
 
 size_t PrefixTree::size() const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
   return this->pool->at<TreeBase>(this->base_offset)->item_count;
 }
 
 size_t PrefixTree::node_size() const {
-  auto g = this->pool->read_lock();
+  auto g = this->pool->lock();
   return this->pool->at<TreeBase>(this->base_offset)->node_count;
 }
 
