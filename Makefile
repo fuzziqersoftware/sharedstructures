@@ -71,6 +71,6 @@ osx_py32_test: py_test
 
 
 clean:
-	rm -rf *.dSYM *.o gmon.out libsharedstructures.a *Test
+	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so *Test
 
 .PHONY: all cpp_only py_only clean cpp_test py_test osx_cpp32_test osx_py32_test
