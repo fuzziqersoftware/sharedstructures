@@ -1,10 +1,15 @@
 #include <errno.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <phosg/Process.hh>
+#include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
@@ -155,6 +160,103 @@ void run_lock_test() {
     expect_eq(locked_value, *lock_ptr);
   }
   expect_eq(0, *lock_ptr);
+
+  uint64_t start_time = now();
+  pid_t child_pid = fork();
+  if (!child_pid) {
+    {
+      auto g = pool.lock();
+      usleep(1000000);
+    }
+    _exit(0);
+  }
+  usleep(100000); // give the child time to take the lock
+
+  // we should have to wait to get the lock; the child process is holding it
+  uint64_t end_time;
+  {
+    auto g = pool.lock();
+    end_time = now();
+  }
+  expect_ge(end_time - start_time, 1000000);
+
+  // make sure the child exited cleanly
+  int exit_status;
+  expect_eq(child_pid, waitpid(child_pid, &exit_status, 0));
+  expect_eq(true, WIFEXITED(exit_status));
+  expect_eq(0, WEXITSTATUS(exit_status));
+}
+
+void run_crash_test() {
+  printf("-- crash\n");
+
+  uint64_t bytes_allocated;
+  uint64_t bytes_free;
+  unordered_map<uint64_t, string> offset_to_data;
+  {
+    Pool pool("test-pool", 1024 * 1024);
+
+    while (offset_to_data.size() < 100) {
+      auto g = pool.lock();
+      uint64_t offset = pool.allocate(2048);
+
+      string data;
+      while (data.size() < 2048) {
+        data += (char)rand();
+      }
+
+      memcpy(pool.at<void>(offset), data.data(), data.size());
+
+      offset_to_data.emplace(offset, move(data));
+    }
+
+    bytes_allocated = pool.bytes_allocated();
+    bytes_free = pool.bytes_free();
+  }
+
+  // child: open a pool, lock it, and be killed with SIGKILL
+  pid_t pid = fork();
+  if (!pid) {
+    Pool pool("test-pool", 1024 * 1024);
+    auto g = pool.lock();
+
+    sigset_t sigs;
+    sigemptyset(&sigs);
+    for (;;) {
+      sigsuspend(&sigs);
+    }
+  }
+
+  // parent: wait a bit, kill the child with SIGKILL, make sure the pool is
+  // still consistent (and not locked)
+  Pool pool("test-pool", 1024 * 1024); // 1MB
+  try {
+    usleep(500000);
+    expect_eq(true, pool.is_locked());
+  } catch (const exception& e) {
+    kill(pid, SIGKILL);
+    throw;
+  }
+  kill(pid, SIGKILL);
+
+  // note: on linux, we can still get the start_time of a zombie process, so we
+  // wait() on it here
+  int exit_status;
+  expect_eq(pid, waitpid(pid, &exit_status, 0));
+  expect_eq(true, WIFSIGNALED(exit_status));
+  expect_eq(SIGKILL, WTERMSIG(exit_status));
+
+  // even though the pool is still locked, we should be able to lock the pool
+  // because the child was killed
+  expect_eq(true, pool.is_locked());
+  auto g = pool.lock();
+  expect_eq(bytes_allocated, pool.bytes_allocated());
+  expect_eq(bytes_free, pool.bytes_free());
+  for (const auto& it : offset_to_data) {
+    expect_eq(0, memcmp(pool.at<void>(it.first), it.second.data(),
+        it.second.size()));
+    pool.free(it.first);
+  }
 }
 
 
@@ -167,6 +269,7 @@ int main(int argc, char* argv[]) {
     run_smart_pointer_test();
     run_expansion_boundary_test();
     run_lock_test();
+    run_crash_test();
     printf("all tests passed\n");
 
   } catch (const exception& e) {

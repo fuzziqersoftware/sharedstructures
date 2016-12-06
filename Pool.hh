@@ -201,6 +201,7 @@ public:
 
   // locks the entire pool
   pool_guard lock() const;
+  bool is_locked() const;
 
 
 private:
@@ -234,8 +235,8 @@ private:
 
   // locking primitives (super primitive)
 
-  void process_spinlock_lock(uint64_t offset) const;
-  void process_spinlock_unlock(uint64_t offset) const;
+  void process_spinlock_lock(uint64_t offset);
+  void process_spinlock_unlock(uint64_t offset);
 
 
   // struct that describes an allocated block. inside the pool, these form a
@@ -248,6 +249,8 @@ private:
 
     uint64_t effective_size();
   };
+
+  void repair();
 };
 
 } // namespace sharedstructures

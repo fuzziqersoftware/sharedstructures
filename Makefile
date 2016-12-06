@@ -17,7 +17,7 @@ ifeq ($(UNAME),Darwin)
 endif
 ifeq ($(UNAME),Linux)
 	CXXFLAGS +=  -DLINUX
-	LDFLAGS +=  -lrt
+	LDFLAGS +=  -lrt -pthread
 	PYTHON_MODULE_CXXFLAGS = -DLINUX
 	PYTHON_MODULE_LDFLAGS = -shared
 endif

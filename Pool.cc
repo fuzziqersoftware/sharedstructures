@@ -45,8 +45,6 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
   // on Linux, shared memory objects can be resized at any time just by calling
   // ftruncate again. but on OSX, ftruncate can be called only once for each
   // shared memory object, so we instead have to memory-map a file on disk.
-  // furthermore, OSX and Linux define the shm_open function differently so we
-  // can't use a function pointer to simplify usage
   if (MAP_HASSEMAPHORE) {
     file = true;
   }
@@ -188,26 +186,29 @@ uint64_t Pool::allocate(size_t size) {
   // 1. link location is 0 - the block is before the head block
   // 2. link location == tail - the block is after the tail block
   // 3. anything else - the block is at neither the head nor tail
+  // we always set next before prev and fill in new_block before changing
+  // existing pointers because the pool is repaired (after a crash) by walking
+  // from the head along the next pointers, so those should always be consistent
   AllocatedBlock* new_block = this->at<AllocatedBlock>(candidate_offset);
+  new_block->size = size;
   if (candidate_link_location == 0) {
-    new_block->prev = 0;
     new_block->next = this->data->head;
-    this->at<AllocatedBlock>(new_block->next)->prev = candidate_offset;
+    new_block->prev = 0;
     this->data->head = candidate_offset;
+    this->at<AllocatedBlock>(new_block->next)->prev = candidate_offset;
   } else if (candidate_link_location == this->data->tail) {
-    new_block->prev = this->data->tail;
     new_block->next = 0;
+    new_block->prev = this->data->tail;
     this->at<AllocatedBlock>(new_block->prev)->next = candidate_offset;
     this->data->tail = candidate_offset;
   } else {
     AllocatedBlock* prev = this->at<AllocatedBlock>(candidate_link_location);
     AllocatedBlock* next = this->at<AllocatedBlock>(prev->next);
-    new_block->prev = candidate_link_location;
     new_block->next = prev->next;
+    new_block->prev = candidate_link_location;
     prev->next = candidate_offset;
     next->prev = candidate_offset;
   }
-  new_block->size = size;
   this->data->bytes_allocated += size;
   this->data->bytes_free -= (new_block->effective_size() + sizeof(AllocatedBlock));
 
@@ -320,11 +321,13 @@ Pool::pool_guard::pool_guard(pool_guard&& other) : pool(other.pool) {
 }
 
 Pool::pool_guard::pool_guard(const Pool* pool) : pool(pool) {
-  this->pool->process_spinlock_lock(offsetof(Pool::Data, data_lock));
+  const_cast<Pool*>(this->pool)->process_spinlock_lock(
+      offsetof(Pool::Data, data_lock));
 }
 
 Pool::pool_guard::~pool_guard() {
-  this->pool->process_spinlock_unlock(offsetof(Pool::Data, data_lock));
+  const_cast<Pool*>(this->pool)->process_spinlock_unlock(
+      offsetof(Pool::Data, data_lock));
 }
 
 Pool::pool_guard Pool::lock() const {
@@ -334,25 +337,80 @@ Pool::pool_guard Pool::lock() const {
   return g;
 }
 
-void Pool::process_spinlock_lock(uint64_t offset) const {
-  atomic<uint64_t>* lock = const_cast<atomic<uint64_t>*>(
-      this->at<atomic<uint64_t>>(offset));
-  uint64_t desired_value = (this_process_start_time() << 20) | getpid_cached();
-  uint64_t expected_value;
-  do {
-    expected_value = 0;
-  } while (!lock->compare_exchange_weak(expected_value, desired_value));
+bool Pool::is_locked() const {
+  return this->data->data_lock != 0;
 }
 
-void Pool::process_spinlock_unlock(uint64_t offset) const {
-  atomic<uint64_t>* lock = const_cast<atomic<uint64_t>*>(
-      this->at<atomic<uint64_t>>(offset));
+
+void Pool::process_spinlock_lock(uint64_t offset) {
+  atomic<uint64_t>* lock = this->at<atomic<uint64_t>>(offset);
+
+  // heuristic: every 100 spins, we check if the process holding the lock is
+  // still running; if it's not, we steal the lock and call repair() (since the
+  // process likely crashed)
+  uint64_t desired_value = (this_process_start_time() << 20) | getpid_cached();
+  uint64_t expected_value;
+  bool lock_taken = false;
+  while (!lock_taken) {
+
+    // try 100 times to get the lock
+    uint8_t spin_count = 0;
+    while (!lock_taken && (spin_count < 100)) {
+      expected_value = 0;
+      lock_taken = lock->compare_exchange_weak(expected_value, desired_value);
+      spin_count++;
+    }
+
+    // if we didn't get the lock, check if the process holding it is running
+    if (!lock_taken) {
+      pid_t pid = expected_value & ((1 << 20) - 1);
+      uint64_t start_time_token = expected_value & ~((1 << 20) - 1);
+      if ((start_time_for_pid(pid) << 20) != start_time_token) {
+        // the holding process died; steal the lock from it. if we get the lock,
+        // repair the allocator structures since they could be in an
+        // inconsistent state. if we don't get the lock, then another process
+        // got there first and we'll just keep waiting
+        lock_taken = lock->compare_exchange_strong(expected_value, desired_value);
+        if (lock_taken) {
+          this->repair();
+        }
+      }
+    }
+  }
+}
+
+void Pool::process_spinlock_unlock(uint64_t offset) {
+  atomic<uint64_t>* lock = this->at<atomic<uint64_t>>(offset);
   lock->store(0);
 }
 
 
 uint64_t Pool::AllocatedBlock::effective_size() {
   return (this->size + 7) & (~7);
+}
+
+
+void Pool::repair() {
+  uint64_t bytes_allocated = 0;
+  uint64_t bytes_free = this->data->size - sizeof(Data);
+
+  uint64_t prev_offset = 0;
+  uint64_t block_offset = this->data->head;
+  while (block_offset) {
+
+    AllocatedBlock* block = this->at<AllocatedBlock>(block_offset);
+    block->prev = prev_offset;
+
+    bytes_allocated += block->size;
+    bytes_free -= (block->size + sizeof(AllocatedBlock));
+
+    prev_offset = block_offset;
+    block_offset = block->next;
+  }
+
+  this->data->tail = prev_offset;
+  this->data->bytes_allocated = bytes_allocated;
+  this->data->bytes_free = bytes_free;
 }
 
 } // namespace sharedstructures

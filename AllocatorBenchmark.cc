@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 
     if (allocated_regions.size() % report_interval == 0) {
       double efficiency = (float)pool.bytes_allocated() / (pool.size() - pool.bytes_free());
-      fprintf(stderr, "allocation #%zu (%llu nsec/alloc): %zu allocated, %zu free, %zu total, %g efficiency\n",
+      fprintf(stderr, "allocation #%zu (%" PRIu64 " nsec/alloc): %zu allocated, %zu free, %zu total, %g efficiency\n",
           allocated_regions.size(), (alloc_time * 1000) / report_interval, allocated_size,
           pool.bytes_free(), pool.size(), efficiency);
       alloc_time = 0;
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
 
     if (allocated_regions.size() % report_interval == 0) {
       double efficiency = (float)pool.bytes_allocated() / (pool.size() - pool.bytes_free());
-      fprintf(stderr, "free #%zu (%llu nsec/free): %zu allocated, %zu free, %zu total, %g efficiency\n",
+      fprintf(stderr, "free #%zu (%" PRIu64 " nsec/free): %zu allocated, %zu free, %zu total, %g efficiency\n",
           allocated_regions.size(), (alloc_time * 1000) / report_interval, allocated_size,
           pool.bytes_free(), pool.size(), efficiency);
       alloc_time = 0;
