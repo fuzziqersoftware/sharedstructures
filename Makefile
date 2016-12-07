@@ -62,7 +62,7 @@ PythonModule.o: PythonModule.cc
 	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
 
 
-py_test:
+py_test: sharedstructures.so
 	python HashTableTest.py
 	python PrefixTreeTest.py
 
