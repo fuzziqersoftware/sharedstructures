@@ -13,7 +13,7 @@
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 using namespace sharedstructures;
@@ -57,56 +57,68 @@ void check_fill_area(void* ptr, size_t size) {
 }
 
 
-void run_basic_test() {
+shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
+    const string& allocator_type) {
+  if (allocator_type == "simple") {
+    return shared_ptr<Allocator>(new SimpleAllocator(pool));
+  }
+  throw invalid_argument("unknown allocator type: " + allocator_type);
+}
+
+
+void run_basic_test(const string& allocator_type) {
   printf("-- basic\n");
 
-  Pool pool("test-pool", 1024 * 1024); // 1MB
-  size_t orig_free_bytes = pool.bytes_free();
-  expect_eq(0, pool.bytes_allocated());
+  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  auto alloc = create_allocator(pool, allocator_type);
+
+  size_t orig_free_bytes = alloc->bytes_free();
+  expect_eq(0, alloc->bytes_allocated());
   expect_ne(0, orig_free_bytes);
-  expect_eq(0, pool.base_object_offset());
-  expect_eq(4096, pool.size());
+  expect_eq(0, alloc->base_object_offset());
+  expect_eq(4096, pool->size());
 
   // basic allocate/free
-  uint64_t off = pool.allocate(100);
+  uint64_t off = alloc->allocate(100);
   expect_ne(0, off);
-  expect_eq(100, pool.block_size(off));
-  expect_eq(100, pool.bytes_allocated());
-  expect_lt(pool.bytes_free(), orig_free_bytes - 100);
-  expect_eq(0, pool.base_object_offset());
+  expect_eq(100, alloc->block_size(off));
+  expect_eq(100, alloc->bytes_allocated());
+  expect_lt(alloc->bytes_free(), orig_free_bytes - 100);
+  expect_eq(0, alloc->base_object_offset());
 
   // make sure the block is writable, lolz
-  char* data = pool.at<char>(off);
+  char* data = pool->at<char>(off);
   check_fill_area(data, 100);
-  pool.free(off);
-  expect_eq(0, pool.bytes_allocated());
-  expect_eq(orig_free_bytes, pool.bytes_free());
-  expect_eq(0, pool.base_object_offset());
+  alloc->free(off);
+  expect_eq(0, alloc->bytes_allocated());
+  expect_eq(orig_free_bytes, alloc->bytes_free());
+  expect_eq(0, alloc->base_object_offset());
 
   // make sure allocate_object/free_object call constructors/destructors
   expect_eq(0, TestClass::instance_count);
-  TestClass* t = pool.at<TestClass>(pool.allocate_object<TestClass>());
+  TestClass* t = pool->at<TestClass>(alloc->allocate_object<TestClass>());
   expect_eq(1, TestClass::instance_count);
-  pool.free_object<TestClass>(pool.at(t));
+  alloc->free_object<TestClass>(pool->at(t));
   expect_eq(0, TestClass::instance_count);
 
   // allocate 128KB (this should cause an expansion)
-  off = pool.allocate(1024 * 128);
+  off = alloc->allocate(1024 * 128);
   expect_ne(0, off);
-  expect_eq(1024 * 128, pool.block_size(off));
-  expect_lt(1024 * 128, pool.size());
-  pool.free(off);
-  expect_eq(1024 * 128 + 4096, pool.size());
+  expect_eq(1024 * 128, alloc->block_size(off));
+  expect_lt(1024 * 128, pool->size());
+  alloc->free(off);
+  expect_eq(1024 * 128 + 4096, pool->size());
 }
 
-void run_smart_pointer_test() {
+void run_smart_pointer_test(const string& allocator_type) {
   printf("-- smart pointer\n");
 
-  Pool pool("test-pool", 1024 * 1024); // 1MB
+  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  auto alloc = create_allocator(pool, allocator_type);
 
   // make sure allocate_object/free_object call constructors/destructors
   expect_eq(0, TestClass::instance_count);
-  auto t = pool.allocate_object_ptr<TestClass>();
+  auto t = alloc->allocate_object_ptr<TestClass>();
   expect_eq(1, TestClass::instance_count);
 
   expect_eq(0, t->f_calls);
@@ -122,50 +134,44 @@ void run_smart_pointer_test() {
   expect_eq(1, t->f_calls);
   expect_eq(1, t->const_f_calls);
 
-  pool.free_object_ptr<TestClass>(t);
+  alloc->free_object_ptr<TestClass>(t);
   expect_eq(0, TestClass::instance_count);
 }
 
-void run_expansion_boundary_test_with_size(Pool& pool, size_t size) {
-  size_t free_bytes = pool.bytes_free();
-  uint64_t data = pool.allocate(size);
-  check_fill_area(pool.at<void>(data), size);
-  pool.free(data);
-  expect_le(free_bytes, pool.bytes_free());
+void run_expansion_boundary_test_with_size(shared_ptr<Allocator>& alloc,
+    size_t size) {
+  size_t free_bytes = alloc->bytes_free();
+  uint64_t data = alloc->allocate(size);
+  check_fill_area(alloc->get_pool()->at<void>(data), size);
+  alloc->free(data);
+  expect_le(free_bytes, alloc->bytes_free());
 }
 
-void run_expansion_boundary_test() {
+void run_expansion_boundary_test(const string& allocator_type) {
   printf("-- expansion boundaries\n");
 
-  Pool pool("test-pool", 1024 * 1024); // 1MB
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() - 0x20);
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() - 0x18);
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() - 0x10);
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() - 0x08);
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() + 0x00);
-  run_expansion_boundary_test_with_size(pool, pool.bytes_free() + 0x08);
+  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  auto alloc = create_allocator(pool, allocator_type);
+
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x20);
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x18);
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x10);
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x08);
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() + 0x00);
+  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() + 0x08);
 }
 
-void run_lock_test() {
+void run_lock_test(const string& allocator_type) {
   printf("-- lock\n");
 
-  Pool pool("test-pool", 1024 * 1024); // 1MB
-
-  // these values are implementation-dependent, sigh
-  uint64_t* lock_ptr = pool.at<uint64_t>(8);
-  uint64_t locked_value = (this_process_start_time() << 20) | getpid_cached();
-  expect_eq(0, *lock_ptr);
-  {
-    auto g = pool.lock();
-    expect_eq(locked_value, *lock_ptr);
-  }
-  expect_eq(0, *lock_ptr);
+  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  auto alloc = create_allocator(pool, allocator_type);
 
   uint64_t start_time = now();
   pid_t child_pid = fork();
   if (!child_pid) {
     {
-      auto g = pool.lock();
+      auto g = alloc->lock();
       usleep(1000000);
     }
     _exit(0);
@@ -175,7 +181,7 @@ void run_lock_test() {
   // we should have to wait to get the lock; the child process is holding it
   uint64_t end_time;
   {
-    auto g = pool.lock();
+    auto g = alloc->lock();
     end_time = now();
   }
   expect_ge(end_time - start_time, 1000000);
@@ -187,38 +193,41 @@ void run_lock_test() {
   expect_eq(0, WEXITSTATUS(exit_status));
 }
 
-void run_crash_test() {
+void run_crash_test(const string& allocator_type) {
   printf("-- crash\n");
 
   uint64_t bytes_allocated;
   uint64_t bytes_free;
   unordered_map<uint64_t, string> offset_to_data;
   {
-    Pool pool("test-pool", 1024 * 1024);
+    shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+    auto alloc = create_allocator(pool, allocator_type);
 
     while (offset_to_data.size() < 100) {
-      auto g = pool.lock();
-      uint64_t offset = pool.allocate(2048);
+      auto g = alloc->lock();
+      uint64_t offset = alloc->allocate(2048);
 
       string data;
       while (data.size() < 2048) {
         data += (char)rand();
       }
 
-      memcpy(pool.at<void>(offset), data.data(), data.size());
+      memcpy(pool->at<void>(offset), data.data(), data.size());
 
       offset_to_data.emplace(offset, move(data));
     }
 
-    bytes_allocated = pool.bytes_allocated();
-    bytes_free = pool.bytes_free();
+    bytes_allocated = alloc->bytes_allocated();
+    bytes_free = alloc->bytes_free();
   }
 
   // child: open a pool, lock it, and be killed with SIGKILL
   pid_t pid = fork();
   if (!pid) {
-    Pool pool("test-pool", 1024 * 1024);
-    auto g = pool.lock();
+    shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+    auto alloc = create_allocator(pool, allocator_type);
+
+    auto g = alloc->lock();
 
     sigset_t sigs;
     sigemptyset(&sigs);
@@ -229,10 +238,11 @@ void run_crash_test() {
 
   // parent: wait a bit, kill the child with SIGKILL, make sure the pool is
   // still consistent (and not locked)
-  Pool pool("test-pool", 1024 * 1024); // 1MB
+  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  auto alloc = create_allocator(pool, allocator_type);
   try {
     usleep(500000);
-    expect_eq(true, pool.is_locked());
+    expect_eq(true, alloc->is_locked());
   } catch (const exception& e) {
     kill(pid, SIGKILL);
     throw;
@@ -248,14 +258,14 @@ void run_crash_test() {
 
   // even though the pool is still locked, we should be able to lock the pool
   // because the child was killed
-  expect_eq(true, pool.is_locked());
-  auto g = pool.lock();
-  expect_eq(bytes_allocated, pool.bytes_allocated());
-  expect_eq(bytes_free, pool.bytes_free());
+  expect_eq(true, alloc->is_locked());
+  auto g = alloc->lock();
+  expect_eq(bytes_allocated, alloc->bytes_allocated());
+  expect_eq(bytes_free, alloc->bytes_free());
   for (const auto& it : offset_to_data) {
-    expect_eq(0, memcmp(pool.at<void>(it.first), it.second.data(),
+    expect_eq(0, memcmp(pool->at<void>(it.first), it.second.data(),
         it.second.size()));
-    pool.free(it.first);
+    alloc->free(it.first);
   }
 }
 
@@ -263,13 +273,19 @@ void run_crash_test() {
 int main(int argc, char* argv[]) {
   int retcode = 0;
 
+  vector<string> allocator_types({
+    "simple",
+  });
+
   try {
-    Pool::delete_pool("test-pool");
-    run_basic_test();
-    run_smart_pointer_test();
-    run_expansion_boundary_test();
-    run_lock_test();
-    run_crash_test();
+    for (const auto& allocator_type : allocator_types) {
+      Pool::delete_pool("test-pool");
+      run_basic_test(allocator_type);
+      run_smart_pointer_test(allocator_type);
+      run_expansion_boundary_test(allocator_type);
+      run_lock_test(allocator_type);
+      run_crash_test(allocator_type);
+    }
     printf("all tests passed\n");
 
   } catch (const exception& e) {

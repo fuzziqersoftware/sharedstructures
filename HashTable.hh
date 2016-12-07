@@ -5,7 +5,7 @@
 #include <memory>
 #include <string>
 
-#include "Pool.hh"
+#include "Allocator.hh"
 
 namespace sharedstructures {
 
@@ -16,17 +16,18 @@ public:
   HashTable(const HashTable&) = delete;
   HashTable(HashTable&&) = delete;
 
-  // create constructor - allocates and initializes a new hash table in pool.
-  explicit HashTable(std::shared_ptr<Pool> pool, uint8_t bits);
+  // create constructor - allocates and initializes a new hash table.
+  HashTable(std::shared_ptr<Allocator> allocator, uint8_t bits);
   // (conditional) create constructor.
-  // opens an existing HashTable in the given pool. if base_offset is 0, opens
-  // the HashTable at the pool's base offset. if the pool's base offset is also
-  // 0, creates a new HashTable and sets the pool's base offset to the new
-  // table's base offset.
-  HashTable(std::shared_ptr<Pool> pool, uint64_t base_offset, uint8_t bits);
+  // opens an existing HashTable using the given allocator. if base_offset is 0,
+  // opens the HashTable at the allocator's base offset. if the allocator's base
+  // offset is also 0, creates a new HashTable and sets the allocator's base
+  // offset to the new table's base offset.
+  HashTable(std::shared_ptr<Allocator> allocator, uint64_t base_offset,
+      uint8_t bits);
 
-  // returns the pool for this hash table
-  std::shared_ptr<Pool> get_pool() const;
+  // returns the allocator for this hash table
+  std::shared_ptr<Allocator> get_allocator() const;
   // returns the base offset for this hasb table. if it was automatically
   // allocated with the conditional create constructor, this will tell you how
   // to open it again later.
@@ -60,7 +61,7 @@ public:
   void print(FILE* stream) const;
 
 private:
-  std::shared_ptr<Pool> pool;
+  std::shared_ptr<Allocator> allocator;
   uint64_t base_offset;
 
   // TODO: implement secondary tables (for rehashing)
@@ -69,7 +70,7 @@ private:
     uint64_t key_offset;
     uint64_t key_size;
     // there's no value_offset because the value is just after the key.
-    // there's no value_size because we can infer it from pool_block_size and
+    // there's no value_size because we can infer it from the block_size and
     // key_size.
     // if key_offset is 0, then this slot is empty.
     // if key_size is (uint64_t)-1, then this slot contains indirect slots

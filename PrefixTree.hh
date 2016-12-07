@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-#include "Pool.hh"
+#include "Allocator.hh"
 
 namespace sharedstructures {
 
@@ -20,18 +20,18 @@ public:
   PrefixTree(const PrefixTree&) = delete;
   PrefixTree(PrefixTree&&) = delete;
 
-  // create constructor - allocates and initializes a new prefix tree in pool.
-  explicit PrefixTree(std::shared_ptr<Pool> pool);
+  // create constructor - allocates and initializes a new prefix tree.
+  explicit PrefixTree(std::shared_ptr<Allocator> allocator);
   // (conditional) create constructor.
-  // - if base_offset != 0, opens an existing prefix tree in pool.
-  // - if base_offset == 0, opens the prefix tree at the pool's base object
+  // - if base_offset != 0, opens an existing prefix tree.
+  // - if base_offset == 0, opens the prefix tree at the allocator's base object
   //   offset, creating one if the base object offset is also 0.
-  PrefixTree(std::shared_ptr<Pool> pool, uint64_t base_offset);
+  PrefixTree(std::shared_ptr<Allocator> allocator, uint64_t base_offset);
 
   ~PrefixTree() = default;
 
-  // returns the pool for this prefix tree
-  std::shared_ptr<Pool> get_pool() const;
+  // returns the allocator for this prefix tree
+  std::shared_ptr<Allocator> get_allocator() const;
   // returns the base offset for this prefix tree. if it was automatically
   // allocated with the conditional create constructor, this will tell you how
   // to open it again later.
@@ -149,7 +149,7 @@ public:
   void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0, uint64_t indent = 0) const;
 
 private:
-  std::shared_ptr<Pool> pool;
+  std::shared_ptr<Allocator> allocator;
   uint64_t base_offset;
 
   struct Node {

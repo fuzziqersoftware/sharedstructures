@@ -5,8 +5,6 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include <phosg/Filesystem.hh>
-#include <phosg/Process.hh>
 #include <phosg/Strings.hh>
 
 // this mmap flag is required on OSX but doesn't exist on Linux
@@ -86,11 +84,6 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     }
 
     this->data->size = this->pool_size;
-    this->data->data_lock = 0;
-    this->data->head = 0;
-    this->data->tail = 0;
-    this->data->bytes_allocated = 0;
-    this->data->bytes_free = this->data->size - sizeof(Data);
   }
 }
 
@@ -102,180 +95,34 @@ Pool::~Pool() {
 }
 
 
-uint64_t Pool::allocate(size_t size) {
-  // need to store an AllocatedBlock too
-  size_t needed_size = ((size + 7) & (~7)) + sizeof(AllocatedBlock);
-
-  // the list is linked in order of memory address. we can return the first
-  // available chunk of `size` bytes that we find; however, to minimize
-  // fragmentation, we'll use the smallest available chunk that's bigger than
-  // `size`. this implementation is essentially guaranteed to be slow, but this
-  // library is designed for fast reads, not fast writes.
-
-  // if there are no allocated blocks, then there's no search to be done
-  if (this->data->head == 0 && this->data->tail == 0) {
-    size_t free_size = this->data->size - sizeof(Data);
-    if (free_size < needed_size) {
-      this->expand(needed_size + sizeof(Data));
-    }
-
-    // just write the block struct, link it, and return
-    AllocatedBlock* b = this->at<AllocatedBlock>(sizeof(Data));
-    b->prev = 0;
-    b->next = 0;
-    b->size = size;
-    this->data->head = sizeof(Data);
-    this->data->tail = sizeof(Data);
-    this->data->bytes_allocated += size;
-    this->data->bytes_free -= (b->effective_size() + sizeof(AllocatedBlock));
-    return sizeof(Data) + sizeof(AllocatedBlock);
-  }
-
-  // keep track of the best block we've found so far. the first candidate block
-  // is the space between the header and the first block.
-  uint64_t candidate_offset = (uint8_t*)&this->data->arena[0] -
-      (uint8_t*)this->data;
-  uint64_t candidate_size = this->data->head - candidate_offset;
-  uint64_t candidate_link_location = 0;
-
-  // loop over all the blocks, finding the space after each one. stop early if
-  // we find a block of exactly the right size.
-  uint64_t current_block = this->data->head;
-  while (current_block && (needed_size != candidate_size)) {
-    AllocatedBlock* b = this->at<AllocatedBlock>(current_block);
-
-    // if !next, this is the last block - have to compute after_size differently
-    uint64_t free_block_size;
-    if (b->next) {
-      free_block_size = b->next - current_block - b->effective_size() -
-          sizeof(AllocatedBlock);
-    } else {
-      free_block_size = this->pool_size - current_block - b->effective_size() -
-          sizeof(AllocatedBlock);
-    }
-
-    // if this block is big enough, remember it if it's the smallest one so far
-    if ((free_block_size >= needed_size) &&
-        ((candidate_size < needed_size) || (free_block_size < candidate_size))) {
-      candidate_offset = current_block + sizeof(AllocatedBlock) + b->effective_size();
-      candidate_size = free_block_size;
-      candidate_link_location = current_block;
-    }
-
-    // advance to the next block
-    current_block = b->next;
-  }
-
-  // if we didn't find any usable spaces, we'll have to expand the block and
-  // allocate at the end
-  if (candidate_size < needed_size) {
-    AllocatedBlock* tail = this->at<AllocatedBlock>(this->data->tail);
-
-    size_t new_pool_size = this->data->tail + sizeof(AllocatedBlock) +
-        tail->effective_size() + needed_size;
-    this->expand(new_pool_size);
-
-    // tail pointer may be invalid after expand
-    tail = this->at<AllocatedBlock>(this->data->tail);
-    candidate_offset = this->data->tail + sizeof(AllocatedBlock) +
-        tail->effective_size();
-    candidate_link_location = this->data->tail;
-  }
-
-  // create the block and link it. there are 3 cases:
-  // 1. link location is 0 - the block is before the head block
-  // 2. link location == tail - the block is after the tail block
-  // 3. anything else - the block is at neither the head nor tail
-  // we always set next before prev and fill in new_block before changing
-  // existing pointers because the pool is repaired (after a crash) by walking
-  // from the head along the next pointers, so those should always be consistent
-  AllocatedBlock* new_block = this->at<AllocatedBlock>(candidate_offset);
-  new_block->size = size;
-  if (candidate_link_location == 0) {
-    new_block->next = this->data->head;
-    new_block->prev = 0;
-    this->data->head = candidate_offset;
-    this->at<AllocatedBlock>(new_block->next)->prev = candidate_offset;
-  } else if (candidate_link_location == this->data->tail) {
-    new_block->next = 0;
-    new_block->prev = this->data->tail;
-    this->at<AllocatedBlock>(new_block->prev)->next = candidate_offset;
-    this->data->tail = candidate_offset;
-  } else {
-    AllocatedBlock* prev = this->at<AllocatedBlock>(candidate_link_location);
-    AllocatedBlock* next = this->at<AllocatedBlock>(prev->next);
-    new_block->next = prev->next;
-    new_block->prev = candidate_link_location;
-    prev->next = candidate_offset;
-    next->prev = candidate_offset;
-  }
-  this->data->bytes_allocated += size;
-  this->data->bytes_free -= (new_block->effective_size() + sizeof(AllocatedBlock));
-
-  // don't spend it all in once place...
-  return candidate_offset + sizeof(AllocatedBlock);
-}
-
-void Pool::free(uint64_t offset) {
-  if ((offset < sizeof(Data)) || (offset > this->pool_size - sizeof(AllocatedBlock))) {
-    return; // herp derp
-  }
-
-  // we only have to update counts and remove the block from the linked list
-  AllocatedBlock* block = this->at<AllocatedBlock>(offset - sizeof(AllocatedBlock));
-  this->data->bytes_allocated -= block->size;
-  this->data->bytes_free += (block->effective_size() + sizeof(AllocatedBlock));
-  if (block->prev) {
-    this->at<AllocatedBlock>(block->prev)->next = block->next;
-  } else {
-    this->data->head = block->next;
-  }
-  if (block->next) {
-    this->at<AllocatedBlock>(block->next)->prev = block->prev;
-  } else {
-    this->data->tail = block->prev;
-  }
-}
-
-size_t Pool::block_size(uint64_t offset) const {
-  const AllocatedBlock* b = this->at<AllocatedBlock>(offset - sizeof(AllocatedBlock));
-  return b->size;
+const string& Pool::get_name() const {
+  return this->name;
 }
 
 
-void Pool::set_base_object_offset(uint64_t offset) {
-  this->data->base_object_offset = offset;
-}
-
-uint64_t Pool::base_object_offset() const {
-  return this->data->base_object_offset;
-}
-
-
-size_t Pool::size() const {
-  return this->data->size;
-}
-
-size_t Pool::bytes_allocated() const {
-  return this->data->bytes_allocated;
-}
-
-size_t Pool::bytes_free() const {
-  return this->data->bytes_free;
-}
-
-
-bool Pool::delete_pool(const std::string& name, bool file) {
-  int ret = unlink_segment(name.c_str(), file || MAP_HASSEMAPHORE);
-  if (ret == 0) {
-    return true;
+ssize_t Pool::expand(size_t new_size) {
+  if (new_size < this->pool_size) {
+    return 0;
   }
-  if (errno == ENOENT) {
-    return false;
-  }
-  throw runtime_error("can\'t delete pool: " + string_for_error(errno));
-}
 
+  // the new size must be a multiple of the page size, so round it up.
+  new_size = (new_size + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
+  if (this->max_size && (new_size > this->max_size)) {
+    throw runtime_error("can\'t expand pool beyond maximum size");
+  }
+
+  if (ftruncate(this->fd, new_size)) {
+    throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
+  }
+  ssize_t ret = new_size - this->data->size;
+  this->data->size = new_size;
+
+  // now the underlying shared memory object is larger; we need to recreate our
+  // view of it
+  this->check_size_and_remap(); // sets this->pool_size
+
+  return ret;
+}
 
 void Pool::check_size_and_remap() const {
   uint64_t new_pool_size = this->pool_size ? this->data->size.load() :
@@ -293,124 +140,20 @@ void Pool::check_size_and_remap() const {
   }
 }
 
-void Pool::expand(size_t new_size) {
-  if (new_size < this->pool_size) {
-    return;
+size_t Pool::size() const {
+  return this->data->size;
+}
+
+
+bool Pool::delete_pool(const std::string& name, bool file) {
+  int ret = unlink_segment(name.c_str(), file || MAP_HASSEMAPHORE);
+  if (ret == 0) {
+    return true;
   }
-
-  // the new size must be a multiple of the page size, so round it up.
-  new_size = (new_size + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
-  if (this->max_size && (new_size > this->max_size)) {
-    throw runtime_error("can\'t expand pool beyond maximum size");
+  if (errno == ENOENT) {
+    return false;
   }
-
-  if (ftruncate(this->fd, new_size)) {
-    throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
-  }
-  this->data->bytes_free += (new_size - this->data->size);
-  this->data->size = new_size;
-
-  // now the underlying shared memory object is larger; we need to recreate our
-  // view of it
-  this->check_size_and_remap(); // sets this->pool_size
-}
-
-
-Pool::pool_guard::pool_guard(pool_guard&& other) : pool(other.pool) {
-  other.pool = NULL;
-}
-
-Pool::pool_guard::pool_guard(const Pool* pool) : pool(pool) {
-  const_cast<Pool*>(this->pool)->process_spinlock_lock(
-      offsetof(Pool::Data, data_lock));
-}
-
-Pool::pool_guard::~pool_guard() {
-  const_cast<Pool*>(this->pool)->process_spinlock_unlock(
-      offsetof(Pool::Data, data_lock));
-}
-
-Pool::pool_guard Pool::lock() const {
-  this->check_size_and_remap();
-  pool_guard g(this);
-  this->check_size_and_remap();
-  return g;
-}
-
-bool Pool::is_locked() const {
-  return this->data->data_lock != 0;
-}
-
-
-void Pool::process_spinlock_lock(uint64_t offset) {
-  atomic<uint64_t>* lock = this->at<atomic<uint64_t>>(offset);
-
-  // heuristic: every 100 spins, we check if the process holding the lock is
-  // still running; if it's not, we steal the lock and call repair() (since the
-  // process likely crashed)
-  uint64_t desired_value = (this_process_start_time() << 20) | getpid_cached();
-  uint64_t expected_value;
-  bool lock_taken = false;
-  while (!lock_taken) {
-
-    // try 100 times to get the lock
-    uint8_t spin_count = 0;
-    while (!lock_taken && (spin_count < 100)) {
-      expected_value = 0;
-      lock_taken = lock->compare_exchange_weak(expected_value, desired_value);
-      spin_count++;
-    }
-
-    // if we didn't get the lock, check if the process holding it is running
-    if (!lock_taken) {
-      pid_t pid = expected_value & ((1 << 20) - 1);
-      uint64_t start_time_token = expected_value & ~((1 << 20) - 1);
-      if ((start_time_for_pid(pid) << 20) != start_time_token) {
-        // the holding process died; steal the lock from it. if we get the lock,
-        // repair the allocator structures since they could be in an
-        // inconsistent state. if we don't get the lock, then another process
-        // got there first and we'll just keep waiting
-        lock_taken = lock->compare_exchange_strong(expected_value, desired_value);
-        if (lock_taken) {
-          this->repair();
-        }
-      }
-    }
-  }
-}
-
-void Pool::process_spinlock_unlock(uint64_t offset) {
-  atomic<uint64_t>* lock = this->at<atomic<uint64_t>>(offset);
-  lock->store(0);
-}
-
-
-uint64_t Pool::AllocatedBlock::effective_size() {
-  return (this->size + 7) & (~7);
-}
-
-
-void Pool::repair() {
-  uint64_t bytes_allocated = 0;
-  uint64_t bytes_free = this->data->size - sizeof(Data);
-
-  uint64_t prev_offset = 0;
-  uint64_t block_offset = this->data->head;
-  while (block_offset) {
-
-    AllocatedBlock* block = this->at<AllocatedBlock>(block_offset);
-    block->prev = prev_offset;
-
-    bytes_allocated += block->size;
-    bytes_free -= (block->size + sizeof(AllocatedBlock));
-
-    prev_offset = block_offset;
-    block_offset = block->next;
-  }
-
-  this->data->tail = prev_offset;
-  this->data->bytes_allocated = bytes_allocated;
-  this->data->bytes_free = bytes_free;
+  throw runtime_error("can\'t delete pool: " + string_for_error(errno));
 }
 
 } // namespace sharedstructures

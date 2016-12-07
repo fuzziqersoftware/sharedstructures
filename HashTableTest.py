@@ -167,7 +167,7 @@ def main():
     return 0
 
   finally:
-    sharedstructures.delete_pool('test-table')
+    pass #sharedstructures.delete_pool('test-table')
 
 
 if __name__ == '__main__':

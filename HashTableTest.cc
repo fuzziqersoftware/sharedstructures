@@ -10,6 +10,8 @@
 #include <phosg/UnitTest.hh>
 #include <string>
 
+#include "Pool.hh"
+#include "SimpleAllocator.hh"
 #include "HashTable.hh"
 
 using namespace std;
@@ -39,9 +41,11 @@ void run_basic_test() {
   printf("-- basic\n");
 
   shared_ptr<Pool> pool(new Pool("test-table"));
-  HashTable table(pool, 0, 6);
+  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  HashTable table(alloc, 0, 6);
+
   unordered_map<string, string> expected;
-  size_t initial_pool_allocated = pool->bytes_allocated();
+  size_t initial_pool_allocated = alloc->bytes_allocated();
 
   expect_eq(0, table.size());
   expect_eq(6, table.bits());
@@ -72,7 +76,7 @@ void run_basic_test() {
   verify_state(expected, table);
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, pool->bytes_allocated());
+  expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
 
 
@@ -82,9 +86,11 @@ void run_collision_test() {
   // writing 5 keys to a 4-slot hashtable forces a collision
 
   shared_ptr<Pool> pool(new Pool("test-table"));
-  HashTable table(pool, 0, 2);
+  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  HashTable table(alloc, 0, 2);
+
   unordered_map<string, string> expected;
-  size_t initial_pool_allocated = pool->bytes_allocated();
+  size_t initial_pool_allocated = alloc->bytes_allocated();
 
   expect_eq(0, table.size());
 
@@ -108,7 +114,7 @@ void run_collision_test() {
   }
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, pool->bytes_allocated());
+  expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
 
 
@@ -128,7 +134,8 @@ void run_concurrent_readers_test() {
   if (child_pids.count(0)) {
     // child process: try up to a second to get the key
     shared_ptr<Pool> pool(new Pool("test-table"));
-    HashTable table(pool, 0, 4);
+    shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+    HashTable table(alloc, 0, 4);
 
     int64_t value = 100;
     string value_str = to_string(value);
@@ -150,7 +157,8 @@ void run_concurrent_readers_test() {
   } else {
     // parent process: write the key, then wait for children to terminate
     shared_ptr<Pool> pool(new Pool("test-table"));
-    HashTable table(pool, 0, 4);
+    shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+    HashTable table(alloc, 0, 4);
 
     for (int64_t value = 100; value < 110; value++) {
       usleep(50000);

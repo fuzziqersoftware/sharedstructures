@@ -11,6 +11,8 @@
 #include <phosg/UnitTest.hh>
 #include <string>
 
+#include "Pool.hh"
+#include "SimpleAllocator.hh"
 #include "PrefixTree.hh"
 
 using namespace std;
@@ -21,7 +23,8 @@ using LookupResult = PrefixTree::LookupResult;
 
 shared_ptr<PrefixTree> get_or_create_tree(const char* name) {
   shared_ptr<Pool> pool(new Pool(name));
-  return shared_ptr<PrefixTree>(new PrefixTree(pool, 0));
+  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  return shared_ptr<PrefixTree>(new PrefixTree(alloc, 0));
 }
 
 
@@ -60,7 +63,7 @@ void run_basic_test() {
 
   auto table = get_or_create_tree("test-table");
 
-  size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
+  size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
   expect_eq(0, table->size());
 
   table->insert("key1", 4, "value1", 6);
@@ -119,7 +122,7 @@ void run_basic_test() {
   expect_eq(1, table->node_size());
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
+  expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_reorganization_test() {
@@ -127,7 +130,7 @@ void run_reorganization_test() {
 
   auto table = get_or_create_tree("test-table");
 
-  size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
+  size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
   // initial state: empty
   unordered_map<string, LookupResult> expected_state;
@@ -233,7 +236,7 @@ void run_reorganization_test() {
   verify_state(expected_state, table, 1);
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
+  expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_types_test() {
@@ -248,7 +251,7 @@ void run_types_test() {
 
   auto table = get_or_create_tree("test-table");
 
-  size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
+  size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
   expect_eq(0, table->size());
   expect_eq(1, table->node_size());
@@ -309,7 +312,7 @@ void run_types_test() {
   expect_eq(1, table->node_size());
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
+  expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_incr_test() {
@@ -317,7 +320,7 @@ void run_incr_test() {
 
   auto table = get_or_create_tree("test-table");
 
-  size_t initial_pool_allocated = table->get_pool()->bytes_allocated();
+  size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
   expect_eq(0, table->size());
   table->insert("key-int", 7, (int64_t)10);
@@ -389,7 +392,7 @@ void run_incr_test() {
   expect_eq(0, table->size());
 
   // the empty table should not leak any allocated memory
-  expect_eq(initial_pool_allocated, table->get_pool()->bytes_allocated());
+  expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_concurrent_readers_test() {

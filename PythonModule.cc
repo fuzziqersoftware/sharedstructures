@@ -7,6 +7,9 @@
 
 #include <utility>
 
+#include "Pool.hh"
+#include "Allocator.hh"
+#include "SimpleAllocator.hh"
 #include "HashTable.hh"
 #include "PrefixTree.hh"
 
@@ -21,6 +24,18 @@ using ResultValueType = sharedstructures::PrefixTree::ResultValueType;
 
 
 // helper functions
+
+static shared_ptr<sharedstructures::Allocator> sharedstructures_internal_get_allocator(
+    const char* pool_name, const char* allocator_type) {
+  shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
+  shared_ptr<sharedstructures::Allocator> allocator;
+  if (!allocator_type || !strcmp(allocator_type, "simple")) {
+    allocator.reset(new sharedstructures::SimpleAllocator(pool));
+  } else {
+    throw out_of_range("unknown allocator type");
+  }
+  return allocator;
+}
 
 static pair<const char*, size_t> sharedstructures_internal_get_key(
     PyObject* key) {
@@ -39,7 +54,7 @@ static pair<const char*, size_t> sharedstructures_internal_get_key(
   return make_pair(key_data, key_size);
 }
 
-PyObject* sharedstructures_internal_get_python_object_for_result(
+static PyObject* sharedstructures_internal_get_python_object_for_result(
     const sharedstructures::PrefixTree::LookupResult& res) {
   switch (res.type) {
     case ResultValueType::Missing:
@@ -99,14 +114,12 @@ PyObject* sharedstructures_internal_get_python_object_for_result(
 
 typedef struct {
   PyObject_HEAD
-  std::string pool_name;
-  sharedstructures::HashTable table;
+  shared_ptr<sharedstructures::HashTable> table;
 } sharedstructures_HashTable;
 
 typedef struct {
   PyObject_HEAD
-  std::string pool_name;
-  sharedstructures::PrefixTree table;
+  shared_ptr<sharedstructures::PrefixTree> table;
 } sharedstructures_PrefixTree;
 
 typedef struct {
@@ -133,26 +146,22 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
   const char* pool_name;
   Py_ssize_t base_offset = 0;
   uint8_t bits = 8;
-  if (!PyArg_ParseTuple(args, "s|nb", &pool_name, &base_offset, &bits)) {
+  const char* allocator_type = NULL;
+  if (!PyArg_ParseTuple(args, "s|nbs", &pool_name, &base_offset, &bits,
+      &allocator_type)) {
     Py_DECREF(self);
     return NULL;
   }
 
-  // PyType_GenericNew allocated the objects in the struct, but didn't call
-  // their constructors - we do that explicitly now
+  // try to construct the pool before filling in the python object
   try {
-    new (&self->pool_name) string(pool_name);
+    auto allocator = sharedstructures_internal_get_allocator(pool_name,
+        allocator_type);
+    new (&self->table) shared_ptr<sharedstructures::HashTable>(
+        new sharedstructures::HashTable(allocator, base_offset, bits));
+
   } catch (const exception& e) {
-    PyErr_SetString(PyExc_RuntimeError, "failed to initialize pool name");
-    Py_DECREF(self);
-    return NULL;
-  }
-  try {
-    std::shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
-    new (&self->table) sharedstructures::HashTable(pool, base_offset, bits);
-  } catch (const exception& e) {
-    self->pool_name.~string();
-    PyErr_SetString(PyExc_RuntimeError, "failed to initialize prefix tree");
+    PyErr_SetString(PyExc_RuntimeError, "failed to initialize table");
     Py_DECREF(self);
     return NULL;
   }
@@ -162,14 +171,13 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
 
 static void sharedstructures_HashTable_Dealloc(PyObject* obj) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)obj;
-  self->table.sharedstructures::HashTable::~HashTable();
-  self->pool_name.~string();
+  self->table.~shared_ptr();
   self->ob_type->tp_free((PyObject*)self);
 }
 
 static Py_ssize_t sharedstructures_HashTable_Len(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  return self->table.size();
+  return self->table->size();
 }
 
 static int sharedstructures_HashTable_In(PyObject* py_self, PyObject* key) {
@@ -180,7 +188,7 @@ static int sharedstructures_HashTable_In(PyObject* py_self, PyObject* key) {
     return -1;
   }
 
-  return self->table.exists(k.first, k.second);
+  return self->table->exists(k.first, k.second);
 }
 
 static PyObject* sharedstructures_HashTable_GetItem(PyObject* py_self,
@@ -193,7 +201,7 @@ static PyObject* sharedstructures_HashTable_GetItem(PyObject* py_self,
   }
 
   try {
-    string res = self->table.at(k.first, k.second);
+    string res = self->table->at(k.first, k.second);
     return PyMarshal_ReadObjectFromString(const_cast<char*>(res.data()),
         res.size());
 
@@ -213,7 +221,7 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
   }
 
   if (!value) {
-    if (!self->table.erase(k.first, k.second)) {
+    if (!self->table->erase(k.first, k.second)) {
       PyErr_SetObject(PyExc_KeyError, key);
       return -1;
     }
@@ -232,7 +240,7 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
     if (PyString_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
       return -1;
     }
-    self->table.insert(k.first, k.second, data, size);
+    self->table->insert(k.first, k.second, data, size);
     Py_DECREF(marshalled_obj);
   }
 
@@ -243,13 +251,14 @@ static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return PyString_FromFormat(
       "<sharedstructures.HashTable on %s:%" PRIu64 " at %p>",
-      self->pool_name.c_str(), self->table.base(), py_self);
+      self->table->get_allocator()->get_pool()->get_name().c_str(),
+      self->table->base(), py_self);
 }
 
 static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
 
-  self->table.clear();
+  self->table->clear();
 
   Py_INCREF(Py_None);
   return Py_None;
@@ -257,22 +266,22 @@ static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
 
 static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  return PyInt_FromLong(self->table.bits());
+  return PyInt_FromLong(self->table->bits());
 }
 
 static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->size());
+  return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
 }
 
 static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->bytes_free());
+  return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
 }
 
 static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->bytes_allocated());
+  return PyInt_FromSize_t(self->table->get_allocator()->bytes_allocated());
 }
 
 static PyMethodDef sharedstructures_HashTable_methods[] = {
@@ -397,7 +406,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
 
   Py_INCREF(self->tree_obj);
 
-  new (&self->it) sharedstructures::PrefixTreeIterator(self->tree_obj->table.begin());
+  new (&self->it) sharedstructures::PrefixTreeIterator(self->tree_obj->table->begin());
 
   return (PyObject*)self;
 }
@@ -420,7 +429,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_Next(PyObject* py_self) {
   sharedstructures_PrefixTreeIterator* self = (sharedstructures_PrefixTreeIterator*)py_self;
   sharedstructures_PrefixTree* tree = (sharedstructures_PrefixTree*)self->tree_obj;
 
-  if (self->it == tree->table.end()) {
+  if (self->it == tree->table->end()) {
     PyErr_SetNone(PyExc_StopIteration);
     return NULL;
   }
@@ -526,25 +535,20 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
 
   const char* pool_name;
   Py_ssize_t base_offset = 0;
-  if (!PyArg_ParseTuple(args, "s|n", &pool_name, &base_offset)) {
+  const char* allocator_type = NULL;
+  if (!PyArg_ParseTuple(args, "s|ns", &pool_name, &base_offset,
+      &allocator_type)) {
     Py_DECREF(self);
     return NULL;
   }
 
-  // PyType_GenericNew allocated the objects in the struct, but didn't call
-  // their constructors - we do that explicitly now
   try {
-    new (&self->pool_name) string(pool_name);
+    auto allocator = sharedstructures_internal_get_allocator(pool_name,
+        allocator_type);
+    new (&self->table) shared_ptr<sharedstructures::PrefixTree>(
+        new sharedstructures::PrefixTree(allocator, base_offset));
+
   } catch (const exception& e) {
-    PyErr_SetString(PyExc_RuntimeError, "failed to initialize pool name");
-    Py_DECREF(self);
-    return NULL;
-  }
-  try {
-    std::shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
-    new (&self->table) sharedstructures::PrefixTree(pool, base_offset);
-  } catch (const exception& e) {
-    self->pool_name.~string();
     PyErr_SetString(PyExc_RuntimeError, "failed to initialize prefix tree");
     Py_DECREF(self);
     return NULL;
@@ -555,14 +559,13 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
 
 static void sharedstructures_PrefixTree_Dealloc(PyObject* obj) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)obj;
-  self->table.sharedstructures::PrefixTree::~PrefixTree();
-  self->pool_name.~string();
+  self->table.~shared_ptr();
   self->ob_type->tp_free((PyObject*)self);
 }
 
 static Py_ssize_t sharedstructures_PrefixTree_Len(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-  return self->table.size();
+  return self->table->size();
 }
 
 static int sharedstructures_PrefixTree_In(PyObject* py_self, PyObject* key) {
@@ -573,7 +576,7 @@ static int sharedstructures_PrefixTree_In(PyObject* py_self, PyObject* key) {
     return -1;
   }
 
-  return self->table.exists(k.first, k.second);
+  return self->table->exists(k.first, k.second);
 }
 
 static PyObject* sharedstructures_PrefixTree_GetItem(PyObject* py_self,
@@ -586,7 +589,7 @@ static PyObject* sharedstructures_PrefixTree_GetItem(PyObject* py_self,
   }
 
   try {
-    auto res = self->table.at(k.first, k.second);
+    auto res = self->table->at(k.first, k.second);
     return sharedstructures_internal_get_python_object_for_result(res);
 
   } catch (const out_of_range& e) {
@@ -605,7 +608,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   }
 
   if (!value) {
-    if (!self->table.erase(k.first, k.second)) {
+    if (!self->table->erase(k.first, k.second)) {
       PyErr_SetObject(PyExc_KeyError, key);
       return -1;
     }
@@ -613,17 +616,17 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   }
 
   if (value == Py_None) {
-    self->table.insert(k.first, k.second);
+    self->table->insert(k.first, k.second);
     return 0;
   }
 
   if (value == Py_True) {
-    self->table.insert(k.first, k.second, true);
+    self->table->insert(k.first, k.second, true);
     return 0;
   }
 
   if (value == Py_False) {
-    self->table.insert(k.first, k.second, false);
+    self->table->insert(k.first, k.second, false);
     return 0;
   }
 
@@ -632,7 +635,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     if ((raw_value == -1) && PyErr_Occurred()) {
       return -1;
     }
-    self->table.insert(k.first, k.second, raw_value);
+    self->table->insert(k.first, k.second, raw_value);
     return 0;
   }
 
@@ -641,7 +644,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     if ((raw_value == -1) && PyErr_Occurred()) {
       PyErr_Clear(); // we'll insert it as a marshalled string instead
     } else {
-      self->table.insert(k.first, k.second, raw_value);
+      self->table->insert(k.first, k.second, raw_value);
       return 0;
     }
   }
@@ -651,7 +654,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     if ((raw_value == -1.0) && PyErr_Occurred()) {
       return -1;
     }
-    self->table.insert(k.first, k.second, raw_value);
+    self->table->insert(k.first, k.second, raw_value);
     return 0;
   }
 
@@ -665,7 +668,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     string insert_data;
     insert_data += '\x01';
     insert_data.append((const char*)data, size * sizeof(Py_UNICODE));
-    self->table.insert(k.first, k.second, insert_data.data(), insert_data.size());
+    self->table->insert(k.first, k.second, insert_data.data(), insert_data.size());
     return 0;
   }
 
@@ -676,13 +679,13 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
       return -1;
     }
     if (size == 0) {
-      self->table.insert(k.first, k.second, "", 0);
+      self->table->insert(k.first, k.second, "", 0);
     } else {
       // prepend the type byte
       string insert_data;
       insert_data += '\x00';
       insert_data.append(data, size);
-      self->table.insert(k.first, k.second, insert_data.data(), insert_data.size());
+      self->table->insert(k.first, k.second, insert_data.data(), insert_data.size());
     }
     return 0;
   }
@@ -705,7 +708,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     Py_DECREF(marshalled_obj);
     return -1;
   }
-  self->table.insert(k.first, k.second, iov, 2);
+  self->table->insert(k.first, k.second, iov, 2);
   Py_DECREF(marshalled_obj);
 
   return 0;
@@ -715,13 +718,14 @@ static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
   return PyString_FromFormat(
       "<sharedstructures.PrefixTree on %s:%" PRIu64 " at %p>",
-      self->pool_name.c_str(), self->table.base(), py_self);
+      self->table->get_allocator()->get_pool()->get_name().c_str(),
+      self->table->base(), py_self);
 }
 
 static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
 
-  self->table.clear();
+  self->table->clear();
 
   Py_INCREF(Py_None);
   return Py_None;
@@ -745,7 +749,7 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
     }
     int64_t ret;
     try {
-      ret = self->table.incr(k, k_size, delta);
+      ret = self->table->incr(k, k_size, delta);
     } catch (const out_of_range& e) {
       PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
       return NULL;
@@ -765,7 +769,7 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
     }
     int64_t ret;
     try {
-      ret = self->table.incr(k, k_size, delta);
+      ret = self->table->incr(k, k_size, delta);
     } catch (const out_of_range& e) {
       PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
       return NULL;
@@ -785,7 +789,7 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
     }
     double ret;
     try {
-      ret = self->table.incr(k, k_size, delta);
+      ret = self->table->incr(k, k_size, delta);
     } catch (const out_of_range& e) {
       PyErr_SetString(PyExc_ValueError, "incr (float) against key of different type");
       return NULL;
@@ -834,17 +838,17 @@ static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
 
 static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->size());
+  return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
 }
 
 static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->bytes_free());
+  return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
 }
 
 static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-  return PyInt_FromSize_t(self->table.get_pool()->bytes_allocated());
+  return PyInt_FromSize_t(self->table->get_allocator()->bytes_allocated());
 }
 
 static PyMethodDef sharedstructures_PrefixTree_methods[] = {
