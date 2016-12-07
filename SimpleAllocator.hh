@@ -55,8 +55,8 @@ private:
     std::atomic<uint64_t> data_lock;
 
     std::atomic<uint64_t> base_object_offset;
-    std::atomic<uint64_t> bytes_allocated;
-    std::atomic<uint64_t> bytes_free;
+    std::atomic<uint64_t> bytes_allocated; // sum of allocated block sizes
+    std::atomic<uint64_t> bytes_committed; // same as above, + the block structs
 
     std::atomic<uint64_t> head;
     std::atomic<uint64_t> tail;

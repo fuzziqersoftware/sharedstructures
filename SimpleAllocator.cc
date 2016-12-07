@@ -25,7 +25,7 @@ SimpleAllocator::SimpleAllocator(std::shared_ptr<Pool> pool) : Allocator(pool) {
   data->head = 0;
   data->tail = 0;
   data->bytes_allocated = 0;
-  data->bytes_free = data->size - sizeof(Data);
+  data->bytes_committed = sizeof(Data);
 }
 
 
@@ -45,9 +45,8 @@ uint64_t SimpleAllocator::allocate(size_t size) {
   if (data->head == 0 && data->tail == 0) {
     size_t free_size = data->size - sizeof(Data);
     if (free_size < needed_size) {
-      ssize_t bytes_added = this->pool->expand(needed_size + sizeof(Data));
+      this->pool->expand(needed_size + sizeof(Data));
       data = this->data();
-      data->bytes_free += bytes_added;
     }
 
     // just write the block struct, link it, and return
@@ -58,7 +57,7 @@ uint64_t SimpleAllocator::allocate(size_t size) {
     data->head = sizeof(Data);
     data->tail = sizeof(Data);
     data->bytes_allocated += size;
-    data->bytes_free -= (b->effective_size() + sizeof(AllocatedBlock));
+    data->bytes_committed += (b->effective_size() + sizeof(AllocatedBlock));
     return sizeof(Data) + sizeof(AllocatedBlock);
   }
 
@@ -103,9 +102,8 @@ uint64_t SimpleAllocator::allocate(size_t size) {
 
     size_t new_pool_size = data->tail + sizeof(AllocatedBlock) +
         tail->effective_size() + needed_size;
-    ssize_t bytes_added = this->pool->expand(new_pool_size);
+    this->pool->expand(new_pool_size);
     data = this->data();
-    data->bytes_free += bytes_added;
 
     // tail pointer may be invalid after expand
     tail = this->pool->at<AllocatedBlock>(data->tail);
@@ -142,7 +140,7 @@ uint64_t SimpleAllocator::allocate(size_t size) {
     next->prev = candidate_offset;
   }
   data->bytes_allocated += size;
-  data->bytes_free -= (new_block->effective_size() + sizeof(AllocatedBlock));
+  data->bytes_committed += (new_block->effective_size() + sizeof(AllocatedBlock));
 
   // don't spend it all in once place...
   return candidate_offset + sizeof(AllocatedBlock);
@@ -158,7 +156,7 @@ void SimpleAllocator::free(uint64_t offset) {
   // we only have to update counts and remove the block from the linked list
   AllocatedBlock* block = this->pool->at<AllocatedBlock>(offset - sizeof(AllocatedBlock));
   data->bytes_allocated -= block->size;
-  data->bytes_free += (block->effective_size() + sizeof(AllocatedBlock));
+  data->bytes_committed -= (block->effective_size() + sizeof(AllocatedBlock));
   if (block->prev) {
     this->pool->at<AllocatedBlock>(block->prev)->next = block->next;
   } else {
@@ -192,7 +190,8 @@ size_t SimpleAllocator::bytes_allocated() const {
 }
 
 size_t SimpleAllocator::bytes_free() const {
-  return this->data()->bytes_free;
+  auto data = this->data();
+  return data->size - data->bytes_committed;
 }
 
 
@@ -222,7 +221,7 @@ void SimpleAllocator::repair() {
   auto data = this->data();
 
   uint64_t bytes_allocated = 0;
-  uint64_t bytes_free = data->size - sizeof(Data);
+  uint64_t bytes_committed = 0;
 
   uint64_t prev_offset = 0;
   uint64_t block_offset = data->head;
@@ -232,7 +231,7 @@ void SimpleAllocator::repair() {
     block->prev = prev_offset;
 
     bytes_allocated += block->size;
-    bytes_free -= (block->size + sizeof(AllocatedBlock));
+    bytes_committed += (block->size + sizeof(AllocatedBlock));
 
     prev_offset = block_offset;
     block_offset = block->next;
@@ -240,7 +239,7 @@ void SimpleAllocator::repair() {
 
   data->tail = prev_offset;
   data->bytes_allocated = bytes_allocated;
-  data->bytes_free = bytes_free;
+  data->bytes_committed = bytes_committed;
 }
 
 

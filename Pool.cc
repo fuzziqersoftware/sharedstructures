@@ -100,9 +100,9 @@ const string& Pool::get_name() const {
 }
 
 
-ssize_t Pool::expand(size_t new_size) {
+void Pool::expand(size_t new_size) {
   if (new_size < this->pool_size) {
-    return 0;
+    return;
   }
 
   // the new size must be a multiple of the page size, so round it up.
@@ -114,14 +114,11 @@ ssize_t Pool::expand(size_t new_size) {
   if (ftruncate(this->fd, new_size)) {
     throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
   }
-  ssize_t ret = new_size - this->data->size;
   this->data->size = new_size;
 
   // now the underlying shared memory object is larger; we need to recreate our
   // view of it
   this->check_size_and_remap(); // sets this->pool_size
-
-  return ret;
 }
 
 void Pool::check_size_and_remap() const {

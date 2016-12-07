@@ -32,7 +32,7 @@ public:
 
   // expands the pool to the given size. if the given size is smaller than the
   // pool's size, does nothing.
-  ssize_t expand(size_t new_size);
+  void expand(size_t new_size);
 
   // checks for expansions by other processes. generally you shouldn't need to
   // call this manually; the allocator should do it for you when you lock the

@@ -35,6 +35,14 @@ int main(int argc, char** argv) {
   size_t allocated_size = 0;
   uint64_t alloc_time = 0;
   while (pool->size() <= 32 * 1024 * 1024) {
+    if (allocated_regions.size() % report_interval == 0) {
+      double efficiency = (float)alloc.bytes_allocated() / (pool->size() - alloc.bytes_free());
+      fprintf(stderr, "allocation #%zu (%" PRIu64 " nsec/alloc): %zu allocated, %zu free, %zu total, %g efficiency\n",
+          allocated_regions.size(), (alloc_time * 1000) / report_interval, allocated_size,
+          alloc.bytes_free(), pool->size(), efficiency);
+      alloc_time = 0;
+    }
+
     size_t size = min_alloc_size + (rand() % (max_alloc_size - min_alloc_size));
 
     uint64_t start = now();
@@ -45,14 +53,6 @@ int main(int argc, char** argv) {
     allocated_size += size;
 
     expect_eq(allocated_size, alloc.bytes_allocated());
-
-    if (allocated_regions.size() % report_interval == 0) {
-      double efficiency = (float)alloc.bytes_allocated() / (pool->size() - alloc.bytes_free());
-      fprintf(stderr, "allocation #%zu (%" PRIu64 " nsec/alloc): %zu allocated, %zu free, %zu total, %g efficiency\n",
-          allocated_regions.size(), (alloc_time * 1000) / report_interval, allocated_size,
-          alloc.bytes_free(), pool->size(), efficiency);
-      alloc_time = 0;
-    }
   }
 
   alloc_time = 0;
