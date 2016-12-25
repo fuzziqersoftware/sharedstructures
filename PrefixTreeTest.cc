@@ -13,6 +13,7 @@
 
 #include "Pool.hh"
 #include "SimpleAllocator.hh"
+#include "LogarithmicAllocator.hh"
 #include "PrefixTree.hh"
 
 using namespace std;
@@ -21,9 +22,22 @@ using namespace sharedstructures;
 using LookupResult = PrefixTree::LookupResult;
 
 
-shared_ptr<PrefixTree> get_or_create_tree(const char* name) {
+shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
+    const string& allocator_type) {
+  if (allocator_type == "simple") {
+    return shared_ptr<Allocator>(new SimpleAllocator(pool));
+  }
+  if (allocator_type == "logarithmic") {
+    return shared_ptr<Allocator>(new LogarithmicAllocator(pool));
+  }
+  throw invalid_argument("unknown allocator type: " + allocator_type);
+}
+
+
+shared_ptr<PrefixTree> get_or_create_tree(const string& name,
+    const string& allocator_type) {
   shared_ptr<Pool> pool(new Pool(name));
-  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   return shared_ptr<PrefixTree>(new PrefixTree(alloc, 0));
 }
 
@@ -58,10 +72,10 @@ void verify_state(
 }
 
 
-void run_basic_test() {
-  printf("-- basic\n");
+void run_basic_test(const string& allocator_type) {
+  printf("[%s] -- basic\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table");
+  auto table = get_or_create_tree("test-table", allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
   expect_eq(0, table->size());
@@ -125,10 +139,10 @@ void run_basic_test() {
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
-void run_reorganization_test() {
-  printf("-- reorganization\n");
+void run_reorganization_test(const string& allocator_type) {
+  printf("[%s] -- reorganization\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table");
+  auto table = get_or_create_tree("test-table", allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -239,8 +253,8 @@ void run_reorganization_test() {
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
-void run_types_test() {
-  printf("-- types\n");
+void run_types_test(const string& allocator_type) {
+  printf("[%s] -- types\n", allocator_type.c_str());
 
   // uncomment this to easily see the difference between result types
   // TODO: make this a helper function or something
@@ -249,7 +263,7 @@ void run_types_test() {
   //string ls = l.str(), rs = r.str();
   //fprintf(stderr, "%s vs %s\n", ls.c_str(), rs.c_str());
 
-  auto table = get_or_create_tree("test-table");
+  auto table = get_or_create_tree("test-table", allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -315,10 +329,10 @@ void run_types_test() {
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
-void run_incr_test() {
-  printf("-- incr\n");
+void run_incr_test(const string& allocator_type) {
+  printf("[%s] -- incr\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table");
+  auto table = get_or_create_tree("test-table", allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -395,8 +409,8 @@ void run_incr_test() {
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
-void run_concurrent_readers_test() {
-  printf("-- concurrent readers\n");
+void run_concurrent_readers_test(const string& allocator_type) {
+  printf("[%s] -- concurrent readers\n", allocator_type.c_str());
 
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
@@ -410,7 +424,7 @@ void run_concurrent_readers_test() {
 
   if (child_pids.count(0)) {
     // child process: try up to 3 seconds to get the key
-    auto table = get_or_create_tree("test-table");
+    auto table = get_or_create_tree("test-table", allocator_type);
 
     int64_t value = 100;
     uint64_t start_time = now();
@@ -429,7 +443,7 @@ void run_concurrent_readers_test() {
 
   } else {
     // parent process: write the key, then wait for children to terminate
-    auto table = get_or_create_tree("test-table");
+    auto table = get_or_create_tree("test-table", allocator_type);
 
     for (int64_t value = 100; value < 110; value++) {
       usleep(50000);
@@ -442,9 +456,11 @@ void run_concurrent_readers_test() {
     while ((exited_pid = wait(&exit_status)) != -1) {
       child_pids.erase(exited_pid);
       if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
-        printf("--   child %d terminated successfully\n", exited_pid);
+        printf("[%s] --   child %d terminated successfully\n",
+            allocator_type.c_str(), exited_pid);
       } else {
-        printf("--   child %d failed (%d)\n", exited_pid, exit_status);
+        printf("[%s] --   child %d failed (%d)\n", allocator_type.c_str(),
+            exited_pid, exit_status);
         num_failures++;
       }
     }
@@ -458,13 +474,16 @@ void run_concurrent_readers_test() {
 int main(int argc, char* argv[]) {
   int retcode = 0;
 
+  vector<string> allocator_types({"simple", "logarithmic"});
   try {
-    Pool::delete_pool("test-table");
-    run_basic_test();
-    run_reorganization_test();
-    run_types_test();
-    run_incr_test();
-    run_concurrent_readers_test();
+    for (const auto& allocator_type : allocator_types) {
+      Pool::delete_pool("test-table");
+      run_basic_test(allocator_type);
+      run_reorganization_test(allocator_type);
+      run_types_test(allocator_type);
+      run_incr_test(allocator_type);
+      run_concurrent_readers_test(allocator_type);
+    }
     printf("all tests passed\n");
 
   } catch (const exception& e) {

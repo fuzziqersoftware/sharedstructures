@@ -10,6 +10,7 @@
 #include "Pool.hh"
 #include "Allocator.hh"
 #include "SimpleAllocator.hh"
+#include "LogarithmicAllocator.hh"
 #include "HashTable.hh"
 #include "PrefixTree.hh"
 
@@ -31,6 +32,8 @@ static shared_ptr<sharedstructures::Allocator> sharedstructures_internal_get_all
   shared_ptr<sharedstructures::Allocator> allocator;
   if (!allocator_type || !strcmp(allocator_type, "simple")) {
     allocator.reset(new sharedstructures::SimpleAllocator(pool));
+  } else if (!strcmp(allocator_type, "logarithmic")) {
+    allocator.reset(new sharedstructures::LogarithmicAllocator(pool));
   } else {
     throw out_of_range("unknown allocator type");
   }
@@ -147,8 +150,8 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
   Py_ssize_t base_offset = 0;
   uint8_t bits = 8;
   const char* allocator_type = NULL;
-  if (!PyArg_ParseTuple(args, "s|nbs", &pool_name, &base_offset, &bits,
-      &allocator_type)) {
+  if (!PyArg_ParseTuple(args, "s|snbs", &pool_name, &allocator_type,
+      &base_offset, &bits)) {
     Py_DECREF(self);
     return NULL;
   }
@@ -536,8 +539,8 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
   const char* pool_name;
   Py_ssize_t base_offset = 0;
   const char* allocator_type = NULL;
-  if (!PyArg_ParseTuple(args, "s|ns", &pool_name, &base_offset,
-      &allocator_type)) {
+  if (!PyArg_ParseTuple(args, "s|sn", &pool_name, &allocator_type,
+      &base_offset)) {
     Py_DECREF(self);
     return NULL;
   }

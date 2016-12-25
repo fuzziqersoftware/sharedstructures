@@ -12,10 +12,23 @@
 
 #include "Pool.hh"
 #include "SimpleAllocator.hh"
+#include "LogarithmicAllocator.hh"
 #include "HashTable.hh"
 
 using namespace std;
 using namespace sharedstructures;
+
+
+shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
+    const string& allocator_type) {
+  if (allocator_type == "simple") {
+    return shared_ptr<Allocator>(new SimpleAllocator(pool));
+  }
+  if (allocator_type == "logarithmic") {
+    return shared_ptr<Allocator>(new LogarithmicAllocator(pool));
+  }
+  throw invalid_argument("unknown allocator type: " + allocator_type);
+}
 
 
 void expect_key_missing(const HashTable& table, const void* k,
@@ -37,11 +50,11 @@ void verify_state(
 }
 
 
-void run_basic_test() {
-  printf("-- basic\n");
+void run_basic_test(const string& allocator_type) {
+  printf("[%s] -- basic\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-table"));
-  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 6);
 
   unordered_map<string, string> expected;
@@ -80,13 +93,13 @@ void run_basic_test() {
 }
 
 
-void run_collision_test() {
-  printf("-- collision\n");
+void run_collision_test(const string& allocator_type) {
+  printf("[%s] -- collision\n", allocator_type.c_str());
 
   // writing 5 keys to a 4-slot hashtable forces a collision
 
   shared_ptr<Pool> pool(new Pool("test-table"));
-  shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+  shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 2);
 
   unordered_map<string, string> expected;
@@ -118,8 +131,8 @@ void run_collision_test() {
 }
 
 
-void run_concurrent_readers_test() {
-  printf("-- concurrent readers\n");
+void run_concurrent_readers_test(const string& allocator_type) {
+  printf("[%s] -- concurrent readers\n", allocator_type.c_str());
 
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
@@ -134,7 +147,7 @@ void run_concurrent_readers_test() {
   if (child_pids.count(0)) {
     // child process: try up to a second to get the key
     shared_ptr<Pool> pool(new Pool("test-table"));
-    shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+    shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);
 
     int64_t value = 100;
@@ -157,7 +170,7 @@ void run_concurrent_readers_test() {
   } else {
     // parent process: write the key, then wait for children to terminate
     shared_ptr<Pool> pool(new Pool("test-table"));
-    shared_ptr<Allocator> alloc(new SimpleAllocator(pool));
+    shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);
 
     for (int64_t value = 100; value < 110; value++) {
@@ -171,9 +184,11 @@ void run_concurrent_readers_test() {
     while ((exited_pid = wait(&exit_status)) != -1) {
       child_pids.erase(exited_pid);
       if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
-        printf("--   child %d terminated successfully\n", exited_pid);
+        printf("[%s] --   child %d terminated successfully\n",
+            allocator_type.c_str(), exited_pid);
       } else {
-        printf("--   child %d failed (%d)\n", exited_pid, exit_status);
+        printf("[%s] --   child %d failed (%d)\n", allocator_type.c_str(),
+            exited_pid, exit_status);
         num_failures++;
       }
     }
@@ -188,13 +203,16 @@ void run_concurrent_readers_test() {
 int main(int argc, char* argv[]) {
   int retcode = 0;
 
+  vector<string> allocator_types({"simple", "logarithmic"});
   try {
-    Pool::delete_pool("test-table");
-    run_basic_test();
-    Pool::delete_pool("test-table");
-    run_collision_test();
-    Pool::delete_pool("test-table");
-    run_concurrent_readers_test();
+    for (const string& allocator_type : allocator_types) {
+      Pool::delete_pool("test-table");
+      run_basic_test(allocator_type);
+      Pool::delete_pool("test-table");
+      run_collision_test(allocator_type);
+      Pool::delete_pool("test-table");
+      run_concurrent_readers_test(allocator_type);
+    }
     printf("all tests passed\n");
 
   } catch (const exception& e) {

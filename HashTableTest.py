@@ -24,11 +24,11 @@ def verify_state(expected, table):
     assert table[k] == v
 
 
-def run_basic_test():
-  print("-- basic")
+def run_basic_test(allocator_type):
+  print("[%s] -- basic" % allocator_type)
   before_lsof_count = len(get_current_process_lsof().splitlines())
 
-  table = sharedstructures.HashTable("test-table")
+  table = sharedstructures.HashTable("test-table", allocator_type)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -73,10 +73,10 @@ def run_basic_test():
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
-def run_collision_test():
-  print("-- collision")
+def run_collision_test(allocator_type):
+  print("[%s] -- collision" % allocator_type)
 
-  table = sharedstructures.HashTable("test-table", 0, 2)
+  table = sharedstructures.HashTable("test-table", allocator_type, 0, 2)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -105,10 +105,10 @@ def run_collision_test():
 
 
 # TODO: deduplicate this with PrefixTreeTest
-def run_concurrent_readers_test():
-  print('-- concurrent readers')
+def run_concurrent_readers_test(allocator_type):
+  print('[%s] -- concurrent readers' % allocator_type)
 
-  table = sharedstructures.HashTable('test-table')
+  table = sharedstructures.HashTable('test-table', allocator_type)
   del table
 
   child_pids = set()
@@ -117,7 +117,7 @@ def run_concurrent_readers_test():
 
   if 0 in child_pids:
     # child process: try up to a second to get the key
-    table = sharedstructures.HashTable('test-table')
+    table = sharedstructures.HashTable('test-table', allocator_type)
 
     value = 100
     start_time = int(time.time() * 1000000)
@@ -135,7 +135,7 @@ def run_concurrent_readers_test():
 
   else:
     # parent process: write the key, then wait for children to terminate
-    table = sharedstructures.HashTable('test-table')
+    table = sharedstructures.HashTable('test-table', allocator_type)
 
     for value in xrange(100, 110):
       time.sleep(0.05)
@@ -146,9 +146,9 @@ def run_concurrent_readers_test():
       pid, exit_status = os.wait()
       child_pids.remove(pid)
       if os.WIFEXITED(exit_status) and (os.WEXITSTATUS(exit_status) == 0):
-        print('--   child %d terminated successfully' % pid)
+        print('[%s] --   child %d terminated successfully' % (allocator_type, pid))
       else:
-        print('--   child %d failed (%d)' % (pid, exit_status))
+        print('[%s] --   child %d failed (%d)' % (allocator_type, pid, exit_status))
         num_failures += 1
 
     assert 0 == len(child_pids)
@@ -157,17 +157,18 @@ def run_concurrent_readers_test():
 
 def main():
   try:
-    sharedstructures.delete_pool('test-table')
-    run_basic_test()
-    sharedstructures.delete_pool('test-table')
-    run_collision_test()
-    sharedstructures.delete_pool('test-table')
-    run_concurrent_readers_test()
+    for allocator_type in ('simple', 'logarithmic'):
+      sharedstructures.delete_pool('test-table')
+      run_basic_test(allocator_type)
+      sharedstructures.delete_pool('test-table')
+      run_collision_test(allocator_type)
+      sharedstructures.delete_pool('test-table')
+      run_concurrent_readers_test(allocator_type)
     print('all tests passed')
     return 0
 
   finally:
-    pass #sharedstructures.delete_pool('test-table')
+    sharedstructures.delete_pool('test-table')
 
 
 if __name__ == '__main__':

@@ -22,6 +22,7 @@ SimpleAllocator::SimpleAllocator(std::shared_ptr<Pool> pool) : Allocator(pool) {
   }
 
   data->initialized = 1;
+  data->base_object_offset = 0;
   data->head = 0;
   data->tail = 0;
   data->bytes_allocated = 0;

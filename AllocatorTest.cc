@@ -13,6 +13,7 @@
 #include <phosg/UnitTest.hh>
 #include <string>
 
+#include "LogarithmicAllocator.hh"
 #include "SimpleAllocator.hh"
 
 using namespace std;
@@ -62,12 +63,15 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   if (allocator_type == "simple") {
     return shared_ptr<Allocator>(new SimpleAllocator(pool));
   }
+  if (allocator_type == "logarithmic") {
+    return shared_ptr<Allocator>(new LogarithmicAllocator(pool));
+  }
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
 
 
 void run_basic_test(const string& allocator_type) {
-  printf("-- basic\n");
+  printf("-- [%s] basic\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
@@ -102,16 +106,16 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(0, TestClass::instance_count);
 
   // allocate 128KB (this should cause an expansion)
-  off = alloc->allocate(1024 * 128);
+  off = alloc->allocate(1024 * 8);
   expect_ne(0, off);
-  expect_eq(1024 * 128, alloc->block_size(off));
-  expect_lt(1024 * 128, pool->size());
+  expect_eq(1024 * 8, alloc->block_size(off));
+  expect_lt(1024 * 8, pool->size());
   alloc->free(off);
-  expect_eq(1024 * 128 + 4096, pool->size());
+  expect_ge(pool->size(), 1024 * 8 + 4096);
 }
 
 void run_smart_pointer_test(const string& allocator_type) {
-  printf("-- smart pointer\n");
+  printf("-- [%s] smart pointer\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
@@ -148,7 +152,7 @@ void run_expansion_boundary_test_with_size(shared_ptr<Allocator>& alloc,
 }
 
 void run_expansion_boundary_test(const string& allocator_type) {
-  printf("-- expansion boundaries\n");
+  printf("-- [%s] expansion boundaries\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
@@ -158,11 +162,10 @@ void run_expansion_boundary_test(const string& allocator_type) {
   run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x10);
   run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x08);
   run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() + 0x00);
-  run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() + 0x08);
 }
 
 void run_lock_test(const string& allocator_type) {
-  printf("-- lock\n");
+  printf("-- [%s] lock\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
@@ -194,7 +197,7 @@ void run_lock_test(const string& allocator_type) {
 }
 
 void run_crash_test(const string& allocator_type) {
-  printf("-- crash\n");
+  printf("-- [%s] crash\n", allocator_type.c_str());
 
   uint64_t bytes_allocated;
   uint64_t bytes_free;
@@ -275,6 +278,7 @@ int main(int argc, char* argv[]) {
 
   vector<string> allocator_types({
     "simple",
+    "logarithmic",
   });
 
   try {
@@ -288,11 +292,14 @@ int main(int argc, char* argv[]) {
     }
     printf("all tests passed\n");
 
+    // only delete the pool if the tests pass; if they don't, we might want to
+    // examine its contents
+    Pool::delete_pool("test-pool");
+
   } catch (const exception& e) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  Pool::delete_pool("test-pool");
 
   return retcode;
 }
