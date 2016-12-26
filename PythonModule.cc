@@ -24,6 +24,12 @@ using LookupResult = sharedstructures::PrefixTree::LookupResult;
 // TODO: make sure long is supported everywhere int is supported
 
 
+static const char* sharedstructures_doc =
+"Dynamically-sized shared-memory data structure module.\n\
+\n\
+This module provides the HashTable and PrefixTree classes.";
+
+
 
 // helper functions
 
@@ -183,15 +189,46 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
 
 // HashTable, PrefixTree and PrefixTreeIterator definitions
 
+static const char* sharedstructures_HashTable_doc =
+"Shared-memory hash table object.\n\
+\n\
+sharedstructures.HashTable(pool_name[, allocator_type[, base_offset[, bits]]])\n\
+\n\
+Arguments:\n\
+- pool_name: the name of the shared-memory pool to operate on.\n\
+- allocator_type: 'simple' (default) or 'logarithmic' (see README.md).\n\
+- base_offset: if given, opens a HashTable at this offset within the pool. If\n\
+  not given, opens a HashTable at the pool's base offset. If the pool's base\n\
+  offset is 0, creates a new HashTable and sets the pool's base offset to the\n\
+  new HashTable's offset.\n\
+- bits: if a new HashTable is created, it will bave 2^bits buckets (default 8\n\
+  bits).";
+
 typedef struct {
   PyObject_HEAD
   shared_ptr<sharedstructures::HashTable> table;
 } sharedstructures_HashTable;
 
+static const char* sharedstructures_PrefixTree_doc =
+"Shared-memory prefix tree object.\n\
+\n\
+sharedstructures.PrefixTree(pool_name[, allocator_type[, base_offset]])\n\
+\n\
+Arguments:\n\
+- pool_name: the name of the shared-memory pool to operate on.\n\
+- allocator_type: 'simple' (default) or 'logarithmic' (see README.md).\n\
+- base_offset: if given, opens a PrefixTree at this offset within the pool. If\n\
+  not given, opens a PrefixTree at the pool's base offset. If the pool's base\n\
+  offset is 0, creates a new PrefixTree and sets the pool's base offset to the\n\
+  new PrefixTree's offset.";
+
 typedef struct {
   PyObject_HEAD
   shared_ptr<sharedstructures::PrefixTree> table;
 } sharedstructures_PrefixTree;
+
+static const char* sharedstructures_PrefixTreeIterator_doc =
+"Shared-memory prefix tree iterator.";
 
 typedef struct {
   PyObject_HEAD
@@ -218,7 +255,7 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
   Py_ssize_t base_offset = 0;
   uint8_t bits = 8;
   const char* allocator_type = NULL;
-  if (!PyArg_ParseTuple(args, "s|snbs", &pool_name, &allocator_type,
+  if (!PyArg_ParseTuple(args, "s|snb", &pool_name, &allocator_type,
       &base_offset, &bits)) {
     Py_DECREF(self);
     return NULL;
@@ -327,6 +364,9 @@ static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
       self->table->base(), py_self);
 }
 
+static const char* sharedstructures_HashTable_clear_doc =
+"Deletes all entries in the table.";
+
 static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
 
@@ -335,6 +375,20 @@ static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
   Py_INCREF(Py_None);
   return Py_None;
 }
+
+static const char* sharedstructures_HashTable_check_and_set_doc =
+"Conditionally sets a value if the check key\'s value matches the check value.\n\
+\n\
+HashTable.check_and_set(check_key, check_value, target_key[, target_value])\n\
+  -> bool\n\
+\n\
+Atomically checks if check_key exists and if its value matches check_value. If\n\
+so, sets target_key to target_value. If target_value is not given, deletes\n\
+target_key instead.\n\
+\n\
+Returns True if a set was performed or a key was deleted. Returns False if the\n\
+check fails, or if target_key was going to be deleted but it already didn't\n\
+exist.";
 
 static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
     PyObject* args) {
@@ -405,6 +459,18 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
   return ret;
 }
 
+static const char* sharedstructures_HashTable_check_missing_and_set_doc =
+"Conditionally sets a value if the check key does not exist.\n\
+\n\
+HashTable.check_missing_and_set(check_key, target_key[, target_value]) -> bool\n\
+\n\
+Atomically checks if check_key exists. If it doesn't exist, sets target_key to\n\
+target_value. If target_value is not given, deletes target_key instead.\n\
+\n\
+Returns True if a set was performed or a key was deleted. Returns False if the\n\
+check_key exists, or if target_key was going to be deleted but it already\n\
+didn't exist.";
+
 static PyObject* sharedstructures_HashTable_check_missing_and_set(
     PyObject* py_self, PyObject* args) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -452,20 +518,32 @@ static PyObject* sharedstructures_HashTable_check_missing_and_set(
   return ret;
 }
 
+static const char* sharedstructures_HashTable_bits_doc =
+"Returns the hash bucket count factor.";
+
 static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return PyInt_FromLong(self->table->bits());
 }
+
+static const char* sharedstructures_HashTable_pool_bytes_doc =
+"Returns the size of the underlying shared memory pool.";
 
 static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
 }
 
+static const char* sharedstructures_HashTable_pool_free_bytes_doc =
+"Returns the amount of free space in the underlying shared memory pool.";
+
 static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
 }
+
+static const char* sharedstructures_HashTable_pool_allocated_bytes_doc =
+"Returns the amount of allocated space in the underlying shared memory pool.";
 
 static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -474,19 +552,19 @@ static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_se
 
 static PyMethodDef sharedstructures_HashTable_methods[] = {
   {"pool_bytes", (PyCFunction)sharedstructures_HashTable_pool_bytes, METH_NOARGS,
-      "Returns the size of the underlying shared memory pool."},
+      sharedstructures_HashTable_pool_bytes_doc},
   {"pool_free_bytes", (PyCFunction)sharedstructures_HashTable_pool_free_bytes, METH_NOARGS,
-      "Returns the amount of free space in the underlying shared memory pool."},
+      sharedstructures_HashTable_pool_free_bytes_doc},
   {"pool_allocated_bytes", (PyCFunction)sharedstructures_HashTable_pool_allocated_bytes, METH_NOARGS,
-      "Returns the amount of allocated space (without overhead) in the underlying shared memory pool."},
+      sharedstructures_HashTable_pool_allocated_bytes_doc},
   {"check_and_set", (PyCFunction)sharedstructures_HashTable_check_and_set, METH_VARARGS,
-      "Conditionally sets a value if the check key\'s value matches the check value."},
+      sharedstructures_HashTable_check_and_set_doc},
   {"check_missing_and_set", (PyCFunction)sharedstructures_HashTable_check_missing_and_set, METH_VARARGS,
-      "Conditionally sets a value if the check key doesn\'t exist."},
+      sharedstructures_HashTable_check_missing_and_set_doc},
   {"clear", (PyCFunction)sharedstructures_HashTable_clear, METH_NOARGS,
-      "Deletes all entries in the table."},
+      sharedstructures_HashTable_clear_doc},
   {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS,
-      "Returns the hash bucket count factor."},
+      sharedstructures_HashTable_bits_doc},
   {NULL},
 };
 
@@ -531,14 +609,14 @@ static PyTypeObject sharedstructures_HashTableType = {
    0,                                               // tp_setattro
    0,                                               // tp_as_buffer
    Py_TPFLAGS_DEFAULT,                              // tp_flag
-   "TODO: write dox",                               // tp_doc
+   sharedstructures_HashTable_doc,                  // tp_doc
    0,                                               // tp_traverse
    0,                                               // tp_clear
    0,                                               // tp_richcompare
    0,                                               // tp_weaklistoffset
    0,                                               // tp_iter
    0,                                               // tp_iternext
-   sharedstructures_HashTable_methods,             // tp_methods
+   sharedstructures_HashTable_methods,              // tp_methods
    0,                                               // tp_members
    0,                                               // tp_getset
    0,                                               // tp_base
@@ -692,7 +770,7 @@ static PyTypeObject sharedstructures_PrefixTreeIteratorType = {
    0,                                                       // tp_setattro
    0,                                                       // tp_as_buffer
    Py_TPFLAGS_DEFAULT,                                      // tp_flag
-   "TODO: write dox",                                       // tp_doc
+   sharedstructures_PrefixTreeIterator_doc,                 // tp_doc
    0,                                                       // tp_traverse
    0,                                                       // tp_clear
    0,                                                       // tp_richcompare
@@ -914,6 +992,9 @@ static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
       self->table->base(), py_self);
 }
 
+static const char* sharedstructures_PrefixTree_clear_doc =
+"Deletes all entries in the table.";
+
 static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
 
@@ -922,6 +1003,16 @@ static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
   Py_INCREF(Py_None);
   return Py_None;
 }
+
+static const char* sharedstructures_PrefixTree_incr_doc =
+"Atomically increments a numeric key's value.\n\
+\n\
+PrefixTree.incr(key, delta) -> int or float\n\
+\n\
+delta must match the type of key's value (incr can't increment an int by a float\n\
+or vice-versa). If the key doesn't exist, creates it with the value of delta.\n\
+\n\
+Returns the value of the key after the operation.";
 
 static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
     PyObject* args) {
@@ -994,6 +1085,20 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
   return NULL;
 }
 
+static const char* sharedstructures_PrefixTree_check_and_set_doc =
+"Conditionally sets a value if the check key\'s value matches the check value.\n\
+\n\
+PrefixTree.check_and_set(check_key, check_value, target_key[, target_value])\n\
+  -> bool\n\
+\n\
+Atomically checks if check_key exists and if its value matches check_value. If\n\
+so, sets target_key to target_value. If target_value is not given, deletes\n\
+target_key instead.\n\
+\n\
+Returns True if a set was performed or a key was deleted. Returns False if the\n\
+check fails, or if target_key was going to be deleted but it already didn't\n\
+exist.";
+
 static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
     PyObject* args) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1028,6 +1133,18 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
   Py_INCREF(ret);
   return ret;
 }
+
+static const char* sharedstructures_PrefixTree_check_missing_and_set_doc =
+"Conditionally sets a value if the check key does not exist.\n\
+\n\
+PrefixTree.check_missing_and_set(check_key, target_key[, target_value]) -> bool\n\
+\n\
+Atomically checks if check_key exists. If it doesn't exist, sets target_key to\n\
+target_value. If target_value is not given, deletes target_key instead.\n\
+\n\
+Returns True if a set was performed or a key was deleted. Returns False if the\n\
+check_key exists, or if target_key was going to be deleted but it already\n\
+didn't exist.";
 
 static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
     PyObject* py_self, PyObject* args) {
@@ -1080,13 +1197,22 @@ static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
   return it;
 }
 
+static const char* sharedstructures_PrefixTree_iterkeys_doc =
+"Returns an iterator over all keys in the table.";
+
 static PyObject* sharedstructures_PrefixTree_iterkeys(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, false);
 }
 
+static const char* sharedstructures_PrefixTree_itervalues_doc =
+"Returns an iterator over all values in the table.";
+
 static PyObject* sharedstructures_PrefixTree_itervalues(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, false, true);
 }
+
+static const char* sharedstructures_PrefixTree_iteritems_doc =
+"Returns an iterator over all key/value pairs in the table.";
 
 static PyObject* sharedstructures_PrefixTree_iteritems(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, true);
@@ -1096,15 +1222,24 @@ static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
   return sharedstructures_PrefixTree_iterkeys(py_self);
 }
 
+static const char* sharedstructures_PrefixTree_pool_bytes_doc =
+"Returns the size of the underlying shared memory pool.";
+
 static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
   return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
 }
 
+static const char* sharedstructures_PrefixTree_pool_free_bytes_doc =
+"Returns the amount of free space in the underlying shared memory pool.";
+
 static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
   return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
 }
+
+static const char* sharedstructures_PrefixTree_pool_allocated_bytes_doc =
+"Returns the amount of allocated space in the underlying shared memory pool.";
 
 static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1113,25 +1248,25 @@ static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_s
 
 static PyMethodDef sharedstructures_PrefixTree_methods[] = {
   {"pool_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_bytes, METH_NOARGS,
-      "Returns the size of the underlying shared memory pool."},
+      sharedstructures_PrefixTree_pool_bytes_doc},
   {"pool_free_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_free_bytes, METH_NOARGS,
-      "Returns the amount of free space in the underlying shared memory pool."},
+      sharedstructures_PrefixTree_pool_free_bytes_doc},
   {"pool_allocated_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_allocated_bytes, METH_NOARGS,
-      "Returns the amount of allocated space (without overhead) in the underlying shared memory pool."},
+      sharedstructures_PrefixTree_pool_allocated_bytes_doc},
   {"incr", (PyCFunction)sharedstructures_PrefixTree_incr, METH_VARARGS,
-      "Atomically increments an int or float value."},
+      sharedstructures_PrefixTree_incr_doc},
   {"check_and_set", (PyCFunction)sharedstructures_PrefixTree_check_and_set, METH_VARARGS,
-      "Conditionally sets a value if the check key\'s value matches the check value."},
+      sharedstructures_PrefixTree_check_and_set_doc},
   {"check_missing_and_set", (PyCFunction)sharedstructures_PrefixTree_check_missing_and_set, METH_VARARGS,
-      "Conditionally sets a value if the check key doesn\'t exist."},
+      sharedstructures_PrefixTree_check_missing_and_set_doc},
   {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS,
-      "Deletes all entries in the table."},
+      sharedstructures_PrefixTree_clear_doc},
   {"iterkeys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,
-      "Returns an iterator over all keys in the table."},
+      sharedstructures_PrefixTree_iterkeys_doc},
   {"itervalues", (PyCFunction)sharedstructures_PrefixTree_itervalues, METH_NOARGS,
-      "Returns an iterator over all values in the table."},
+      sharedstructures_PrefixTree_itervalues_doc},
   {"iteritems", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
-      "Returns an iterator over all key/value pairs in the table."},
+      sharedstructures_PrefixTree_iteritems_doc},
   {NULL},
 };
 
@@ -1176,7 +1311,7 @@ static PyTypeObject sharedstructures_PrefixTreeType = {
    0,                                               // tp_setattro
    0,                                               // tp_as_buffer
    Py_TPFLAGS_DEFAULT,                              // tp_flag
-   "TODO: write dox",                               // tp_doc
+   sharedstructures_PrefixTree_doc,                 // tp_doc
    0,                                               // tp_traverse
    0,                                               // tp_clear
    0,                                               // tp_richcompare
@@ -1247,7 +1382,7 @@ PyMODINIT_FUNC initsharedstructures() {
   }
 
   PyObject* m = Py_InitModule3("sharedstructures", sharedstructures_methods,
-      "TODO: write dox");
+      sharedstructures_doc);
 
   Py_INCREF(&sharedstructures_HashTableType);
   PyModule_AddObject(m, "HashTable", (PyObject*)&sharedstructures_HashTableType);
