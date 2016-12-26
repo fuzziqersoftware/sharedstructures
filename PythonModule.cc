@@ -169,6 +169,7 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
     char* data;
     Py_ssize_t size;
     if (PyString_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
+      Py_DECREF(marshalled_obj);
       throw runtime_error("failed to convert python object to LookupResult");
     }
     res.as_string.append(data, size);
@@ -308,6 +309,7 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
     char* data;
     Py_ssize_t size;
     if (PyString_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
+      Py_DECREF(marshalled_obj);
       return -1;
     }
     self->table->insert(k.first, k.second, data, size);
@@ -332,6 +334,122 @@ static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
 
   Py_INCREF(Py_None);
   return Py_None;
+}
+
+static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
+
+  char* check_key;
+  Py_ssize_t check_key_size;
+  PyObject* check_value_object;
+  char* target_key;
+  Py_ssize_t target_key_size;
+  PyObject* target_value_object = NULL;
+  if (!PyArg_ParseTuple(args, "s#Os#|O", &check_key, &check_key_size,
+      &check_value_object, &target_key, &target_key_size,
+      &target_value_object)) {
+    return NULL;
+  }
+
+  PyObject* marshalled_check_value_obj = PyMarshal_WriteObjectToString(
+      check_value_object, Py_MARSHAL_VERSION);
+  if (!marshalled_check_value_obj) {
+    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+    // here we assume it does
+    return NULL;
+  }
+  char* marshalled_check_value_data;
+  Py_ssize_t marshalled_check_value_size;
+  if (PyString_AsStringAndSize(marshalled_check_value_obj,
+      &marshalled_check_value_data, &marshalled_check_value_size) == -1) {
+    Py_DECREF(marshalled_check_value_obj);
+    return NULL;
+  }
+
+  sharedstructures::HashTable::CheckRequest check(check_key, check_key_size,
+      marshalled_check_value_data, marshalled_check_value_size);
+
+  bool written;
+  if (target_value_object) {
+
+    PyObject* marshalled_target_value_obj = PyMarshal_WriteObjectToString(
+        target_value_object, Py_MARSHAL_VERSION);
+    if (!marshalled_target_value_obj) {
+      // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+      // here we assume it does
+      Py_DECREF(marshalled_check_value_obj);
+      return NULL;
+    }
+    char* marshalled_target_value_data;
+    Py_ssize_t marshalled_target_value_size;
+    if (PyString_AsStringAndSize(marshalled_target_value_obj,
+        &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
+      Py_DECREF(marshalled_check_value_obj);
+      Py_DECREF(marshalled_target_value_obj);
+      return NULL;
+    }
+
+    written = self->table->insert(target_key, target_key_size,
+        marshalled_target_value_data, marshalled_target_value_size, &check);
+    Py_DECREF(marshalled_target_value_obj);
+
+  } else {
+    written = self->table->erase(target_key, target_key_size, &check);
+  }
+
+  Py_DECREF(marshalled_check_value_obj);
+
+  PyObject* ret = written ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
+static PyObject* sharedstructures_HashTable_check_missing_and_set(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
+
+  char* check_key;
+  Py_ssize_t check_key_size;
+  char* target_key;
+  Py_ssize_t target_key_size;
+  PyObject* target_value_object = NULL;
+  if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
+      &target_key, &target_key_size, &target_value_object)) {
+    return NULL;
+  }
+
+  sharedstructures::HashTable::CheckRequest check(check_key, check_key_size);
+
+  bool written;
+  if (target_value_object) {
+
+    PyObject* marshalled_target_value_obj = PyMarshal_WriteObjectToString(
+        target_value_object, Py_MARSHAL_VERSION);
+    if (!marshalled_target_value_obj) {
+      // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+      // here we assume it does
+      return NULL;
+    }
+    char* marshalled_target_value_data;
+    Py_ssize_t marshalled_target_value_size;
+    if (PyString_AsStringAndSize(marshalled_target_value_obj,
+        &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
+      Py_DECREF(marshalled_target_value_obj);
+      return NULL;
+    }
+
+    written = self->table->insert(target_key, target_key_size,
+        marshalled_target_value_data, marshalled_target_value_size, &check);
+    Py_DECREF(marshalled_target_value_obj);
+
+  } else {
+    written = self->table->erase(target_key, target_key_size, &check);
+  }
+
+  PyObject* ret = written ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
 }
 
 static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
@@ -361,6 +479,10 @@ static PyMethodDef sharedstructures_HashTable_methods[] = {
       "Returns the amount of free space in the underlying shared memory pool."},
   {"pool_allocated_bytes", (PyCFunction)sharedstructures_HashTable_pool_allocated_bytes, METH_NOARGS,
       "Returns the amount of allocated space (without overhead) in the underlying shared memory pool."},
+  {"check_and_set", (PyCFunction)sharedstructures_HashTable_check_and_set, METH_VARARGS,
+      "Conditionally sets a value if the check key\'s value matches the check value."},
+  {"check_missing_and_set", (PyCFunction)sharedstructures_HashTable_check_missing_and_set, METH_VARARGS,
+      "Conditionally sets a value if the check key doesn\'t exist."},
   {"clear", (PyCFunction)sharedstructures_HashTable_clear, METH_NOARGS,
       "Deletes all entries in the table."},
   {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS,
@@ -872,39 +994,6 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
   return NULL;
 }
 
-static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
-    PyObject* py_self, PyObject* args) {
-  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-
-  char* check_key;
-  Py_ssize_t check_key_size;
-  char* target_key;
-  Py_ssize_t target_key_size;
-  PyObject* target_value_object = NULL;
-  if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
-      &target_key, &target_key_size, &target_value_object)) {
-    return NULL;
-  }
-
-  bool written;
-  try {
-    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size,
-        ResultValueType::Missing);
-    if (target_value_object) {
-      auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
-      written = self->table->insert(target_key, target_key_size, target_value, &check);
-    } else {
-      written = self->table->erase(target_key, target_key_size, &check);
-    }
-  } catch (const runtime_error& e) {
-    return NULL;
-  }
-
-  PyObject* ret = written ? Py_True : Py_False;
-  Py_INCREF(ret);
-  return ret;
-}
-
 static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
     PyObject* args) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -925,6 +1014,39 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
   try {
     sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size);
     check.value = sharedstructures_internal_get_result_for_python_object(check_value_object);
+    if (target_value_object) {
+      auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
+      written = self->table->insert(target_key, target_key_size, target_value, &check);
+    } else {
+      written = self->table->erase(target_key, target_key_size, &check);
+    }
+  } catch (const runtime_error& e) {
+    return NULL;
+  }
+
+  PyObject* ret = written ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
+static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+
+  char* check_key;
+  Py_ssize_t check_key_size;
+  char* target_key;
+  Py_ssize_t target_key_size;
+  PyObject* target_value_object = NULL;
+  if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
+      &target_key, &target_key_size, &target_value_object)) {
+    return NULL;
+  }
+
+  bool written;
+  try {
+    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size,
+        ResultValueType::Missing);
     if (target_value_object) {
       auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
       written = self->table->insert(target_key, target_key_size, target_value, &check);

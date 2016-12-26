@@ -131,6 +131,82 @@ void run_collision_test(const string& allocator_type) {
 }
 
 
+void run_conditional_writes_test(const string& allocator_type) {
+  printf("[%s] -- conditional writes\n", allocator_type.c_str());
+
+  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
+  HashTable table(alloc, 0, 6);
+
+  size_t initial_pool_allocated = table.get_allocator()->bytes_allocated();
+  expect_eq(0, table.size());
+
+  expect_eq(true, table.insert("key1", 4, "value1", 6));
+  expect_eq(true, table.insert("key2", 4, "value2", 6));
+
+  // check that conditions on the same key work
+  {
+    HashTable::CheckRequest check("key1", 4, "value2", 6);
+    expect_eq(false, table.insert("key1", 4, "value1_1", 8, &check));
+    expect_eq("value1", table.at("key1", 4));
+
+    check.value = "value1";
+    expect_eq(true, table.insert("key1", 4, "value1_1", 8, &check));
+    expect_eq("value1_1", table.at("key1", 4));
+  }
+
+  // check that conditions on other keys work
+  {
+    HashTable::CheckRequest check("key2", 4, "value1");
+    expect_eq(false, table.insert("key1", 4, "value1", 6, &check));
+    expect_eq("value1_1", table.at("key1", 4));
+
+    check.value = "value2";
+    expect_eq(true, table.insert("key1", 4, "value1", 6, &check));
+    expect_eq("value1", table.at("key1", 4));
+  }
+
+  // check that missing conditions work
+  {
+    HashTable::CheckRequest check("key2", 4);
+    expect_eq(false, table.insert("key3", 4, "value3", 6, &check));
+    expect_eq(false, table.exists("key3", 4));
+  }
+  {
+    HashTable::CheckRequest check("key3", 4);
+    expect_eq(true, table.insert("key3", 4, "value3", 6, &check));
+    expect_eq("value3", table.at("key3", 4));
+  }
+
+  // check that conditional deletes work
+  {
+    HashTable::CheckRequest check("key1", 4, "value2", 6);
+    expect_eq(false, table.erase("key1", 4, &check));
+    expect_eq("value1", table.at("key1", 4));
+
+    check.value = "value1";
+    expect_eq(true, table.erase("key1", 4, &check));
+    expect_eq(false, table.exists("key1", 4));
+  }
+
+  {
+    HashTable::CheckRequest check("key3", 4);
+    expect_eq(false, table.erase("key2", 4, &check));
+    expect_eq("value2", table.at("key2", 4));
+  }
+  {
+    HashTable::CheckRequest check("key1", 4);
+    expect_eq(true, table.erase("key2", 4, &check));
+    expect_eq(false, table.exists("key2", 4));
+  }
+  expect_eq(true, table.erase("key3", 4));
+
+  // the empty table should not leak any allocated memory
+  expect_eq(0, table.size());
+  expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
+}
+
+
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("[%s] -- concurrent readers\n", allocator_type.c_str());
 
@@ -208,6 +284,8 @@ int main(int argc, char* argv[]) {
     for (const string& allocator_type : allocator_types) {
       Pool::delete_pool("test-table");
       run_basic_test(allocator_type);
+      Pool::delete_pool("test-table");
+      run_conditional_writes_test(allocator_type);
       Pool::delete_pool("test-table");
       run_collision_test(allocator_type);
       Pool::delete_pool("test-table");

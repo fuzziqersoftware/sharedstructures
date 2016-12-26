@@ -73,6 +73,91 @@ def run_basic_test(allocator_type):
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
+def run_conditional_writes_test(allocator_type):
+  print("[%s] -- conditional writes" % allocator_type)
+
+  table = sharedstructures.HashTable("test-table", allocator_type)
+  expected = {}
+
+  def insert_both(e, t, k, v):
+    t[k] = v
+    e[k] = v
+
+  def delete_both(e, t, k):
+    del t[k]
+    del e[k]
+
+  def conditional_insert_both(e, t, check_k, check_v, target_k, target_v,
+      written):
+    if t.check_and_set(check_k, check_v, target_k, target_v):
+      e[target_k] = target_v
+      assert written
+    else:
+      assert not written
+
+  def conditional_missing_insert_both(e, t, check_k, target_k, target_v,
+      written):
+    if t.check_missing_and_set(check_k, target_k, target_v):
+      e[target_k] = target_v
+      assert written
+    else:
+      assert not written
+
+  def conditional_delete_both(e, t, check_k, check_v, target_k, written):
+    if t.check_and_set(check_k, check_v, target_k):
+      del e[target_k]
+      assert written
+    else:
+      assert not written
+
+  def conditional_missing_delete_both(e, t, check_k, target_k, written):
+    if t.check_missing_and_set(check_k, target_k):
+      del e[target_k]
+      assert written
+    else:
+      assert not written
+
+  verify_state(expected, table)
+
+  insert_both(expected, table, "key1", "value1")
+  verify_state(expected, table)
+  insert_both(expected, table, "key2", "value2")
+  verify_state(expected, table)
+
+  # check that conditions on the same key work
+  conditional_insert_both(expected, table, "key1", "value2", "key1", "value1_1", False)
+  verify_state(expected, table)
+  conditional_insert_both(expected, table, "key1", "value1", "key1", "value1_1", True)
+  verify_state(expected, table)
+
+  # check that conditions on other keys work
+  conditional_insert_both(expected, table, "key2", "value1", "key1", "value1", False)
+  verify_state(expected, table)
+  conditional_insert_both(expected, table, "key2", "value2", "key1", "value1", True)
+  verify_state(expected, table)
+
+  # check that missing conditions work
+  conditional_missing_insert_both(expected, table, "key2", "key3", "value3", False)
+  verify_state(expected, table)
+  conditional_missing_insert_both(expected, table, "key3", "key3", "value3", True)
+  verify_state(expected, table)
+
+  # check that conditional deletes work
+  conditional_delete_both(expected, table, "key1", "value2", "key1", False)
+  verify_state(expected, table)
+  conditional_delete_both(expected, table, "key1", "value1", "key1", True)
+  verify_state(expected, table)
+
+  conditional_missing_delete_both(expected, table, "key3", "key2", False)
+  verify_state(expected, table)
+  conditional_missing_delete_both(expected, table, "key1", "key2", True)
+  verify_state(expected, table)
+
+  delete_both(expected, table, "key3")
+
+  assert expected == {}
+
+
 def run_collision_test(allocator_type):
   print("[%s] -- collision" % allocator_type)
 
@@ -160,6 +245,8 @@ def main():
     for allocator_type in ('simple', 'logarithmic'):
       sharedstructures.delete_pool('test-table')
       run_basic_test(allocator_type)
+      sharedstructures.delete_pool('test-table')
+      run_conditional_writes_test(allocator_type)
       sharedstructures.delete_pool('test-table')
       run_collision_test(allocator_type)
       sharedstructures.delete_pool('test-table')

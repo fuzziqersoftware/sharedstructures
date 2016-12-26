@@ -111,7 +111,7 @@ def run_conditional_writes_test(allocator_type):
     else:
       assert not written
 
-  def conditional_missing_delete_both(e, t, target_k, check_k, written):
+  def conditional_missing_delete_both(e, t, check_k, target_k, written):
     if t.check_missing_and_set(check_k, target_k):
       del e[target_k]
       assert written

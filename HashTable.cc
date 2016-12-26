@@ -56,11 +56,35 @@ uint64_t HashTable::base() const {
 }
 
 
-void HashTable::insert(const void* k, size_t k_size, const void* v,
-    size_t v_size) {
+HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size,
+    const void* value, size_t value_size) : key(key), key_size(key_size),
+    value(value), value_size(value_size),
+    key_hash(fnv1a64(this->key, this->key_size)) { }
+HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size,
+    const std::string& value) :
+    CheckRequest(key, key_size, value.data(), value.size()) { }
+HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size) :
+    CheckRequest(key, key_size, NULL, 0) { }
+HashTable::CheckRequest::CheckRequest(const std::string& key, const void* value,
+    size_t value_size) :
+    CheckRequest(key.data(), key.size(), value, value_size) { }
+HashTable::CheckRequest::CheckRequest(const std::string& key,
+    const std::string& value) :
+    CheckRequest(key.data(), key.size(), value.data(), value.size()) { }
+HashTable::CheckRequest::CheckRequest(const std::string& key) :
+    CheckRequest(key.data(), key.size(), NULL, 0) { }
+
+
+bool HashTable::insert(const void* k, size_t k_size, const void* v,
+    size_t v_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
   auto g = this->allocator->lock();
+
+  if (check && !this->execute_check(*check)) {
+    return false;
+  }
+
   auto p = this->allocator->get_pool();
 
   // create the new key-value pair and copy the data in
@@ -149,24 +173,34 @@ void HashTable::insert(const void* k, size_t k_size, const void* v,
       }
     }
   }
+
+  return true;
 }
 
-void HashTable::insert(const void* k, size_t k_size, const string& v) {
-  this->insert(k, k_size, v.data(), v.size());
+bool HashTable::insert(const void* k, size_t k_size, const string& v,
+    const CheckRequest* check) {
+  return this->insert(k, k_size, v.data(), v.size(), check);
 }
 
-void HashTable::insert(const string& k, const void* v, size_t v_size) {
-  this->insert(k.data(), k.size(), v, v_size);
+bool HashTable::insert(const string& k, const void* v, size_t v_size,
+    const CheckRequest* check) {
+  return this->insert(k.data(), k.size(), v, v_size, check);
 }
 
-void HashTable::insert(const string& k, const string& v) {
-  this->insert(k.data(), k.size(), v.data(), v.size());
+bool HashTable::insert(const string& k, const string& v,
+    const CheckRequest* check) {
+  return this->insert(k.data(), k.size(), v.data(), v.size(), check);
 }
 
-bool HashTable::erase(const void* k, size_t k_size) {
+bool HashTable::erase(const void* k, size_t k_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
   auto g = this->allocator->lock();
+
+  if (check && !this->execute_check(*check)) {
+    return false;
+  }
+
   auto p = this->allocator->get_pool();
 
   uint64_t deleted_offset = 0;
@@ -245,8 +279,8 @@ bool HashTable::erase(const void* k, size_t k_size) {
   return (deleted_offset != 0);
 }
 
-bool HashTable::erase(const std::string& k) {
-  return this->erase(k.data(), k.size());
+bool HashTable::erase(const std::string& k, const CheckRequest* check) {
+  return this->erase(k.data(), k.size(), check);
 }
 
 
@@ -480,6 +514,22 @@ pair<uint64_t, uint64_t> HashTable::walk_tables(const void* k, size_t k_size,
   }
 
   return make_pair(0, 0);
+}
+
+
+bool HashTable::execute_check(const CheckRequest& check) const {
+  auto walk_ret = this->walk_tables(check.key, check.key_size, check.key_hash);
+
+  if (walk_ret.first) {
+    if (!check.value || (check.value_size != walk_ret.second)) {
+      return false;
+    }
+    const char* data = this->allocator->get_pool()->at<char>(walk_ret.first);
+    return !memcmp(data, check.value, check.value_size);
+
+  } else {
+    return (check.value == NULL);
+  }
 }
 
 } // namespace sharedstructures

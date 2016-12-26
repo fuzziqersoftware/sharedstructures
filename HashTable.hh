@@ -33,15 +33,39 @@ public:
   // to open it again later.
   uint64_t base() const;
 
+  // to do a conditional write, instantiate one of these and pass it to insert()
+  // or erase(). don't modify the key or key_size members of one of these
+  // objects after constructing it.
+  struct CheckRequest {
+    const void* key;
+    size_t key_size;
+    const void* value;
+    size_t value_size;
+
+    uint64_t key_hash;
+
+    CheckRequest() = delete;
+    CheckRequest(const void* key, size_t key_size, const void* value, size_t value_size);
+    CheckRequest(const void* key, size_t key_size, const std::string& value);
+    CheckRequest(const void* key, size_t key_size); // checks for missing
+    CheckRequest(const std::string& key, const void* value, size_t value_size);
+    CheckRequest(const std::string& key, const std::string& value);
+    CheckRequest(const std::string& key); // checks for missing
+  };
+
   // inserts/overwrites a key with a string value.
-  void insert(const void* k, size_t k_size, const void* v, size_t v_size);
-  void insert(const void* k, size_t k_size, const std::string& v);
-  void insert(const std::string& k, const void* v, size_t v_size);
-  void insert(const std::string& k, const std::string& v);
+  bool insert(const void* k, size_t k_size, const void* v, size_t v_size,
+      const CheckRequest* check = NULL);
+  bool insert(const void* k, size_t k_size, const std::string& v,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const void* v, size_t v_size,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const std::string& v,
+      const CheckRequest* check = NULL);
 
   // deletes a key.
-  bool erase(const void* k, size_t k_size);
-  bool erase(const std::string& k);
+  bool erase(const void* k, size_t k_size, const CheckRequest* check = NULL);
+  bool erase(const std::string& k, const CheckRequest* check = NULL);
 
   // deletes all the keys in the hash table.
   void clear();
@@ -93,6 +117,8 @@ private:
       const void* k, size_t k_size) const;
   std::pair<uint64_t, uint64_t> walk_tables(const void* k, size_t k_size,
       uint64_t hash) const;
+
+  bool execute_check(const CheckRequest& check) const;
 };
 
 } // namespace sharedstructures
