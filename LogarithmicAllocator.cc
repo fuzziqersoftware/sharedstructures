@@ -1,6 +1,9 @@
+#define _STDC_FORMAT_MACROS
+
 #include "LogarithmicAllocator.hh"
 
 #include <assert.h>
+#include <inttypes.h>
 #include <stddef.h>
 
 #include <phosg/Strings.hh>
@@ -218,14 +221,12 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   // gggggggghhhhhhhhiiiiiiiijjjjjjjjkkkkkkkkllllllll mmmmmmmmnnnnnnnn...
   // ooooppppqqqqrrrrssssttttuuuuvvvvwwwwxxxxyyyyzzzz AAAABBBBCCCCDDDD...
   // EEFFGGHHIIJJKKLLMMNNOOPPQQRRSSTTUUVVWWXXYYZZ1122 3344556677889900...
-  uint64_t allocated_block_offset, target_pool_size;
+  uint64_t allocated_block_offset;
   if (block_offset >= original_size) {
     allocated_block_offset = original_size & (~(order_size - 1));
-    target_pool_size = allocated_block_offset + order_size;
   } else {
     allocated_block_offset = (original_size & (~(order_size - 1))) +
         size_for_order(needed_order);
-    target_pool_size = allocated_block_offset + order_size;
   }
 
   // expand the pool before making any changes (this is important because
@@ -554,7 +555,8 @@ void LogarithmicAllocator::repair() {
 void LogarithmicAllocator::print(FILE* stream) const {
   auto data = this->data();
 
-  fprintf(stream, "LogarithmicAllocator: size=%llX init=%hhX base=%llX alloc=%llX commit=%llX\n",
+  fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu8
+      " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
       data->size.load(), data->initialized.load(), data->base_object_offset.load(),
       data->bytes_allocated.load(), data->bytes_committed.load());
   for (int x = 0; x < Data::maximum_order - Data::minimum_order; x++) {
@@ -563,7 +565,7 @@ void LogarithmicAllocator::print(FILE* stream) const {
     if (!head && !tail) {
       continue;
     }
-    fprintf(stream, "  Order %d: head=%llX tail=%llX\n",
+    fprintf(stream, "  Order %d: head=%" PRIX64 " tail=%" PRIX64 "\n",
         x + Data::minimum_order, head, tail);
   }
 
@@ -571,12 +573,13 @@ void LogarithmicAllocator::print(FILE* stream) const {
   while (offset < data->size) {
     Block* block = this->pool->at<Block>(offset);
     if (block->allocated.allocated()) {
-      fprintf(stream, "  Block-A %llX: size=%llX\n", offset,
+      fprintf(stream, "  Block-A %" PRIX64 ": size=%" PRIX64 "\n", offset,
           block->allocated.size());
       offset += size_for_order(order_for_size(block->allocated.size() + sizeof(AllocatedBlock)));
     } else {
       uint64_t block_size = size_for_order(block->free.order());
-      fprintf(stream, "  Block-F %llX: prev=%llX next=%llX order=%hhd size=%llX\n",
+      fprintf(stream, "  Block-F %" PRIX64 ": prev=%" PRIX64 " next=%" PRIX64
+          " order=%" PRIu8 " size=%" PRIX64 "\n",
           offset, block->free.prev(), block->free.next, block->free.order(),
           block_size);
       offset += block_size;

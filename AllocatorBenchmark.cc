@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <algorithm>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
