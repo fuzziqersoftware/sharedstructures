@@ -53,6 +53,7 @@ public:
     double as_double;
     bool as_bool;
 
+    LookupResult(ResultValueType t); // Missing (this is never returned by at())
     LookupResult(); // Null
     LookupResult(bool b); // Bool
     LookupResult(int64_t i); // Int
@@ -67,34 +68,62 @@ public:
     std::string str() const;
   };
 
+  // to do a check-and-set, instantiate one of these and pass it to insert() or
+  // erase()
+  struct CheckRequest {
+    const void* key;
+    size_t key_size;
+    LookupResult value;
+
+    CheckRequest();
+
+    // there's no std::string variant of this because it would ambiguate two
+    // cases: (const char*, size_t) and (const string&, int64_t); just pass
+    // s.data() and s.size() instead
+    template <typename... Args>
+    CheckRequest(const void* key, size_t key_size, Args... args) :
+        key(key), key_size(key_size), value(std::forward<Args>(args)...) { }
+  };
+
   // inserts/overwrites a key with a string value.
-  void insert(const void* k, size_t k_size, const void* v, size_t v_size);
-  void insert(const void* k, size_t k_size, const std::string& v);
-  void insert(const std::string& k, const void* v, size_t v_size);
-  void insert(const std::string& k, const std::string& v);
-  void insert(const void* k, size_t k_size, const struct iovec *iov,
-      size_t iovcnt);
-  void insert(const std::string& k, const struct iovec *iov, size_t iovcnt);
+  bool insert(const void* k, size_t k_size, const void* v, size_t v_size,
+      const CheckRequest* check = NULL);
+  bool insert(const void* k, size_t k_size, const std::string& v,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const void* v, size_t v_size,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const std::string& v,
+      const CheckRequest* check = NULL);
+  bool insert(const void* k, size_t k_size, const struct iovec *iov,
+      size_t iovcnt, const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const struct iovec *iov, size_t iovcnt,
+      const CheckRequest* check = NULL);
 
   // inserts/overwrites a key with an integer value.
-  void insert(const void* k, size_t k_size, int64_t v);
-  void insert(const std::string& k, int64_t v);
+  bool insert(const void* k, size_t k_size, int64_t v,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, int64_t v,
+      const CheckRequest* check = NULL);
 
   // inserts/overwrites a key with a floating-point value.
-  void insert(const void* k, size_t k_size, double v);
-  void insert(const std::string& k, double v);
+  bool insert(const void* k, size_t k_size, double v,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, double v, const CheckRequest* check = NULL);
 
   // inserts/overwrites a key with a boolean value.
-  void insert(const void* k, size_t k_size, bool v);
-  void insert(const std::string& k, bool v);
+  bool insert(const void* k, size_t k_size, bool v,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, bool v, const CheckRequest* check = NULL);
 
   // inserts/overwrites a key with a null value.
-  void insert(const void* k, size_t k_size);
-  void insert(const std::string& k);
+  bool insert(const void* k, size_t k_size, const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const CheckRequest* check = NULL);
 
   // inserts/overwrites a key with the result of a previous lookup.
-  void insert(const void* k, size_t k_size, const LookupResult& res);
-  void insert(const std::string& k, const LookupResult& res);
+  bool insert(const void* k, size_t k_size, const LookupResult& res,
+      const CheckRequest* check = NULL);
+  bool insert(const std::string& k, const LookupResult& res,
+      const CheckRequest* check = NULL);
 
   // atomically increments the value of a numeric key, returning the new value.
   // if the key is missing, creates it with the given value. if the key is the
@@ -105,8 +134,8 @@ public:
   double incr(const std::string& k, double delta);
 
   // deletes a key.
-  bool erase(const void* k, size_t k_size);
-  bool erase(const std::string& k);
+  bool erase(const void* k, size_t k_size, const CheckRequest* check = NULL);
+  bool erase(const std::string& k, const CheckRequest* check = NULL);
 
   // deletes all the keys in the prefix tree.
   void clear();
@@ -203,6 +232,8 @@ private:
 
   Traversal traverse(const void* k, size_t s, bool with_nodes, bool create);
   Traversal traverse(const void* k, size_t s, bool with_nodes) const;
+
+  bool execute_check(const CheckRequest& check) const;
 
   std::pair<std::string, LookupResult> next_key_value_internal(
       const void* current, size_t size, bool return_value) const;

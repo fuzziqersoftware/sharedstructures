@@ -17,6 +17,7 @@
 using namespace std;
 
 using ResultValueType = sharedstructures::PrefixTree::ResultValueType;
+using LookupResult = sharedstructures::PrefixTree::LookupResult;
 
 
 
@@ -108,6 +109,72 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
 
   PyErr_SetString(PyExc_NotImplementedError, "result has unknown type");
   return NULL;
+}
+
+static LookupResult sharedstructures_internal_get_result_for_python_object(
+    PyObject* o) {
+  if (o == Py_None) {
+    return LookupResult();
+
+  } else if (o == Py_True) {
+    return LookupResult(true);
+
+  } else if (o == Py_False) {
+    return LookupResult(false);
+
+  } else if (PyFloat_Check(o)) {
+    double v = PyFloat_AsDouble(o);
+    if (v == -1.0 && PyErr_Occurred()) {
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+    return LookupResult(v);
+
+  } else if (PyInt_Check(o)) {
+    int64_t v = PyInt_AsLong(o);
+    if (v == -1 && PyErr_Occurred()) {
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+    return LookupResult(v);
+
+  } else if (PyString_Check(o)) {
+    LookupResult res("\x00", 1);
+    char* data;
+    Py_ssize_t size;
+    if (PyString_AsStringAndSize(o, &data, &size) == -1) {
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+    res.as_string.append(data, size);
+    return res;
+
+  } else if (PyUnicode_Check(o)) {
+    LookupResult res("\x01", 1);
+    Py_ssize_t count = PyUnicode_GetSize(o);
+    const Py_UNICODE* data = PyUnicode_AsUnicode(o);
+    if (!data) {
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+    res.as_string.append((const char*)data, sizeof(Py_UNICODE) * count);
+    return res;
+
+  } else {
+    PyObject* marshalled_obj = PyMarshal_WriteObjectToString(o,
+        Py_MARSHAL_VERSION);
+    if (!marshalled_obj) {
+      // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+      // here we assume it does
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+
+    LookupResult res("\x02", 1);
+    char* data;
+    Py_ssize_t size;
+    if (PyString_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
+      throw runtime_error("failed to convert python object to LookupResult");
+    }
+    res.as_string.append(data, size);
+    Py_DECREF(marshalled_obj);
+    return res;
+  }
 }
 
 
@@ -805,6 +872,74 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
   return NULL;
 }
 
+static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+
+  char* check_key;
+  Py_ssize_t check_key_size;
+  char* target_key;
+  Py_ssize_t target_key_size;
+  PyObject* target_value_object = NULL;
+  if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
+      &target_key, &target_key_size, &target_value_object)) {
+    return NULL;
+  }
+
+  bool written;
+  try {
+    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size,
+        ResultValueType::Missing);
+    if (target_value_object) {
+      auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
+      written = self->table->insert(target_key, target_key_size, target_value, &check);
+    } else {
+      written = self->table->erase(target_key, target_key_size, &check);
+    }
+  } catch (const runtime_error& e) {
+    return NULL;
+  }
+
+  PyObject* ret = written ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
+static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+
+  char* check_key;
+  Py_ssize_t check_key_size;
+  PyObject* check_value_object;
+  char* target_key;
+  Py_ssize_t target_key_size;
+  PyObject* target_value_object = NULL;
+  if (!PyArg_ParseTuple(args, "s#Os#|O", &check_key, &check_key_size,
+      &check_value_object, &target_key, &target_key_size,
+      &target_value_object)) {
+    return NULL;
+  }
+
+  bool written;
+  try {
+    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size);
+    check.value = sharedstructures_internal_get_result_for_python_object(check_value_object);
+    if (target_value_object) {
+      auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
+      written = self->table->insert(target_key, target_key_size, target_value, &check);
+    } else {
+      written = self->table->erase(target_key, target_key_size, &check);
+    }
+  } catch (const runtime_error& e) {
+    return NULL;
+  }
+
+  PyObject* ret = written ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
 static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
     bool return_keys, bool return_values) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -863,6 +998,10 @@ static PyMethodDef sharedstructures_PrefixTree_methods[] = {
       "Returns the amount of allocated space (without overhead) in the underlying shared memory pool."},
   {"incr", (PyCFunction)sharedstructures_PrefixTree_incr, METH_VARARGS,
       "Atomically increments an int or float value."},
+  {"check_and_set", (PyCFunction)sharedstructures_PrefixTree_check_and_set, METH_VARARGS,
+      "Conditionally sets a value if the check key\'s value matches the check value."},
+  {"check_missing_and_set", (PyCFunction)sharedstructures_PrefixTree_check_missing_and_set, METH_VARARGS,
+      "Conditionally sets a value if the check key doesn\'t exist."},
   {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS,
       "Deletes all entries in the table."},
   {"iterkeys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,
