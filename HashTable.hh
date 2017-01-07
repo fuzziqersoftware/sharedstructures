@@ -45,7 +45,8 @@ public:
     uint64_t key_hash;
 
     CheckRequest() = delete;
-    CheckRequest(const void* key, size_t key_size, const void* value, size_t value_size);
+    CheckRequest(const void* key, size_t key_size, const void* value,
+        size_t value_size);
     CheckRequest(const void* key, size_t key_size, const std::string& value);
     CheckRequest(const void* key, size_t key_size); // checks for missing
     CheckRequest(const std::string& key, const void* value, size_t value_size);

@@ -175,7 +175,8 @@ public:
   size_t size() const; // key count
   size_t node_size() const; // node count
 
-  void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0, uint64_t indent = 0) const;
+  void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0,
+      uint64_t indent = 0) const;
 
 private:
   std::shared_ptr<Allocator> allocator;
@@ -255,7 +256,7 @@ public:
   PrefixTreeIterator(const PrefixTreeIterator& other) = default;
   PrefixTreeIterator(PrefixTreeIterator&& other) = default;
   PrefixTreeIterator(const PrefixTree* tree); // for end()
-  PrefixTreeIterator(const PrefixTree* tree, const std::string* location); // for begin()/find()
+  PrefixTreeIterator(const PrefixTree* tree, const std::string* location);
   ~PrefixTreeIterator() = default;
 
   bool operator==(const PrefixTreeIterator& other) const;

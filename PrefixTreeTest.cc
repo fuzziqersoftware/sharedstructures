@@ -226,12 +226,14 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key2", 4, PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key2", 4,
+        PrefixTree::ResultValueType::Missing);
     expect_eq(false, table->insert("key2", 4, &check));
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key4", 4,
+        PrefixTree::ResultValueType::Missing);
     expect_eq(true, table->insert("key4", 4, &check));
     expect_eq(LookupResult(), table->at("key4", 4));
   }
@@ -273,7 +275,8 @@ void run_conditional_writes_test(const string& allocator_type) {
   {
     // it doesn't make sense to do a Missing check on the same key for an erase,
     // but w/e - it's convenient for the test and it should work anyway
-    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key4", 4,
+        PrefixTree::ResultValueType::Missing);
     expect_eq(false, table->erase("key4", 4, &check));
     expect_eq(LookupResult(), table->at("key4", 4));
   }
@@ -424,7 +427,8 @@ void run_types_test(const string& allocator_type) {
   // write a bunch of keys of different types
   expect_eq(true, table->insert("key-string", 10, "value-string", 12));
   expect_eq(true, table->insert("key-int", 7, (int64_t)(1024 * 1024 * -3)));
-  expect_eq(true, table->insert("key-int-long", 12, (int64_t)0x9999999999999999));
+  expect_eq(true, table->insert("key-int-long", 12,
+      (int64_t)0x9999999999999999));
   expect_eq(true, table->insert("key-double", 10, 2.38));
   expect_eq(true, table->insert("key-true", 8, true));
   expect_eq(true, table->insert("key-false", 9, false));
@@ -489,16 +493,19 @@ void run_incr_test(const string& allocator_type) {
 
   expect_eq(0, table->size());
   expect_eq(true, table->insert("key-int", 7, (int64_t)10));
-  expect_eq(true, table->insert("key-int-long", 12, (int64_t)0x3333333333333333));
+  expect_eq(true, table->insert("key-int-long", 12,
+      (int64_t)0x3333333333333333));
   expect_eq(true, table->insert("key-double", 10, 1.0));
   expect_eq(3, table->size());
 
   // incr should create the key if it doesn't exist
   expect_eq(100, table->incr("key-int2", 8, (int64_t)100));
-  expect_eq(0x5555555555555555, table->incr("key-int-long2", 13, (int64_t)0x5555555555555555));
+  expect_eq(0x5555555555555555, table->incr("key-int-long2", 13,
+      (int64_t)0x5555555555555555));
   expect_eq(10.0, table->incr("key-double2", 11, 10.0));
   expect_eq(LookupResult((int64_t)100), table->at("key-int2", 8));
-  expect_eq(LookupResult((int64_t)0x5555555555555555), table->at("key-int-long2", 13));
+  expect_eq(LookupResult((int64_t)0x5555555555555555),
+      table->at("key-int-long2", 13));
   expect_eq(LookupResult(10.0), table->at("key-double2", 11));
   expect_eq(6, table->size());
 
@@ -547,7 +554,8 @@ void run_incr_test(const string& allocator_type) {
   } catch (const out_of_range& e) { }
 
   // test converting integers between Int and Number
-  expect_eq(0xAAAAAAAAAAAAAAAA, table->incr("key-int", 7, (int64_t)0xAAAAAAAAAAAAAAA0));
+  expect_eq(0xAAAAAAAAAAAAAAAA, table->incr("key-int", 7,
+      (int64_t)0xAAAAAAAAAAAAAAA0));
   expect_eq(8, table->size());
   expect_eq(3, table->incr("key-int-long", 12, (int64_t)-0x3333333333333330));
   expect_eq(8, table->size());

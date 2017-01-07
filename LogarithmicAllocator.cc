@@ -124,7 +124,8 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
     // might need to split it until we get the size we want
     for (; split_order > needed_order; split_order--) {
       int8_t new_order = split_order - 1;
-      uint64_t head_block_offset = data->free_head[split_order - Data::minimum_order];
+      uint64_t head_block_offset = data->free_head[
+          split_order - Data::minimum_order];
       uint64_t new_block_offset = head_block_offset + size_for_order(new_order);
 
       // remove the original block from the higher order and add the two new
@@ -134,7 +135,7 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
       this->create_free_block(new_block_offset, new_order);
     }
 
-    // now there's an available block in the needed order; set it up and return it
+    // now there's an available block in the needed order; set it up & return it
     uint64_t block_offset = data->free_head[needed_order - Data::minimum_order];
     Block* block = this->pool->at<Block>(block_offset);
     data->free_head[needed_order - Data::minimum_order] = block->free.next;
@@ -196,7 +197,8 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   //   same manner.
   uint64_t block_offset = original_size & (~(order_size - 1));
   int8_t block_order = largest_order_within_size(original_size - block_offset);
-  while ((block_order >= Data::minimum_order) && (block_offset < original_size)) {
+  while ((block_order >= Data::minimum_order) &&
+         (block_offset < original_size)) {
     FreeBlock* block = this->pool->at<FreeBlock>(block_offset);
     if (block->allocated()) {
       break; // have to expand beyond this order
@@ -249,7 +251,8 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
 
   // fill in the allocated block header. this has to be done before merging so
   // we don't try to merge it also
-  AllocatedBlock* block = this->pool->at<AllocatedBlock>(allocated_block_offset);
+  AllocatedBlock* block = this->pool->at<AllocatedBlock>(
+      allocated_block_offset);
   block->size_allocated = size | (1ULL << 63);
 
   // for an incomplete expansion, we reused some existing space at the end of
@@ -262,11 +265,13 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   // low end is adjacent to the newly-allocated block, and the high end is at
   // the end of the pool).
   if (allocated_block_offset > original_size) {
-    this->create_free_blocks(original_size, allocated_block_offset - original_size);
+    this->create_free_blocks(original_size,
+        allocated_block_offset - original_size);
     this->merge_blocks_at(original_size);
   }
   uint64_t allocated_block_end = allocated_block_offset + order_size;
-  this->create_free_blocks(allocated_block_end, data->size - allocated_block_end);
+  this->create_free_blocks(allocated_block_end,
+      data->size - allocated_block_end);
 
   // update counts and we're done
   data->bytes_allocated += size;
@@ -276,7 +281,8 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
 }
 
 void LogarithmicAllocator::create_free_block(uint64_t offset, int8_t order) {
-  atomic<uint64_t>* tail = &this->data()->free_tail[order - Data::minimum_order];
+  atomic<uint64_t>* tail = &this->data()->free_tail[
+      order - Data::minimum_order];
 
   // fill in the block struct
   FreeBlock* block = this->pool->at<FreeBlock>(offset);
@@ -324,12 +330,14 @@ void LogarithmicAllocator::create_free_blocks(uint64_t offset,
 
 void LogarithmicAllocator::free(uint64_t offset) {
   auto data = this->data();
-  if ((offset < sizeof(Data) + sizeof(AllocatedBlock)) || (offset > data->size)) {
+  if ((offset < sizeof(Data) + sizeof(AllocatedBlock)) ||
+      (offset > data->size)) {
     return; // herp derp
   }
 
   uint64_t block_offset = offset - sizeof(AllocatedBlock);
-  AllocatedBlock* allocated_block = this->pool->at<AllocatedBlock>(block_offset);
+  AllocatedBlock* allocated_block =
+      this->pool->at<AllocatedBlock>(block_offset);
   if (!allocated_block->allocated()) {
     return;
   }
@@ -371,7 +379,7 @@ uint64_t LogarithmicAllocator::merge_blocks_at(uint64_t block_offset) {
       break; // other block is allocated; can't merge
     }
     if (other_block->order() != block_order) {
-      break; // other block is split; can't merge (its partner is allocated/split)
+      break; // other block is split (and partially-allocated); can't merge
     }
 
     // if we get here, then we can merge this block with the other. first remove
@@ -464,28 +472,34 @@ const LogarithmicAllocator::Data* LogarithmicAllocator::data() const {
 void LogarithmicAllocator::verify() const {
   try {
     auto data = this->data();
-    for (int8_t order = Data::minimum_order; order < Data::maximum_order; order++) {
+    for (int8_t order = Data::minimum_order; order < Data::maximum_order;
+         order++) {
       uint64_t offset = data->free_head[order - Data::minimum_order];
       uint64_t prev_offset = 0;
       while (offset) {
         FreeBlock* block = this->pool->at<FreeBlock>(offset);
         if (block->allocated()) {
-          throw runtime_error(string_printf("block at %llX is linked and allocated", offset));
+          throw runtime_error(string_printf(
+              "block at %llX is linked and allocated", offset));
         }
         if (block->prev() != prev_offset) {
-          throw runtime_error(string_printf("block at %llX has incorrect prev link (is %llX, should be %llX)", offset,
-              block->prev(), prev_offset));
+          throw runtime_error(string_printf(
+              "block at %llX has incorrect prev link (is %llX, should be %llX)",
+              offset, block->prev(), prev_offset));
         }
         if (block->order() != order) {
-          throw runtime_error(string_printf("block at %llX has incorrect order (is %hhd, should be %hhd)", offset,
-              block->order(), order));
+          throw runtime_error(string_printf(
+              "block at %llX has incorrect order (is %hhd, should be %hhd)",
+              offset, block->order(), order));
         }
         prev_offset = offset;
         offset = block->next;
       }
       if (data->free_tail[order - Data::minimum_order] != prev_offset) {
-        throw runtime_error(string_printf("free list %hhd has incorrect tail offset (is %llX, should be %llX)", order,
-            data->free_tail[order - Data::minimum_order].load(), prev_offset));
+        throw runtime_error(string_printf(
+            "free list %hhd has incorrect tail link (is %llX, should be %llX)",
+            order, data->free_tail[order - Data::minimum_order].load(),
+            prev_offset));
       }
     }
   } catch (const runtime_error& e) {
@@ -557,8 +571,9 @@ void LogarithmicAllocator::print(FILE* stream) const {
 
   fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu8
       " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
-      data->size.load(), data->initialized.load(), data->base_object_offset.load(),
-      data->bytes_allocated.load(), data->bytes_committed.load());
+      data->size.load(), data->initialized.load(),
+      data->base_object_offset.load(), data->bytes_allocated.load(),
+      data->bytes_committed.load());
   for (int x = 0; x < Data::maximum_order - Data::minimum_order; x++) {
     uint64_t head = data->free_head[x];
     uint64_t tail = data->free_tail[x];
@@ -575,7 +590,8 @@ void LogarithmicAllocator::print(FILE* stream) const {
     if (block->allocated.allocated()) {
       fprintf(stream, "  Block-A %" PRIX64 ": size=%" PRIX64 "\n", offset,
           block->allocated.size());
-      offset += size_for_order(order_for_size(block->allocated.size() + sizeof(AllocatedBlock)));
+      offset += size_for_order(order_for_size(
+          block->allocated.size() + sizeof(AllocatedBlock)));
     } else {
       uint64_t block_size = size_for_order(block->free.order());
       fprintf(stream, "  Block-F %" PRIX64 ": prev=%" PRIX64 " next=%" PRIX64

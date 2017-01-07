@@ -125,21 +125,27 @@ def run_conditional_writes_test(allocator_type):
   verify_state(expected, table)
 
   # check that conditions on the same key work
-  conditional_insert_both(expected, table, "key1", "value2", "key1", "value1_1", False)
+  conditional_insert_both(expected, table, "key1", "value2", "key1", "value1_1",
+      False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key1", "value1", "key1", "value1_1", True)
+  conditional_insert_both(expected, table, "key1", "value1", "key1", "value1_1",
+      True)
   verify_state(expected, table)
 
   # check that conditions on other keys work
-  conditional_insert_both(expected, table, "key2", "value1", "key1", "value1", False)
+  conditional_insert_both(expected, table, "key2", "value1", "key1", "value1",
+      False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key2", "value2", "key1", "value1", True)
+  conditional_insert_both(expected, table, "key2", "value2", "key1", "value1",
+      True)
   verify_state(expected, table)
 
   # check that missing conditions work
-  conditional_missing_insert_both(expected, table, "key2", "key3", "value3", False)
+  conditional_missing_insert_both(expected, table, "key2", "key3", "value3",
+      False)
   verify_state(expected, table)
-  conditional_missing_insert_both(expected, table, "key3", "key3", "value3", True)
+  conditional_missing_insert_both(expected, table, "key3", "key3", "value3",
+      True)
   verify_state(expected, table)
 
   # check that conditional deletes work
@@ -206,7 +212,8 @@ def run_concurrent_readers_test(allocator_type):
 
     value = 100
     start_time = int(time.time() * 1000000)
-    while (value < 110) and (int(time.time() * 1000000) < (start_time + 1000000)):
+    while (value < 110) and \
+        (int(time.time() * 1000000) < (start_time + 1000000)):
       time.sleep(0.001)
       try:
         res = table['key1']
@@ -231,9 +238,11 @@ def run_concurrent_readers_test(allocator_type):
       pid, exit_status = os.wait()
       child_pids.remove(pid)
       if os.WIFEXITED(exit_status) and (os.WEXITSTATUS(exit_status) == 0):
-        print('[%s] --   child %d terminated successfully' % (allocator_type, pid))
+        print('[%s] --   child %d terminated successfully' % (
+            allocator_type, pid))
       else:
-        print('[%s] --   child %d failed (%d)' % (allocator_type, pid, exit_status))
+        print('[%s] --   child %d failed (%d)' % (
+            allocator_type, pid, exit_status))
         num_failures += 1
 
     assert 0 == len(child_pids)

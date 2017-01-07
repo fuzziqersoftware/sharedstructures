@@ -86,8 +86,10 @@ uint64_t SimpleAllocator::allocate(size_t size) {
 
     // if this block is big enough, remember it if it's the smallest one so far
     if ((free_block_size >= needed_size) &&
-        ((candidate_size < needed_size) || (free_block_size < candidate_size))) {
-      candidate_offset = current_block + sizeof(AllocatedBlock) + b->effective_size();
+        ((candidate_size < needed_size) ||
+         (free_block_size < candidate_size))) {
+      candidate_offset = current_block + sizeof(AllocatedBlock) +
+          b->effective_size();
       candidate_size = free_block_size;
       candidate_link_location = current_block;
     }
@@ -133,7 +135,8 @@ uint64_t SimpleAllocator::allocate(size_t size) {
     this->pool->at<AllocatedBlock>(new_block->prev)->next = candidate_offset;
     data->tail = candidate_offset;
   } else {
-    AllocatedBlock* prev = this->pool->at<AllocatedBlock>(candidate_link_location);
+    AllocatedBlock* prev = this->pool->at<AllocatedBlock>(
+        candidate_link_location);
     AllocatedBlock* next = this->pool->at<AllocatedBlock>(prev->next);
     new_block->next = prev->next;
     new_block->prev = candidate_link_location;
@@ -141,21 +144,23 @@ uint64_t SimpleAllocator::allocate(size_t size) {
     next->prev = candidate_offset;
   }
   data->bytes_allocated += size;
-  data->bytes_committed += (new_block->effective_size() + sizeof(AllocatedBlock));
+  data->bytes_committed += new_block->effective_size() + sizeof(AllocatedBlock);
 
   // don't spend it all in once place...
   return candidate_offset + sizeof(AllocatedBlock);
 }
 
 void SimpleAllocator::free(uint64_t offset) {
-  if ((offset < sizeof(Data)) || (offset > this->pool->size() - sizeof(AllocatedBlock))) {
+  if ((offset < sizeof(Data)) ||
+      (offset > this->pool->size() - sizeof(AllocatedBlock))) {
     return; // herp derp
   }
 
   auto data = this->data();
 
   // we only have to update counts and remove the block from the linked list
-  AllocatedBlock* block = this->pool->at<AllocatedBlock>(offset - sizeof(AllocatedBlock));
+  AllocatedBlock* block = this->pool->at<AllocatedBlock>(
+      offset - sizeof(AllocatedBlock));
   data->bytes_allocated -= block->size;
   data->bytes_committed -= (block->effective_size() + sizeof(AllocatedBlock));
   if (block->prev) {

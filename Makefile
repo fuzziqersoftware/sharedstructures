@@ -72,6 +72,6 @@ osx_py32_test: py_test
 
 
 clean:
-	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so *Test
+	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so *Test AllocatorBenchmark
 
 .PHONY: all cpp_only py_only clean cpp_test py_test osx_cpp32_test osx_py32_test

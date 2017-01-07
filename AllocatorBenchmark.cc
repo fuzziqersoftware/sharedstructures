@@ -111,11 +111,12 @@ int main(int argc, char** argv) {
   size_t allocated_size = 0;
   while (pool->size() <= max_size) {
     if (allocated_regions.size() % report_interval == 0) {
-      double efficiency = (float)alloc->bytes_allocated() / (pool->size() - alloc->bytes_free());
+      double efficiency = (float)alloc->bytes_allocated() /
+          (pool->size() - alloc->bytes_free());
       efficiencies.emplace_back(efficiency);
-      fprintf(stderr, "allocation #%zu: %zu allocated, %zu free, %zu total, %g efficiency\n",
-          allocated_regions.size(), allocated_size, alloc->bytes_free(),
-          pool->size(), efficiency);
+      fprintf(stderr, "allocation #%zu: %zu allocated, %zu free, %zu total, "
+          "%g efficiency\n", allocated_regions.size(), allocated_size,
+          alloc->bytes_free(), pool->size(), efficiency);
     }
 
     size_t size = min_alloc_size + (rand() % (max_alloc_size - min_alloc_size));
@@ -145,34 +146,37 @@ int main(int argc, char** argv) {
     expect_eq(allocated_size, alloc->bytes_allocated());
 
     if (allocated_regions.size() % report_interval == 0) {
-      double efficiency = (float)alloc->bytes_allocated() / (pool->size() - alloc->bytes_free());
+      double efficiency = (float)alloc->bytes_allocated() /
+          (pool->size() - alloc->bytes_free());
       efficiencies.emplace_back(efficiency);
-      fprintf(stderr, "free #%zu: %zu allocated, %zu free, %zu total, %g efficiency\n",
-          allocated_regions.size(), allocated_size, alloc->bytes_free(),
-          pool->size(), efficiency);
+      fprintf(stderr, "free #%zu: %zu allocated, %zu free, %zu total, "
+          "%g efficiency\n", allocated_regions.size(), allocated_size,
+          alloc->bytes_free(), pool->size(), efficiency);
     }
   }
 
   sort(efficiencies.begin(), efficiencies.end());
   auto efficiency_stats = get_stats(efficiencies);
-  fprintf(stdout, "efficiency: avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg p99=%lg max=%lg\n",
-      efficiency_stats.mean, efficiency_stats.min, efficiency_stats.p01,
-      efficiency_stats.p10, efficiency_stats.p50, efficiency_stats.p90,
-      efficiency_stats.p99, efficiency_stats.max);
+  fprintf(stdout, "efficiency: avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg "
+      "p99=%lg max=%lg\n", efficiency_stats.mean, efficiency_stats.min,
+      efficiency_stats.p01, efficiency_stats.p10, efficiency_stats.p50,
+      efficiency_stats.p90, efficiency_stats.p99, efficiency_stats.max);
 
   sort(alloc_times.begin(), alloc_times.end());
   auto alloc_time_stats = get_stats(alloc_times);
-  fprintf(stdout, "alloc usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64 " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%" PRIu64 "\n",
-      alloc_time_stats.mean, alloc_time_stats.min, alloc_time_stats.p01,
-      alloc_time_stats.p10, alloc_time_stats.p50, alloc_time_stats.p90,
-      alloc_time_stats.p99, alloc_time_stats.max);
+  fprintf(stdout, "alloc usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
+      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
+      " max=%" PRIu64 "\n", alloc_time_stats.mean, alloc_time_stats.min,
+      alloc_time_stats.p01, alloc_time_stats.p10, alloc_time_stats.p50,
+      alloc_time_stats.p90, alloc_time_stats.p99, alloc_time_stats.max);
 
   sort(free_times.begin(), free_times.end());
   auto free_time_stats = get_stats(free_times);
-  fprintf(stdout, "free usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64 " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%" PRIu64 "\n",
-      free_time_stats.mean, free_time_stats.min, free_time_stats.p01,
-      free_time_stats.p10, free_time_stats.p50, free_time_stats.p90,
-      free_time_stats.p99, free_time_stats.max);
+  fprintf(stdout, "free usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
+      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
+      " max=%" PRIu64 "\n", free_time_stats.mean, free_time_stats.min,
+      free_time_stats.p01, free_time_stats.p10, free_time_stats.p50,
+      free_time_stats.p90, free_time_stats.p99, free_time_stats.max);
 
   return 0;
 }

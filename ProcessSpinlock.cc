@@ -40,7 +40,8 @@ ProcessSpinlockGuard::ProcessSpinlockGuard(Pool* pool, uint64_t offset) :
         // repair the allocator structures since they could be in an
         // inconsistent state. if we don't get the lock, then another process
         // got there first and we'll just keep waiting
-        lock_taken = lock->compare_exchange_strong(expected_value, desired_value);
+        lock_taken = lock->compare_exchange_strong(expected_value,
+            desired_value);
         if (lock_taken) {
           this->stolen = true;
         }
