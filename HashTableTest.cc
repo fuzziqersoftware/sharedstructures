@@ -51,7 +51,7 @@ void verify_state(
 
 
 void run_basic_test(const string& allocator_type) {
-  printf("[%s] -- basic\n", allocator_type.c_str());
+  printf("-- [%s] basic\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-table"));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
@@ -94,7 +94,7 @@ void run_basic_test(const string& allocator_type) {
 
 
 void run_collision_test(const string& allocator_type) {
-  printf("[%s] -- collision\n", allocator_type.c_str());
+  printf("-- [%s] collision\n", allocator_type.c_str());
 
   // writing 5 keys to a 4-slot hashtable forces a collision
 
@@ -132,7 +132,7 @@ void run_collision_test(const string& allocator_type) {
 
 
 void run_conditional_writes_test(const string& allocator_type) {
-  printf("[%s] -- conditional writes\n", allocator_type.c_str());
+  printf("-- [%s] conditional writes\n", allocator_type.c_str());
 
   shared_ptr<Pool> pool(new Pool("test-table"));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
@@ -208,7 +208,7 @@ void run_conditional_writes_test(const string& allocator_type) {
 
 
 void run_concurrent_readers_test(const string& allocator_type) {
-  printf("[%s] -- concurrent readers\n", allocator_type.c_str());
+  printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
@@ -260,10 +260,10 @@ void run_concurrent_readers_test(const string& allocator_type) {
     while ((exited_pid = wait(&exit_status)) != -1) {
       child_pids.erase(exited_pid);
       if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
-        printf("[%s] --   child %d terminated successfully\n",
+        printf("-- [%s]   child %d terminated successfully\n",
             allocator_type.c_str(), exited_pid);
       } else {
-        printf("[%s] --   child %d failed (%d)\n", allocator_type.c_str(),
+        printf("-- [%s]   child %d failed (%d)\n", allocator_type.c_str(),
             exited_pid, exit_status);
         num_failures++;
       }

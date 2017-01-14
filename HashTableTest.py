@@ -25,7 +25,7 @@ def verify_state(expected, table):
 
 
 def run_basic_test(allocator_type):
-  print("[%s] -- basic" % allocator_type)
+  print("-- [%s] basic" % allocator_type)
   before_lsof_count = len(get_current_process_lsof().splitlines())
 
   table = sharedstructures.HashTable("test-table", allocator_type)
@@ -74,7 +74,7 @@ def run_basic_test(allocator_type):
 
 
 def run_conditional_writes_test(allocator_type):
-  print("[%s] -- conditional writes" % allocator_type)
+  print("-- [%s] conditional writes" % allocator_type)
 
   table = sharedstructures.HashTable("test-table", allocator_type)
   expected = {}
@@ -165,7 +165,7 @@ def run_conditional_writes_test(allocator_type):
 
 
 def run_collision_test(allocator_type):
-  print("[%s] -- collision" % allocator_type)
+  print("-- [%s] collision" % allocator_type)
 
   table = sharedstructures.HashTable("test-table", allocator_type, 0, 2)
   expected = {}
@@ -197,7 +197,7 @@ def run_collision_test(allocator_type):
 
 # TODO: deduplicate this with PrefixTreeTest
 def run_concurrent_readers_test(allocator_type):
-  print('[%s] -- concurrent readers' % allocator_type)
+  print('-- [%s] concurrent readers' % allocator_type)
 
   table = sharedstructures.HashTable('test-table', allocator_type)
   del table
@@ -238,10 +238,10 @@ def run_concurrent_readers_test(allocator_type):
       pid, exit_status = os.wait()
       child_pids.remove(pid)
       if os.WIFEXITED(exit_status) and (os.WEXITSTATUS(exit_status) == 0):
-        print('[%s] --   child %d terminated successfully' % (
+        print('-- [%s]   child %d terminated successfully' % (
             allocator_type, pid))
       else:
-        print('[%s] --   child %d failed (%d)' % (
+        print('-- [%s]   child %d failed (%d)' % (
             allocator_type, pid, exit_status))
         num_failures += 1
 

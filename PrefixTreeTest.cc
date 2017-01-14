@@ -73,7 +73,7 @@ void verify_state(
 
 
 void run_basic_test(const string& allocator_type) {
-  printf("[%s] -- basic\n", allocator_type.c_str());
+  printf("-- [%s] basic\n", allocator_type.c_str());
 
   auto table = get_or_create_tree("test-table", allocator_type);
 
@@ -140,7 +140,7 @@ void run_basic_test(const string& allocator_type) {
 }
 
 void run_conditional_writes_test(const string& allocator_type) {
-  printf("[%s] -- conditional writes\n", allocator_type.c_str());
+  printf("-- [%s] conditional writes\n", allocator_type.c_str());
 
   auto table = get_or_create_tree("test-table", allocator_type);
 
@@ -294,7 +294,7 @@ void run_conditional_writes_test(const string& allocator_type) {
 }
 
 void run_reorganization_test(const string& allocator_type) {
-  printf("[%s] -- reorganization\n", allocator_type.c_str());
+  printf("-- [%s] reorganization\n", allocator_type.c_str());
 
   auto table = get_or_create_tree("test-table", allocator_type);
 
@@ -408,7 +408,7 @@ void run_reorganization_test(const string& allocator_type) {
 }
 
 void run_types_test(const string& allocator_type) {
-  printf("[%s] -- types\n", allocator_type.c_str());
+  printf("-- [%s] types\n", allocator_type.c_str());
 
   // uncomment this to easily see the difference between result types
   // TODO: make this a helper function or something
@@ -485,7 +485,7 @@ void run_types_test(const string& allocator_type) {
 }
 
 void run_incr_test(const string& allocator_type) {
-  printf("[%s] -- incr\n", allocator_type.c_str());
+  printf("-- [%s] incr\n", allocator_type.c_str());
 
   auto table = get_or_create_tree("test-table", allocator_type);
 
@@ -569,7 +569,7 @@ void run_incr_test(const string& allocator_type) {
 }
 
 void run_concurrent_readers_test(const string& allocator_type) {
-  printf("[%s] -- concurrent readers\n", allocator_type.c_str());
+  printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
@@ -615,10 +615,10 @@ void run_concurrent_readers_test(const string& allocator_type) {
     while ((exited_pid = wait(&exit_status)) != -1) {
       child_pids.erase(exited_pid);
       if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
-        printf("[%s] --   child %d terminated successfully\n",
+        printf("-- [%s]   child %d terminated successfully\n",
             allocator_type.c_str(), exited_pid);
       } else {
-        printf("[%s] --   child %d failed (%d)\n", allocator_type.c_str(),
+        printf("-- [%s]   child %d failed (%d)\n", allocator_type.c_str(),
             exited_pid, exit_status);
         num_failures++;
       }
