@@ -42,7 +42,7 @@ Iteration over either of these structures doesn't lock the structure, so it's po
 
 Iterating a HashTable produces items in pseudorandom order. If an item exists in the table for the duration of the iteration, then it will be returned; if it's created or deleted during the iteration, then it may or may not be returned. Similarly, if its value is changed during the iteration, then either its new or old value may be returned.
 
-Iterating a PrefixTree produces keys in lexicographic order. This ordering makes its behavior with concurrent modifications easier to predict: concurrent changes after the current key (lexicographically) will be visible, changes before or at the current key will not.
+Iterating a PrefixTree produces items in lexicographic order. This ordering makes its behavior with concurrent modifications easier to predict: concurrent changes after the current key (lexicographically) will be visible, changes at or before the current key will not.
 
 For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
 
