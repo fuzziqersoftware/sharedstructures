@@ -22,6 +22,8 @@ def verify_state(expected, table):
   assert len(expected) == len(table)
   for k, v in expected.iteritems():
     assert table[k] == v
+  for k, v in table.iteritems():
+    assert expected[k] == v
 
 
 def run_basic_test(allocator_type):

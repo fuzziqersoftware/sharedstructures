@@ -187,7 +187,7 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
 
 
 
-// HashTable, PrefixTree and PrefixTreeIterator definitions
+// HashTable, HashTableIterator, PrefixTree and PrefixTreeIterator definitions
 
 static const char* sharedstructures_HashTable_doc =
 "Shared-memory hash table object.\n\
@@ -208,6 +208,17 @@ typedef struct {
   PyObject_HEAD
   shared_ptr<sharedstructures::HashTable> table;
 } sharedstructures_HashTable;
+
+static const char* sharedstructures_HashTableIterator_doc =
+"Shared-memory hash table iterator.";
+
+typedef struct {
+  PyObject_HEAD
+  sharedstructures_HashTable* table_obj;
+  sharedstructures::HashTableIterator it;
+  bool return_keys;
+  bool return_values;
+} sharedstructures_HashTableIterator;
 
 static const char* sharedstructures_PrefixTree_doc =
 "Shared-memory prefix tree object.\n\
@@ -237,6 +248,172 @@ typedef struct {
   bool return_keys;
   bool return_values;
 } sharedstructures_PrefixTreeIterator;
+
+
+
+
+
+// HashTableIterator object method definitions
+
+static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
+    PyObject* args, PyObject* kwargs) {
+
+  sharedstructures_HashTableIterator* self = (sharedstructures_HashTableIterator*)PyType_GenericNew(
+      type, args, kwargs);
+  if (!self) {
+    return NULL;
+  }
+
+  // args: (tree_obj, return_keys, return_values)
+  PyObject* return_keys_obj;
+  PyObject* return_values_obj;
+  if (!PyArg_ParseTuple(args, "OOO", &self->table_obj, &return_keys_obj, &return_values_obj)) {
+    Py_DECREF(self);
+    return NULL;
+  }
+  if (return_keys_obj == Py_True) {
+    self->return_keys = true;
+  } else if (return_keys_obj == Py_False) {
+    self->return_keys = false;
+  } else {
+    PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_keys");
+    Py_DECREF(self);
+    return NULL;
+  }
+  if (return_values_obj == Py_True) {
+    self->return_values = true;
+  } else if (return_values_obj == Py_False) {
+    self->return_values = false;
+  } else {
+    PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_values");
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  if (!self->return_keys && !self->return_values) {
+    PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
+    return NULL;
+  }
+
+  Py_INCREF(self->table_obj);
+
+  new (&self->it) sharedstructures::HashTableIterator(self->table_obj->table->begin());
+
+  return (PyObject*)self;
+}
+
+static void sharedstructures_HashTableIterator_Dealloc(PyObject* py_self) {
+  sharedstructures_HashTableIterator* self = (sharedstructures_HashTableIterator*)py_self;
+
+  self->it.sharedstructures::HashTableIterator::~HashTableIterator();
+
+  Py_DECREF(self->table_obj);
+  self->ob_type->tp_free((PyObject*)self);
+}
+
+static PyObject* sharedstructures_HashTableIterator_Iter(PyObject* py_self) {
+  Py_INCREF(py_self);
+  return py_self;
+}
+
+static PyObject* sharedstructures_HashTableIterator_Next(PyObject* py_self) {
+  sharedstructures_HashTableIterator* self = (sharedstructures_HashTableIterator*)py_self;
+  sharedstructures_HashTable* table = (sharedstructures_HashTable*)self->table_obj;
+
+  if (self->it == table->table->end()) {
+    PyErr_SetNone(PyExc_StopIteration);
+    return NULL;
+  }
+
+  auto res = *self->it;
+  self->it++;
+
+  // TODO: factor this out with PrefixTreeIterator
+  if (self->return_keys && self->return_values) {
+    // if both, return a tuple of the two items
+    PyObject* ret_key = PyString_FromStringAndSize(res.first.data(), res.first.size());
+    if (!ret_key) {
+      return NULL;
+    }
+    PyObject* ret_value = PyMarshal_ReadObjectFromString(
+        const_cast<char*>(res.second.data()), res.second.size());
+    if (!ret_value) {
+      Py_DECREF(ret_key);
+      return NULL;
+    }
+    PyObject* ret = PyTuple_Pack(2, ret_key, ret_value);
+    if (!ret) {
+      Py_DECREF(ret_key);
+      Py_DECREF(ret_value);
+    }
+    return ret;
+  }
+
+  if (self->return_keys) {
+    return PyString_FromStringAndSize(res.first.data(), res.first.size());
+  }
+
+  if (self->return_values) {
+    return PyMarshal_ReadObjectFromString(const_cast<char*>(res.second.data()),
+        res.second.size());
+  }
+
+  PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
+  return NULL;
+}
+
+static PyObject* sharedstructures_HashTableIterator_Repr(PyObject* py_self) {
+  sharedstructures_HashTableIterator* self = (sharedstructures_HashTableIterator*)py_self;
+  PyObject* table_obj_repr = PyObject_Repr((PyObject*)self->table_obj);
+  PyObject* ret = PyString_FromFormat(
+      "<sharedstructures.HashTable.iterator on %s at %p>",
+      PyString_AsString(table_obj_repr), py_self);
+  Py_DECREF(table_obj_repr);
+  return ret;
+}
+
+static PyTypeObject sharedstructures_HashTableIteratorType = {
+   PyObject_HEAD_INIT(NULL)
+   0,                                                      // ob_size
+   "sharedstructures.HashTableIterator",                   // tp_name
+   sizeof(sharedstructures_HashTableIterator),             // tp_basicsize
+   0,                                                      // tp_itemsize
+   (destructor)sharedstructures_HashTableIterator_Dealloc, // tp_dealloc
+   0,                                                      // tp_print
+   0,                                                      // tp_getattr
+   0,                                                      // tp_setattr
+   0,                                                      // tp_compare
+   sharedstructures_HashTableIterator_Repr,                // tp_repr
+   0,                                                      // tp_as_number
+   0,                                                      // tp_as_sequence
+   0,                                                      // tp_as_mapping
+   0,                                                      // tp_hash
+   0,                                                      // tp_call
+   0,                                                      // tp_str
+   0,                                                      // tp_getattro
+   0,                                                      // tp_setattro
+   0,                                                      // tp_as_buffer
+   Py_TPFLAGS_DEFAULT,                                     // tp_flag
+   sharedstructures_HashTableIterator_doc,                 // tp_doc
+   0,                                                      // tp_traverse
+   0,                                                      // tp_clear
+   0,                                                      // tp_richcompare
+   0,                                                      // tp_weaklistoffset
+   sharedstructures_HashTableIterator_Iter,                // tp_iter
+   sharedstructures_HashTableIterator_Next,                // tp_iternext
+   0,                                                      // tp_methods
+   0,                                                      // tp_members
+   0,                                                      // tp_getset
+   0,                                                      // tp_base
+   0,                                                      // tp_dict
+   0,                                                      // tp_descr_get
+   0,                                                      // tp_descr_set
+   0,                                                      // tp_dictoffset
+   0,                                                      // tp_init
+   0,                                                      // tp_alloc
+   sharedstructures_HashTableIterator_New,                 // tp_new
+};
+
 
 
 
@@ -518,6 +695,49 @@ static PyObject* sharedstructures_HashTable_check_missing_and_set(
   return ret;
 }
 
+static PyObject* sharedstructures_HashTable_iter_generic(PyObject* py_self,
+    bool return_keys, bool return_values) {
+  sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
+
+  // args: table, return_keys, return_values
+  PyObject* args = Py_BuildValue("OOO", self, return_keys ? Py_True : Py_False,
+      return_values ? Py_True : Py_False);
+  if (!args) {
+    return NULL;
+  }
+
+  PyObject* it = PyObject_CallObject(
+      (PyObject*)&sharedstructures_HashTableIteratorType, args);
+  Py_DECREF(args);
+
+  return it;
+}
+
+static const char* sharedstructures_HashTable_iterkeys_doc =
+"Returns an iterator over all keys in the table.";
+
+static PyObject* sharedstructures_HashTable_iterkeys(PyObject* py_self) {
+  return sharedstructures_HashTable_iter_generic(py_self, true, false);
+}
+
+static const char* sharedstructures_HashTable_itervalues_doc =
+"Returns an iterator over all values in the table.";
+
+static PyObject* sharedstructures_HashTable_itervalues(PyObject* py_self) {
+  return sharedstructures_HashTable_iter_generic(py_self, false, true);
+}
+
+static const char* sharedstructures_HashTable_iteritems_doc =
+"Returns an iterator over all key/value pairs in the table.";
+
+static PyObject* sharedstructures_HashTable_iteritems(PyObject* py_self) {
+  return sharedstructures_HashTable_iter_generic(py_self, true, true);
+}
+
+static PyObject* sharedstructures_HashTable_Iter(PyObject* py_self) {
+  return sharedstructures_HashTable_iterkeys(py_self);
+}
+
 static const char* sharedstructures_HashTable_bits_doc =
 "Returns the hash bucket count factor.";
 
@@ -565,6 +785,12 @@ static PyMethodDef sharedstructures_HashTable_methods[] = {
       sharedstructures_HashTable_clear_doc},
   {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS,
       sharedstructures_HashTable_bits_doc},
+  {"iterkeys", (PyCFunction)sharedstructures_HashTable_iterkeys, METH_NOARGS,
+      sharedstructures_HashTable_iterkeys_doc},
+  {"itervalues", (PyCFunction)sharedstructures_HashTable_itervalues, METH_NOARGS,
+      sharedstructures_HashTable_itervalues_doc},
+  {"iteritems", (PyCFunction)sharedstructures_HashTable_iteritems, METH_NOARGS,
+      sharedstructures_HashTable_iteritems_doc},
   {NULL},
 };
 
@@ -614,7 +840,7 @@ static PyTypeObject sharedstructures_HashTableType = {
    0,                                               // tp_clear
    0,                                               // tp_richcompare
    0,                                               // tp_weaklistoffset
-   0,                                               // tp_iter
+   sharedstructures_HashTable_Iter,                 // tp_iter
    0,                                               // tp_iternext
    sharedstructures_HashTable_methods,              // tp_methods
    0,                                               // tp_members
@@ -1374,6 +1600,9 @@ PyMODINIT_FUNC initsharedstructures() {
   if (PyType_Ready(&sharedstructures_HashTableType) < 0) {
     return;
   }
+  if (PyType_Ready(&sharedstructures_HashTableIteratorType) < 0) {
+    return;
+  }
   if (PyType_Ready(&sharedstructures_PrefixTreeType) < 0) {
     return;
   }
@@ -1386,6 +1615,8 @@ PyMODINIT_FUNC initsharedstructures() {
 
   Py_INCREF(&sharedstructures_HashTableType);
   PyModule_AddObject(m, "HashTable", (PyObject*)&sharedstructures_HashTableType);
+  Py_INCREF(&sharedstructures_HashTableIteratorType);
+  PyModule_AddObject(m, "HashTableIterator", (PyObject*)&sharedstructures_HashTableIteratorType);
   Py_INCREF(&sharedstructures_PrefixTreeType);
   PyModule_AddObject(m, "PrefixTree", (PyObject*)&sharedstructures_PrefixTreeType);
   Py_INCREF(&sharedstructures_PrefixTreeIteratorType);

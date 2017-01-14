@@ -10,6 +10,9 @@
 namespace sharedstructures {
 
 
+class HashTableIterator;
+
+
 class HashTable {
 public:
   HashTable() = delete;
@@ -79,6 +82,16 @@ public:
   std::string at(const void* k, size_t k_size) const;
   std::string at(const std::string& k) const;
 
+  // these functions return the contents of a slot, which contains zero or more
+  // key-value pairs. to iterate the table, call this function for all values in
+  // [0, 1 << table.bits() - 1].
+  std::vector<std::pair<std::string, std::string>> get_slot_contents(
+      uint64_t slot_index) const;
+
+  // these functions implement standard C++ iteration.
+  HashTableIterator begin() const;
+  HashTableIterator end() const;
+
   // inspection methods.
   size_t size() const; // key count
   uint8_t bits() const; // hash bucket count factor
@@ -108,9 +121,9 @@ private:
   };
 
   struct HashTableBase {
-    uint8_t bits[2];
-    uint64_t slots_offset[2];
-    uint64_t item_count[2];
+    uint8_t bits;
+    uint64_t slots_offset;
+    uint64_t item_count;
   };
 
   uint64_t create_hash_base(uint8_t bits);
@@ -120,6 +133,34 @@ private:
       uint64_t hash) const;
 
   bool execute_check(const CheckRequest& check) const;
+
+  std::pair<std::string, std::string> next_key_value_internal(
+      const void* current, size_t size, bool return_value) const;
 };
+
+
+class HashTableIterator {
+public:
+  HashTableIterator() = delete;
+  HashTableIterator(const HashTableIterator& other) = default;
+  HashTableIterator(HashTableIterator&& other) = default;
+  HashTableIterator(const HashTable* table, uint64_t slot_index);
+  ~HashTableIterator() = default;
+
+  bool operator==(const HashTableIterator& other) const;
+  bool operator!=(const HashTableIterator& other) const;
+  HashTableIterator& operator++();
+  HashTableIterator operator++(int);
+  const std::pair<std::string, std::string>& operator*() const;
+
+private:
+  const HashTable* table;
+  uint64_t slot_index;
+  uint64_t result_index;
+  std::vector<std::pair<std::string, std::string>> slot_contents;
+
+  void advance_to_nonempty_slot();
+};
+
 
 } // namespace sharedstructures

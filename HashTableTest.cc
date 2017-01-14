@@ -47,6 +47,15 @@ void verify_state(
   for (const auto& it : expected) {
     expect_eq(it.second, table.at(it.first.data(), it.first.size()));
   }
+
+  auto missing_elements = expected;
+  for (const auto& it : table) {
+    auto missing_it = missing_elements.find(it.first);
+    expect_ne(missing_it, missing_elements.end());
+    expect_eq(missing_it->second, it.second);
+    missing_elements.erase(missing_it);
+  }
+  expect_eq(true, missing_elements.empty());
 }
 
 

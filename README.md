@@ -25,7 +25,7 @@ The allocator type of a pool can't be changed after creating it. Choose the allo
 
 Data structure objects can be used on top of an Allocator object. Currently there are two data structures.
 
-HashTable implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically, and are not iterable. These issues will be fixed in the future.
+HashTable implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
 
 PrefixTree implements a binary-safe map of strings to values of any of the following types:
 - Strings
@@ -36,6 +36,16 @@ PrefixTree implements a binary-safe map of strings to values of any of the follo
 
 The header files (HashTable.hh and PrefixTree.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc and PrefixTreeTest.cc) for usage examples.
 
+### Iteration semantics
+
+Iteration over either of these structures doesn't lock the structure, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
+
+Iterating a HashTable produces items in pseudorandom order. If an item exists in the table for the duration of the iteration, then it will be returned; if it's created or deleted during the iteration, then it may or may not be returned. Similarly, if its value is changed during the iteration, then either its new or old value may be returned.
+
+Iterating a PrefixTree produces keys in lexicographic order. This ordering makes its behavior with concurrent modifications easier to predict: concurrent changes after the current key (lexicographically) will be visible, changes before or at the current key will not.
+
+For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
+
 ## Python wrapper
 
 HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`).
@@ -45,7 +55,7 @@ The Python wrapper transparently marshals objects that aren't basic types - whic
 There are a few things to watch out for:
 - In Python, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - Strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
-- HashTable and PrefixTree aren't subclasses of dict. PrefixTrees can be converted to (non-shared) dicts by doing `dict(t.iteritems())`.
+- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`.
 
 ## Future work
 
