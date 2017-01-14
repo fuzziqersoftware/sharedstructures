@@ -1184,6 +1184,9 @@ PrefixTreeIterator::PrefixTreeIterator(const PrefixTree* tree,
 }
 
 bool PrefixTreeIterator::operator==(const PrefixTreeIterator& other) const {
+  if (this->tree != other.tree) {
+    return false;
+  }
   if (this->complete) {
     return other.complete;
   }
