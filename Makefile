@@ -38,7 +38,8 @@ libsharedstructures.a: $(OBJECTS)
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
-cpp_test: AllocatorTest HashTableTest PrefixTreeTest AllocatorBenchmark
+cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest AllocatorBenchmark
+	./ProcessSpinlockTest
 	./AllocatorTest
 	./PrefixTreeTest
 	./HashTableTest

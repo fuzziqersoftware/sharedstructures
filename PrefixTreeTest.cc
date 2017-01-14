@@ -594,7 +594,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
           value++;
         }
       } catch (const out_of_range& e) { }
-      usleep(0); // yield to other processes
+      usleep(1); // yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
     // we succeeded if we saw all the values from 100 to 110
