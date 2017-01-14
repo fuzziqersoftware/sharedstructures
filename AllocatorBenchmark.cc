@@ -70,11 +70,24 @@ struct Stats<T> get_stats(const vector<T>& x) {
 }
 
 
+void print_usage(const char* argv0) {
+  fprintf(stderr,
+    "usage: %s -X<allocator-type> [options]\n"
+    "  options:\n"
+    "    -l<max-pool-size> : pool will grow up to this size (bytes)\n"
+    "    -s<min-alloc-size> : allocations will be at least this many bytes each\n"
+    "    -S<max-alloc-size> : allocations will be at most this many bytes each\n"
+    "    -P<pool-name> : filename for the pool\n"
+    "    -A : preallocate the entire pool up to max-pool-size\n", argv0);
+}
+
+
 int main(int argc, char** argv) {
 
   size_t max_size = 32 * 1024 * 1024;
   size_t min_alloc_size = 1, max_alloc_size = 1024;
   uint64_t report_interval = 100;
+  bool preallocate = false;
   string allocator_type;
   string pool_name = "benchmark-pool";
   for (int x = 1; x < argc; x++) {
@@ -89,20 +102,32 @@ int main(int argc, char** argv) {
         allocator_type = &argv[x][2];
       } else if (argv[x][1] == 'P') {
         pool_name = &argv[x][2];
+      } else if (argv[x][1] == 'A') {
+        preallocate = true;
       } else {
         fprintf(stderr, "unknown argument: %s\n", argv[x]);
+        print_usage(argv[0]);
         return 1;
       }
     } else {
       fprintf(stderr, "unknown argument: %s\n", argv[x]);
+      print_usage(argv[0]);
       return 1;
     }
+  }
+
+  if (allocator_type.empty()) {
+    print_usage(argv[0]);
+    return 1;
   }
 
   srand(time(NULL));
 
   Pool::delete_pool(pool_name);
   shared_ptr<Pool> pool(new Pool(pool_name));
+  if (preallocate) {
+    pool->expand(max_size);
+  }
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
 
   vector<double> efficiencies;
