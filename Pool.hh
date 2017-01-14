@@ -22,8 +22,16 @@ public:
   // an existing pool larger than that size, and another process that opened the
   // pool with a larger max_size can expand it). note that creating a new pool
   // is not race-safe; if two processes try to create the pool at the same time,
-  // one will "win" and create the pool normally, but the other will see an
-  // inconsistent view of the pool and may fail in strange ways.
+  // one will "win" and create the pool normally, but the other may see an
+  // inconsistent view of the pool and fail. the following errors can be thrown:
+  // - cannot_open_file: the pool exists, but we can't open it. this can happen
+  //   is someone else called delete_pool while we were trying to open it - try
+  //   again.
+  // - runtime_error: the pool exists, but its size is zero (if we were opening
+  //   it), or we can't increase its size (if we created it). this can happen if
+  //   multiple processes try to create the pool concurrently - try again.
+  // - bad_alloc: the pool exists and isn't empty, but we can't map it into our
+  //   address space. either it's too large or we're out of address space.
   explicit Pool(const std::string& name, size_t max_size = 0, bool file = true);
   ~Pool();
 

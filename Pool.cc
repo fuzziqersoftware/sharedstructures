@@ -55,12 +55,17 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
       throw cannot_open_file(this->name);
     }
 
-    // we did not create the shared memory object; map it all into memory
+    // we did not create the shared memory object; get its size
     this->pool_size = fstat(this->fd).st_size;
+    if (this->pool_size == 0) {
+      throw runtime_error("existing pool is empty");
+    }
+
+    // map it all into memory
     this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
-    if (!this->data) {
-      throw runtime_error("mmap failed: " + string_for_error(errno));
+    if (this->data == MAP_FAILED) {
+      throw bad_alloc();
     }
 
   } else {
@@ -80,7 +85,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (!this->data) {
       unlink_segment(this->name.c_str(), file);
-      throw runtime_error("mmap failed: " + string_for_error(errno));
+      throw bad_alloc();
     }
 
     this->data->size = this->pool_size;

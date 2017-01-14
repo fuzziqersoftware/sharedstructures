@@ -17,7 +17,13 @@ using namespace sharedstructures;
 
 
 void run_acquisitions_test() {
-  printf("-- acquisitions (5 seconds)\n");
+  printf("-- acquisitions (1 second)\n");
+
+  {
+    // creating a pool isn't race-safe, so we'll so it here (and close it)
+    // before starting any child processes
+    Pool p("test-pool", 1024 * 1024);
+  }
 
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
@@ -40,7 +46,7 @@ void run_acquisitions_test() {
     pid_t pid = getpid();
     uint64_t* pool_pid = pool->at<uint64_t>(0x10);
     uint64_t* pool_last_pid = pool->at<uint64_t>(0x18);
-    while (now() < start + 5000000) {
+    while (now() < start + 1000000) {
       {
         ProcessSpinlockGuard g(pool.get(), 0x08);
         expect_eq(0, *pool_pid);
