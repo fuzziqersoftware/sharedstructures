@@ -7,8 +7,6 @@
 
 namespace sharedstructures {
 
-// TODO: we probably shouldn't assume 64-bit pointers everywhere
-
 class Allocator {
 protected:
   Allocator(std::shared_ptr<Pool>);
@@ -32,8 +30,6 @@ public:
   //   of pointers.
   // - allocate_object_ptr and free_object_ptr deal with PoolPointer instances,
   //   but otherwise behave like allocate_object/free_object.
-  // TODO: the allocator algorithm is currently linear-time; this can be slow
-  // when a large number of objects are allocated.
   // TODO: support shrinking the pool by truncating unused space at the end
 
   virtual uint64_t allocate(size_t size) = 0;

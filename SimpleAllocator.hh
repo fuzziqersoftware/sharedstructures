@@ -4,8 +4,6 @@
 
 namespace sharedstructures {
 
-// TODO: we probably shouldn't assume 64-bit pointers everywhere
-
 class SimpleAllocator : public Allocator {
 public:
   SimpleAllocator() = delete;
@@ -24,9 +22,6 @@ public:
   //   of pointers.
   // - allocate_object_ptr and free_object_ptr deal with PoolPointer instances,
   //   but otherwise behave like allocate_object/free_object.
-  // TODO: the allocator algorithm is currently linear-time; this can be slow
-  // when a large number of objects are allocated.
-  // TODO: support shrinking the pool by truncating unused space at the end
 
   virtual uint64_t allocate(size_t size);
   virtual void free(uint64_t x);
@@ -71,7 +66,6 @@ private:
   // struct that describes an allocated block. inside the pool, these form a
   // doubly-linked list with variable-size elements.
   struct AllocatedBlock {
-    // TODO: maybe we can make these uint32_t to save some space
     uint64_t prev;
     uint64_t next;
     uint64_t size;
