@@ -135,6 +135,18 @@ bool PrefixTree::insert(const void* k, size_t k_size, const void* v,
   if (v_size == 0) {
     *p->at<uint64_t>(value_slot_offset) = (int64_t)StoredValueType::String;
 
+  // up to 7-byte strings can be stored with the ShortString type
+  } else if (v_size < 8) {
+    // this type uses the first 7 bytes for data, and the last byte is
+    // (size << 3) | type
+    uint64_t value = ((uint64_t)v_size << 3) |
+        (uint64_t)StoredValueType::ShortString;
+    for (uint8_t x = 0, shift = 56; x < v_size; x++, shift -= 8) {
+      value |= ((uint64_t)((uint8_t*)v)[x]) << shift;
+    }
+    *p->at<uint64_t>(value_slot_offset) = value;
+
+  // longer strings require a separate allocated block
   } else {
     uint64_t value_offset = this->allocator->allocate(v_size);
     memcpy(p->at<char>(value_offset), v, v_size);
@@ -186,6 +198,19 @@ bool PrefixTree::insert(const void* k, size_t k_size, const struct iovec* iov,
   // empty strings are stored with no allocated memory (but the type is String)
   if (v_size == 0) {
     *p->at<uint64_t>(value_slot_offset) = (int64_t)StoredValueType::String;
+
+  // up to 7-byte strings can be stored with the ShortString type
+  } else if (v_size < 8) {
+    uint64_t value = ((uint64_t)v_size << 3) |
+        (uint64_t)StoredValueType::ShortString;
+    for (size_t iov_index = 0, shift = 56; iov_index < iov_count; iov_index++) {
+      auto& this_iov = iov[iov_index];
+      for (uint8_t iov_offset = 0; iov_offset < this_iov.iov_len;
+           iov_offset++, shift -= 8) {
+        value |= ((uint64_t)((uint8_t*)this_iov.iov_base)[iov_offset]) << shift;
+      }
+    }
+    *p->at<uint64_t>(value_slot_offset) = value;
 
   } else {
     uint64_t value_offset = this->allocator->allocate(v_size);
@@ -569,6 +594,7 @@ PrefixTree::ResultValueType PrefixTree::type(const void* k,
       return ResultValueType::Missing;
 
     case StoredValueType::String:
+    case StoredValueType::ShortString:
       return ResultValueType::String;
 
     case StoredValueType::Int:
@@ -671,11 +697,11 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
 
   const Node* n = this->allocator->get_pool()->at<Node>(node_offset);
   print_indent(stream, indent);
-  fprintf(stream, "%02hhX(%c) @ %" PRIx64 " (%02hhX, %02hhX), from=%02hhX",
+  fprintf(stream, "%02hhX(%c) @ %" PRIX64 " (%02hhX, %02hhX), from=%02hhX",
       k, isprint(k) ? k : '?', node_offset, n->start, n->end, n->parent_slot);
   if (n->value) {
     StoredValueType t = this->type_for_slot_contents(n->value);
-    fprintf(stream, " +%d@%" PRIx64 "\n", (int)t,
+    fprintf(stream, " +%d@%" PRIX64 "\n", (int)t,
         this->value_for_slot_contents(n->value));
   } else {
     fputc('\n', stream);
@@ -687,7 +713,7 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
       print_indent(stream, indent + 2);
       uint64_t value = this->value_for_slot_contents(contents);
       uint8_t k = x + n->start;
-      fprintf(stream, "(%X(%c)) +%d@%" PRIx64 "\n", k, isprint(k) ? k : '?',
+      fprintf(stream, "(%X(%c)) +%d@%" PRIX64 "\n", k, isprint(k) ? k : '?',
           (int)type, value);
     } else if (contents) {
       this->print(stream, x + n->start, contents, indent + 2);
@@ -1066,6 +1092,15 @@ PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
       return LookupResult("", 0);
     }
 
+    case StoredValueType::ShortString: {
+      auto res = LookupResult("", 0);
+      size_t v_size = (contents >> 3) & 0x7;
+      for (uint8_t shift = 56; res.as_string.size() < v_size; shift -= 8) {
+        res.as_string += (char)((contents >> shift) & 0xFF);
+      }
+      return res;
+    }
+
     case StoredValueType::Int: {
       int64_t v = this->value_for_slot_contents(contents) >> 3;
       if (v & 0x1000000000000000) {
@@ -1149,6 +1184,7 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
 
     case StoredValueType::Int:
     case StoredValueType::Trivial:
+    case StoredValueType::ShortString:
       // these types don't have allocated storage; just clear the value
       *p->at<uint64_t>(slot_offset) = 0;
       this->increment_item_count(-1);

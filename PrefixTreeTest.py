@@ -21,9 +21,9 @@ def expect_key_missing(table, k):
 def verify_state(expected, table):
   assert len(expected) == len(table)
   for k, v in expected.iteritems():
-    assert table[k] == v
+    assert table[k] == v, "%r (table) != %r (expected)" % (table[k], v)
   for k, v in table.iteritems():
-    assert expected[k] == v
+    assert expected[k] == v, "%r (expected) != %r (table)" % (expected[k], v)
 
 
 def run_basic_test(allocator_type):

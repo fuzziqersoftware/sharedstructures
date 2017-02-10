@@ -83,7 +83,7 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(true, table->insert("key1", 4, "value1", 6));
   expect_eq(1, table->size());
   expect_eq(4, table->node_size());
-  expect_eq(true, table->insert("key2", 4, "value2", 6));
+  expect_eq(true, table->insert("key2", 4, "value222", 8));
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());
   expect_eq(true, table->insert("key3", 4, "value3", 6));
@@ -94,7 +94,7 @@ void run_basic_test(const string& allocator_type) {
   r.type = PrefixTree::ResultValueType::String;
   r.as_string = "value1";
   expect_eq(r, table->at("key1", 4));
-  r.as_string = "value2";
+  r.as_string = "value222";
   expect_eq(r, table->at("key2", 4));
   r.as_string = "value3";
   expect_eq(r, table->at("key3", 4));
@@ -134,6 +134,55 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(true, table->erase("key3", 4));
   expect_eq(0, table->size());
   expect_eq(1, table->node_size());
+
+  // the empty table should not leak any allocated memory
+  expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
+}
+
+static bool insert_vector(shared_ptr<PrefixTree> table, const string& key,
+    const vector<string> value_parts) {
+  vector<struct iovec> iov;
+  for (const auto& part : value_parts) {
+    iov.emplace_back();
+    auto& this_iov = iov.back();
+    this_iov.iov_base = const_cast<char*>(part.data());
+    this_iov.iov_len = part.size();
+  }
+  return table->insert(key, iov.data(), iov.size());
+}
+
+void run_iovec_insert_test(const string& allocator_type) {
+  printf("-- [%s] vector inserts\n", allocator_type.c_str());
+
+  auto table = get_or_create_tree("test-table", allocator_type);
+
+  size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
+  expect_eq(0, table->size());
+
+  expect_eq(true, insert_vector(table, "key1", {}));
+  expect_eq(1, table->size());
+  expect_eq(true, insert_vector(table, "key2", {""}));
+  expect_eq(2, table->size());
+  expect_eq(true, insert_vector(table, "key3", {"", "", ""}));
+  expect_eq(3, table->size());
+  expect_eq(true, insert_vector(table, "key4", {"value1"}));
+  expect_eq(4, table->size());
+  expect_eq(true, insert_vector(table, "key5", {"val", "ue1"}));
+  expect_eq(5, table->size());
+  expect_eq(true, insert_vector(table, "key6", {"value123456"}));
+  expect_eq(6, table->size());
+  expect_eq(true, insert_vector(table, "key7", {"val", "u", "e12345", "6"}));
+  expect_eq(7, table->size());
+
+  expect_eq(LookupResult(""), table->at("key1"));
+  expect_eq(LookupResult(""), table->at("key2"));
+  expect_eq(LookupResult(""), table->at("key3"));
+  expect_eq(LookupResult("value1"), table->at("key4"));
+  expect_eq(LookupResult("value1"), table->at("key5"));
+  expect_eq(LookupResult("value123456"), table->at("key6"));
+  expect_eq(LookupResult("value123456"), table->at("key7"));
+
+  table->clear();
 
   // the empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
@@ -426,6 +475,8 @@ void run_types_test(const string& allocator_type) {
 
   // write a bunch of keys of different types
   expect_eq(true, table->insert("key-string", 10, "value-string", 12));
+  expect_eq(true, table->insert("key-string-short", 16, "short", 5));
+  expect_eq(true, table->insert("key-string-empty", 16, "", 0));
   expect_eq(true, table->insert("key-int", 7, (int64_t)(1024 * 1024 * -3)));
   expect_eq(true, table->insert("key-int-long", 12,
       (int64_t)0x9999999999999999));
@@ -434,18 +485,18 @@ void run_types_test(const string& allocator_type) {
   expect_eq(true, table->insert("key-false", 9, false));
   expect_eq(true, table->insert("key-null", 8));
 
-  expect_eq(7, table->size());
-  expect_eq(32, table->node_size());
+  expect_eq(9, table->size());
+  expect_eq(42, table->node_size());
 
   // get their values again
   try {
     table->at("key-missing", 11);
     expect(false);
   } catch (const out_of_range& e) { }
-  expect_eq(LookupResult("value-string"),
-      table->at("key-string", 10));
-  expect_eq(LookupResult((int64_t)1024 * 1024 * -3),
-      table->at("key-int", 7));
+  expect_eq(LookupResult("value-string"), table->at("key-string", 10));
+  expect_eq(LookupResult("short"), table->at("key-string-short", 16));
+  expect_eq(LookupResult(""), table->at("key-string-empty", 16));
+  expect_eq(LookupResult((int64_t)1024 * 1024 * -3), table->at("key-int", 7));
   expect_eq(LookupResult((int64_t)0x9999999999999999),
       table->at("key-int-long", 12));
   expect_eq(LookupResult(2.38), table->at("key-double", 10));
@@ -458,6 +509,10 @@ void run_types_test(const string& allocator_type) {
   expect_eq(PrefixTree::ResultValueType::Missing,
       table->type("key-missing", 11));
   expect_eq(PrefixTree::ResultValueType::String, table->type("key-string", 10));
+  expect_eq(PrefixTree::ResultValueType::String,
+      table->type("key-string-short", 16));
+  expect_eq(PrefixTree::ResultValueType::String,
+      table->type("key-string-empty", 16));
   expect_eq(PrefixTree::ResultValueType::Int, table->type("key-int", 7));
   expect_eq(PrefixTree::ResultValueType::Int, table->type("key-int-long", 12));
   expect_eq(PrefixTree::ResultValueType::Double,
@@ -469,6 +524,8 @@ void run_types_test(const string& allocator_type) {
   // make sure exists() returns true for all the keys we expect
   expect_eq(false, table->exists("key-missing", 11));
   expect_eq(true, table->exists("key-string", 10));
+  expect_eq(true, table->exists("key-string-short", 16));
+  expect_eq(true, table->exists("key-string-empty", 16));
   expect_eq(true, table->exists("key-int", 7));
   expect_eq(true, table->exists("key-int-long", 12));
   expect_eq(true, table->exists("key-double", 10));
@@ -638,6 +695,7 @@ int main(int argc, char* argv[]) {
     for (const auto& allocator_type : allocator_types) {
       Pool::delete_pool("test-table");
       run_basic_test(allocator_type);
+      run_iovec_insert_test(allocator_type);
       run_conditional_writes_test(allocator_type);
       run_reorganization_test(allocator_type);
       run_types_test(allocator_type);
