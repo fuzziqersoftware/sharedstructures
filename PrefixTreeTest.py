@@ -5,10 +5,7 @@ import subprocess
 import sys
 import time
 
-try:
-  import sharedstructures
-except ImportError:
-  import sharedstructures3 as sharedstructures
+import sharedstructures
 
 
 def get_current_process_lsof():
