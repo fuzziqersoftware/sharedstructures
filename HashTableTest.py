@@ -1,9 +1,14 @@
+from __future__ import unicode_literals
+
 import os
 import subprocess
 import sys
 import time
 
-import sharedstructures
+try:
+  import sharedstructures
+except ImportError:
+  import sharedstructures3 as sharedstructures
 
 
 def get_current_process_lsof():
@@ -20,9 +25,9 @@ def expect_key_missing(table, k):
 
 def verify_state(expected, table):
   assert len(expected) == len(table)
-  for k, v in expected.iteritems():
+  for k, v in expected.items():
     assert table[k] == v
-  for k, v in table.iteritems():
+  for k, v in table.items():
     assert expected[k] == v
 
 
@@ -42,27 +47,27 @@ def run_basic_test(allocator_type):
     del e[k]
 
   verify_state(expected, table)
-  insert_both(expected, table, 'key1', 'value1')
+  insert_both(expected, table, b'key1', b'value1')
   verify_state(expected, table)
-  insert_both(expected, table, 'key2', 'value2')
+  insert_both(expected, table, b'key2', b'value2')
   verify_state(expected, table)
-  insert_both(expected, table, 'key3', 'value3')
+  insert_both(expected, table, b'key3', b'value3')
   verify_state(expected, table)
 
-  delete_both(expected, table, 'key2')
+  delete_both(expected, table, b'key2')
   verify_state(expected, table)
   try:
-    del table['key2']
+    del table[b'key2']
     assert False, "del table[\'key2\'] did not raise KeyError"
   except KeyError:
     pass
   verify_state(expected, table)
 
-  insert_both(expected, table, 'key1', 'value0')
+  insert_both(expected, table, b'key1', b'value0')
   verify_state(expected, table)
-  delete_both(expected, table, 'key1')
+  delete_both(expected, table, b'key1')
   verify_state(expected, table)
-  delete_both(expected, table, 'key3')
+  delete_both(expected, table, b'key3')
   verify_state(expected, table)
 
   assert {} == expected
@@ -121,47 +126,47 @@ def run_conditional_writes_test(allocator_type):
 
   verify_state(expected, table)
 
-  insert_both(expected, table, "key1", "value1")
+  insert_both(expected, table, b"key1", b"value1")
   verify_state(expected, table)
-  insert_both(expected, table, "key2", "value2")
+  insert_both(expected, table, b"key2", b"value2")
   verify_state(expected, table)
 
   # check that conditions on the same key work
-  conditional_insert_both(expected, table, "key1", "value2", "key1", "value1_1",
-      False)
+  conditional_insert_both(expected, table, b"key1", b"value2", b"key1",
+      b"value1_1", False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key1", "value1", "key1", "value1_1",
-      True)
+  conditional_insert_both(expected, table, b"key1", b"value1", b"key1",
+      b"value1_1", True)
   verify_state(expected, table)
 
   # check that conditions on other keys work
-  conditional_insert_both(expected, table, "key2", "value1", "key1", "value1",
-      False)
+  conditional_insert_both(expected, table, b"key2", b"value1", b"key1",
+      b"value1", False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key2", "value2", "key1", "value1",
-      True)
+  conditional_insert_both(expected, table, b"key2", b"value2", b"key1",
+      b"value1", True)
   verify_state(expected, table)
 
   # check that missing conditions work
-  conditional_missing_insert_both(expected, table, "key2", "key3", "value3",
+  conditional_missing_insert_both(expected, table, b"key2", b"key3", b"value3",
       False)
   verify_state(expected, table)
-  conditional_missing_insert_both(expected, table, "key3", "key3", "value3",
+  conditional_missing_insert_both(expected, table, b"key3", b"key3", b"value3",
       True)
   verify_state(expected, table)
 
   # check that conditional deletes work
-  conditional_delete_both(expected, table, "key1", "value2", "key1", False)
+  conditional_delete_both(expected, table, b"key1", b"value2", b"key1", False)
   verify_state(expected, table)
-  conditional_delete_both(expected, table, "key1", "value1", "key1", True)
-  verify_state(expected, table)
-
-  conditional_missing_delete_both(expected, table, "key3", "key2", False)
-  verify_state(expected, table)
-  conditional_missing_delete_both(expected, table, "key1", "key2", True)
+  conditional_delete_both(expected, table, b"key1", b"value1", b"key1", True)
   verify_state(expected, table)
 
-  delete_both(expected, table, "key3")
+  conditional_missing_delete_both(expected, table, b"key3", b"key2", False)
+  verify_state(expected, table)
+  conditional_missing_delete_both(expected, table, b"key1", b"key2", True)
+  verify_state(expected, table)
+
+  delete_both(expected, table, b"key3")
 
   assert expected == {}
 
@@ -184,11 +189,11 @@ def run_collision_test(allocator_type):
   assert 2 == table.bits()
   assert 0 == len(table)
 
-  insert_both(expected, table, 'key1', 'value1')
-  insert_both(expected, table, 'key2', 'value2')
-  insert_both(expected, table, 'key3', 'value3')
-  insert_both(expected, table, 'key4', 'value4')
-  insert_both(expected, table, 'key5', 'value5')
+  insert_both(expected, table, b'key1', b'value1')
+  insert_both(expected, table, b'key2', b'value2')
+  insert_both(expected, table, b'key3', b'value3')
+  insert_both(expected, table, b'key4', b'value4')
+  insert_both(expected, table, b'key5', b'value5')
   verify_state(expected, table)
 
   while expected:
@@ -218,7 +223,7 @@ def run_concurrent_readers_test(allocator_type):
         (int(time.time() * 1000000) < (start_time + 1000000)):
       time.sleep(0.001)
       try:
-        res = table['key1']
+        res = table[b'key1']
       except KeyError:
         pass
       else:
@@ -231,9 +236,9 @@ def run_concurrent_readers_test(allocator_type):
     # parent process: write the key, then wait for children to terminate
     table = sharedstructures.HashTable('test-table', allocator_type)
 
-    for value in xrange(100, 110):
+    for value in range(100, 110):
       time.sleep(0.05)
-      table['key1'] = value
+      table[b'key1'] = value
 
     num_failures = 0
     while child_pids:

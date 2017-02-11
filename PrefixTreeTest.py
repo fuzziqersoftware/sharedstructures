@@ -1,9 +1,14 @@
+from __future__ import unicode_literals
+
 import os
 import subprocess
 import sys
 import time
 
-import sharedstructures
+try:
+  import sharedstructures
+except ImportError:
+  import sharedstructures3 as sharedstructures
 
 
 def get_current_process_lsof():
@@ -20,9 +25,9 @@ def expect_key_missing(table, k):
 
 def verify_state(expected, table):
   assert len(expected) == len(table)
-  for k, v in expected.iteritems():
+  for k, v in expected.items():
     assert table[k] == v, "%r (table) != %r (expected)" % (table[k], v)
-  for k, v in table.iteritems():
+  for k, v in table.items():
     assert expected[k] == v, "%r (expected) != %r (table)" % (expected[k], v)
 
 
@@ -42,27 +47,27 @@ def run_basic_test(allocator_type):
     del e[k]
 
   verify_state(expected, table)
-  insert_both(expected, table, 'key1', 'value1')
+  insert_both(expected, table, b'key1', b'value1')
   verify_state(expected, table)
-  insert_both(expected, table, 'key2', 'value2')
+  insert_both(expected, table, b'key2', b'value2')
   verify_state(expected, table)
-  insert_both(expected, table, 'key3', 'value3')
+  insert_both(expected, table, b'key3', b'value3')
   verify_state(expected, table)
 
-  delete_both(expected, table, 'key2')
+  delete_both(expected, table, b'key2')
   verify_state(expected, table)
   try:
-    del table['key2']
+    del table[b'key2']
     assert False, "del table[\'key2\'] did not raise KeyError"
   except KeyError:
     pass
   verify_state(expected, table)
 
-  insert_both(expected, table, 'key1', 'value0')
+  insert_both(expected, table, b'key1', b'value0')
   verify_state(expected, table)
-  delete_both(expected, table, 'key1')
+  delete_both(expected, table, b'key1')
   verify_state(expected, table)
-  delete_both(expected, table, 'key3')
+  delete_both(expected, table, b'key3')
   verify_state(expected, table)
 
   assert {} == expected
@@ -120,29 +125,29 @@ def run_conditional_writes_test(allocator_type):
 
   verify_state(expected, table)
 
-  insert_both(expected, table, "key1", "value1")
+  insert_both(expected, table, b"key1", b"value1")
   verify_state(expected, table)
-  insert_both(expected, table, "key2", 10.0)
+  insert_both(expected, table, b"key2", 10.0)
   verify_state(expected, table)
-  insert_both(expected, table, "key3", True)
+  insert_both(expected, table, b"key3", True)
   verify_state(expected, table)
 
   # check that conditions on the same key work for various types
-  conditional_insert_both(expected, table, "key1", "value2", "key1", "value1_1",
-      False)
+  conditional_insert_both(expected, table, b"key1", b"value2", b"key1",
+      b"value1_1", False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key1", "value1", "key1", "value1_1",
-      True)
-  verify_state(expected, table)
-
-  conditional_insert_both(expected, table, "key2", 8.0, "key2", 15.0, False)
-  verify_state(expected, table)
-  conditional_insert_both(expected, table, "key2", 10.0, "key2", 15.0, True)
+  conditional_insert_both(expected, table, b"key1", b"value1", b"key1",
+      b"value1_1", True)
   verify_state(expected, table)
 
-  conditional_insert_both(expected, table, "key3", False, "key3", False, False)
+  conditional_insert_both(expected, table, b"key2", 8.0, b"key2", 15.0, False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key3", True, "key3", False, True)
+  conditional_insert_both(expected, table, b"key2", 10.0, b"key2", 15.0, True)
+  verify_state(expected, table)
+
+  conditional_insert_both(expected, table, b"key3", False, b"key3", False, False)
+  verify_state(expected, table)
+  conditional_insert_both(expected, table, b"key3", True, b"key3", False, True)
   verify_state(expected, table)
 
   # now:
@@ -151,22 +156,23 @@ def run_conditional_writes_test(allocator_type):
   # key3 = False
 
   # check that conditions on other keys work
-  conditional_insert_both(expected, table, "key3", True, "key1", "value1",
+  conditional_insert_both(expected, table, b"key3", True, b"key1", b"value1",
       False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key3", False, "key1", "value1",
+  conditional_insert_both(expected, table, b"key3", False, b"key1", b"value1",
       True)
   verify_state(expected, table)
 
-  conditional_insert_both(expected, table, "key1", "value2", "key2", 10.0,
+  conditional_insert_both(expected, table, b"key1", b"value2", b"key2", 10.0,
       False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key1", "value1", "key2", 10.0, True)
+  conditional_insert_both(expected, table, b"key1", b"value1", b"key2", 10.0,
+      True)
   verify_state(expected, table)
 
-  conditional_insert_both(expected, table, "key2", 20.0, "key3", True, False)
+  conditional_insert_both(expected, table, b"key2", 20.0, b"key3", True, False)
   verify_state(expected, table)
-  conditional_insert_both(expected, table, "key2", 10.0, "key3", True, True)
+  conditional_insert_both(expected, table, b"key2", 10.0, b"key3", True, True)
   verify_state(expected, table)
 
   # now:
@@ -175,11 +181,11 @@ def run_conditional_writes_test(allocator_type):
   # key3 = True
 
   # check that Missing conditions work
-  conditional_insert_both(expected, table, "key4", None, "key4", None, False)
+  conditional_insert_both(expected, table, b"key4", None, b"key4", None, False)
   verify_state(expected, table)
-  conditional_missing_insert_both(expected, table, "key2", "key4", None, False)
+  conditional_missing_insert_both(expected, table, b"key2", b"key4", None, False)
   verify_state(expected, table)
-  conditional_missing_insert_both(expected, table, "key4", "key4", None, True)
+  conditional_missing_insert_both(expected, table, b"key4", b"key4", None, True)
   verify_state(expected, table)
 
   # now:
@@ -189,26 +195,26 @@ def run_conditional_writes_test(allocator_type):
   # key4 = None
 
   # check that conditional deletes work
-  conditional_delete_both(expected, table, "key1", "value2", "key1", False)
+  conditional_delete_both(expected, table, b"key1", b"value2", b"key1", False)
   verify_state(expected, table)
-  conditional_delete_both(expected, table, "key1", "value1", "key1", True)
-  verify_state(expected, table)
-
-  conditional_delete_both(expected, table, "key2", 20.0, "key2", False)
-  verify_state(expected, table)
-  conditional_delete_both(expected, table, "key2", 10.0, "key2", True)
+  conditional_delete_both(expected, table, b"key1", b"value1", b"key1", True)
   verify_state(expected, table)
 
-  conditional_delete_both(expected, table, "key3", False, "key3", False)
+  conditional_delete_both(expected, table, b"key2", 20.0, b"key2", False)
   verify_state(expected, table)
-  conditional_delete_both(expected, table, "key3", True, "key3", True)
+  conditional_delete_both(expected, table, b"key2", 10.0, b"key2", True)
   verify_state(expected, table)
 
-  conditional_missing_delete_both(expected, table, "key4", "key4", False)
+  conditional_delete_both(expected, table, b"key3", False, b"key3", False)
   verify_state(expected, table)
-  conditional_delete_both(expected, table, "key4", None, "key4", True)
+  conditional_delete_both(expected, table, b"key3", True, b"key3", True)
   verify_state(expected, table)
-  conditional_missing_delete_both(expected, table, "key4", "key4", False)
+
+  conditional_missing_delete_both(expected, table, b"key4", b"key4", False)
+  verify_state(expected, table)
+  conditional_delete_both(expected, table, b"key4", None, b"key4", True)
+  verify_state(expected, table)
+  conditional_missing_delete_both(expected, table, b"key4", b"key4", False)
   verify_state(expected, table)
 
   assert expected == {}
@@ -229,34 +235,34 @@ def run_reorganization_test(allocator_type):
 
   verify_state(expected, table)
 
-  insert_both('abc')
+  insert_both(b'abc')
   verify_state(expected, table)
 
-  insert_both('ab')
+  insert_both(b'ab')
   verify_state(expected, table)
 
-  delete_both('abc')
+  delete_both(b'abc')
   verify_state(expected, table)
 
-  insert_both('')
+  insert_both(b'')
   verify_state(expected, table)
 
-  insert_both('abcd')
+  insert_both(b'abcd')
   verify_state(expected, table)
 
-  delete_both('ab')
+  delete_both(b'ab')
   verify_state(expected, table)
 
-  insert_both('abcde')
+  insert_both(b'abcde')
   verify_state(expected, table)
 
-  insert_both('abcdf')
+  insert_both(b'abcdf')
   verify_state(expected, table)
 
-  insert_both('abce')
+  insert_both(b'abce')
   verify_state(expected, table)
 
-  insert_both('abcef')
+  insert_both(b'abcef')
   verify_state(expected, table)
 
   table.clear()
@@ -278,34 +284,34 @@ def run_types_test(allocator_type):
     del expected[k]
 
   verify_state(expected, table)
-  insert_both('key-string', 'value-string')
+  insert_both(b'key-string', b'value-string')
   verify_state(expected, table)
-  insert_both('key-string-unicode', u'value-string-unicode')
+  insert_both(b'key-string-unicode', u'value-string-unicode')
   verify_state(expected, table)
-  insert_both('key-int', 1024 * 1024 * -3)
+  insert_both(b'key-int', 1024 * 1024 * -3)
   verify_state(expected, table)
-  insert_both('key-int-long', 0x5555555555555555)
+  insert_both(b'key-int-long', 0x5555555555555555)
   verify_state(expected, table)
-  insert_both('key-double', 2.38)
+  insert_both(b'key-double', 2.38)
   verify_state(expected, table)
-  insert_both('key-true', True)
+  insert_both(b'key-true', True)
   verify_state(expected, table)
-  insert_both('key-false', False)
+  insert_both(b'key-false', False)
   verify_state(expected, table)
-  insert_both('key-null', None)
+  insert_both(b'key-null', None)
   verify_state(expected, table)
 
-  expect_key_missing(table, 'key-missing')
+  expect_key_missing(table, b'key-missing')
 
   # this calls exists() internally
-  assert 'key-string' in table
-  assert 'key-string-unicode' in table
-  assert 'key-int' in table
-  assert 'key-int-long' in table
-  assert 'key-double' in table
-  assert 'key-true' in table
-  assert 'key-false' in table
-  assert 'key-null' in table
+  assert b'key-string' in table
+  assert b'key-string-unicode' in table
+  assert b'key-int' in table
+  assert b'key-int-long' in table
+  assert b'key-double' in table
+  assert b'key-true' in table
+  assert b'key-false' in table
+  assert b'key-null' in table
 
   table.clear()
   expected.clear()
@@ -326,21 +332,21 @@ def run_complex_types_test(allocator_type):
     del expected[k]
 
   verify_state(expected, table)
-  insert_both('key-list-empty', [])
+  insert_both(b'key-list-empty', [])
   verify_state(expected, table)
-  insert_both('key-list-ints', [1, 2, 3, 7])
+  insert_both(b'key-list-ints', [1, 2, 3, 7])
   verify_state(expected, table)
-  insert_both('key-tuple-empty', ())
+  insert_both(b'key-tuple-empty', ())
   verify_state(expected, table)
-  insert_both('key-tuple-ints', (1, 2, 3, 7))
+  insert_both(b'key-tuple-ints', (1, 2, 3, 7))
   verify_state(expected, table)
-  insert_both('key-set-empty', set())
+  insert_both(b'key-set-empty', set())
   verify_state(expected, table)
-  insert_both('key-set-ints', {1, 2, 3, 7})
+  insert_both(b'key-set-ints', {1, 2, 3, 7})
   verify_state(expected, table)
-  insert_both('key-dict-empty', {})
+  insert_both(b'key-dict-empty', {})
   verify_state(expected, table)
-  insert_both('key-dict-ints', {1: 2, 3: 7})
+  insert_both(b'key-dict-ints', {1: 2, 3: 7})
   verify_state(expected, table)
 
   table.clear()
@@ -362,96 +368,96 @@ def run_incr_test(allocator_type):
     del expected[k]
 
   assert 0 == len(table)
-  table['key-int'] = 10
-  table['key-int-long'] = 0x3333333333333333
-  table['key-double'] = 1.0
+  table[b'key-int'] = 10
+  table[b'key-int-long'] = 0x3333333333333333
+  table[b'key-double'] = 1.0
   assert 3 == len(table)
 
   # giving garbage to incr() should cause a TypeError
   try:
-    table.incr('key-missing', 'not a number, lolz')
+    table.incr(b'key-missing', b'not a number, lolz')
     assert False
   except TypeError:
     pass
   try:
-    table.incr('key-missing', {'still': 'not', 'a': 'number'})
+    table.incr(b'key-missing', {'still': 'not', 'a': 'number'})
     assert False
   except TypeError:
     pass
 
   # incr should create the key if it doesn't exist
-  assert 100 == table.incr('key-int2', 100)
-  assert 0x5555555555555555 == table.incr('key-int-long2', 0x5555555555555555)
-  assert 10.0 == table.incr('key-double2', 10.0)
-  assert 100 == table['key-int2']
-  assert 0x5555555555555555 == table['key-int-long2']
-  assert 10.0 == table['key-double2']
+  assert 100 == table.incr(b'key-int2', 100)
+  assert 0x5555555555555555 == table.incr(b'key-int-long2', 0x5555555555555555)
+  assert 10.0 == table.incr(b'key-double2', 10.0)
+  assert 100 == table[b'key-int2']
+  assert 0x5555555555555555 == table[b'key-int-long2']
+  assert 10.0 == table[b'key-double2']
   assert 6 == len(table)
 
   # incr should return the new value of the key
-  assert 99 == table.incr('key-int2', -1)
-  assert 0.0 == table.incr('key-double2', -10.0)
-  assert 99 == table['key-int2']
-  assert 0.0 == table['key-double2']
+  assert 99 == table.incr(b'key-int2', -1)
+  assert 0.0 == table.incr(b'key-double2', -10.0)
+  assert 99 == table[b'key-int2']
+  assert 0.0 == table[b'key-double2']
   assert 6 == len(table)
 
   # test incr() on keys of the wrong type
-  table['key-null'] = None
-  table['key-string'] = 'value-string'
+  table[b'key-null'] = None
+  table[b'key-string'] = b'value-string'
   assert 8 == len(table)
   try:
-    table.incr('key-null', 13.0)
+    table.incr(b'key-null', 13.0)
     assert False
   except ValueError:
     pass
-  assert None == table['key-null']
+  assert None == table[b'key-null']
   try:
-    table.incr('key-null', 13)
+    table.incr(b'key-null', 13)
     assert False
   except ValueError:
     pass
-  assert None == table['key-null']
+  assert None == table[b'key-null']
   try:
-    table.incr('key-string', 13.0)
+    table.incr(b'key-string', 13.0)
     assert False
   except ValueError:
     pass
-  assert 'value-string' == table['key-string']
+  assert b'value-string' == table[b'key-string']
   try:
-    table.incr('key-string', 13)
+    table.incr(b'key-string', 13)
     assert False
   except ValueError:
     pass
-  assert 'value-string' == table['key-string']
+  assert b'value-string' == table[b'key-string']
   try:
-    table.incr('key-int', 13.0)
+    table.incr(b'key-int', 13.0)
     assert False
   except ValueError:
     pass
-  assert 10 == table['key-int']
+  assert 10 == table[b'key-int']
   try:
-    table.incr('key-int-long', 13.0)
+    table.incr(b'key-int-long', 13.0)
     assert False
   except ValueError:
     pass
-  assert 0x3333333333333333 == table['key-int-long']
+  assert 0x3333333333333333 == table[b'key-int-long']
   try:
-    table.incr('key-int-long2', 13.0)
+    table.incr(b'key-int-long2', 13.0)
     assert False
   except ValueError:
     pass
-  assert 0x5555555555555555 == table['key-int-long2']
+  assert 0x5555555555555555 == table[b'key-int-long2']
   try:
-    table.incr('key-double', 13)
+    table.incr(b'key-double', 13)
     assert False
   except ValueError:
     pass
-  assert 1.0 == table['key-double']
+  assert 1.0 == table[b'key-double']
 
   # test converting integers between Int and Number
-  assert 0x2AAAAAAAAAAAAAAA == table.incr('key-int', 0x2AAAAAAAAAAAAAA0)
+  assert 0x2AAAAAAAAAAAAAAA == table.incr(b'key-int', 0x2AAAAAAAAAAAAAA0)
   assert 8 == len(table)
-  assert 3 == table.incr('key-int-long', -0x3333333333333330)
+  assert 3 == table.incr(b'key-int-long', -0x3333333333333330)
   assert 8 == len(table)
 
   # we're done here
@@ -479,7 +485,7 @@ def run_concurrent_readers_test(allocator_type):
         (int(time.time() * 1000000) < (start_time + 1000000)):
       time.sleep(0.001)
       try:
-        res = table['key1']
+        res = table[b'key1']
       except KeyError:
         pass
       else:
@@ -492,9 +498,9 @@ def run_concurrent_readers_test(allocator_type):
     # parent process: write the key, then wait for children to terminate
     table = sharedstructures.PrefixTree('test-table', allocator_type)
 
-    for value in xrange(100, 110):
+    for value in range(100, 110):
       time.sleep(0.05)
-      table['key1'] = value
+      table[b'key1'] = value
 
     num_failures = 0
     while child_pids:

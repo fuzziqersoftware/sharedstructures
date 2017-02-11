@@ -1,12 +1,11 @@
 # sharedstructures
 
-sharedstructures is a library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way. Currently hash tables and prefix trees are implemented.
+sharedstructures is a C+ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way. Currently hash tables and prefix trees are implemented.
 
 ## Building
 
 - Build and install phosg (https://github.com/fuzziqersoftware/phosg)
-- Build the C++ and Python libraries and test them by running `make`. If you don't have Python headers installed, you can build the C++ libraries only by running `make cpp_only`.
-- If you're running on Mac OS X, run `make osx_cpp32_test osx_py32_test` to run the tests in 32-bit mode.
+- Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only`, `make py_only`, or `make py3_only`.
 - Run `sudo make install`.
 
 If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.11 and Ubuntu 16.04.
@@ -48,7 +47,7 @@ For both structures, the iterator objects cache one or more results on the itera
 
 ## Python wrapper
 
-HashTable and PrefixTree can also be used from Python 2.x with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). TypeError is raised if `k` isn't a string.
+HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). TypeError is raised if `k` isn't a string.
 
 The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
@@ -60,7 +59,6 @@ There are a few things to watch out for:
 ## Future work
 
 There's a lot to do here.
-- Make the Python module also work in Python 3.
 - Use a more efficient locking strategy. Currently we use spinlocks.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).

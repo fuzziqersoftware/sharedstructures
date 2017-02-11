@@ -6,6 +6,9 @@ LDFLAGS=-L/usr/local/lib -std=c++14 -lphosg -g
 INSTALL_DIR=/usr/local
 
 PYTHON_INCLUDES=$(shell python-config --includes)
+PYTHON3_INCLUDES=$(shell python3-config --includes)
+PYTHON_LIBS=$(shell python-config --libs)
+PYTHON3_LIBS=$(shell python3-config --libs)
 
 
 UNAME = $(shell uname -s)
@@ -22,7 +25,7 @@ ifeq ($(UNAME),Linux)
 	PYTHON_MODULE_LDFLAGS = -shared
 endif
 
-all: cpp_only py_only
+all: cpp_only py_only py3_only
 
 install: libsharedstructures.a
 	mkdir -p $(INSTALL_DIR)/include/sharedstructures
@@ -32,6 +35,8 @@ install: libsharedstructures.a
 cpp_only: libsharedstructures.a cpp_test
 
 py_only: sharedstructures.so py_test
+
+py3_only: sharedstructures.abi3.so py3_test
 
 libsharedstructures.a: $(OBJECTS)
 	rm -f libsharedstructures.a
@@ -44,11 +49,6 @@ cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest Allocat
 	./PrefixTreeTest
 	./HashTableTest
 
-osx_cpp32_test: cpp_test
-	arch -32 ./AllocatorTest
-	arch -32 ./PrefixTreeTest
-	arch -32 ./HashTableTest
-
 %Test: %Test.o $(OBJECTS)
 	$(CXX) $^ $(LDFLAGS) -o $@
 
@@ -59,20 +59,26 @@ AllocatorBenchmark: AllocatorBenchmark.o $(OBJECTS)
 sharedstructures.so: $(OBJECTS) PythonModule.o
 	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
 
+sharedstructures.abi3.so: $(OBJECTS) PythonModule3.o
+	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
+
 PythonModule.o: PythonModule.cc
 	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
+
+PythonModule3.o: PythonModule.cc
+	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON3_INCLUDES) -c PythonModule.cc -o PythonModule3.o
 
 
 py_test: sharedstructures.so
 	python HashTableTest.py
 	python PrefixTreeTest.py
 
-osx_py32_test: py_test
-	arch -32 python HashTableTest.py
-	arch -32 python PrefixTreeTest.py
+py3_test: sharedstructures.abi3.so
+	python3 HashTableTest.py
+	python3 PrefixTreeTest.py
 
 
 clean:
 	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so *Test AllocatorBenchmark
 
-.PHONY: all cpp_only py_only clean cpp_test py_test osx_cpp32_test osx_py32_test
+.PHONY: all cpp_only py_only clean cpp_test py_test py3_test
