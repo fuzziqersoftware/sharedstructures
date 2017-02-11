@@ -48,18 +48,19 @@ For both structures, the iterator objects cache one or more results on the itera
 
 ## Python wrapper
 
-HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`).
+HashTable and PrefixTree can also be used from Python 2.x with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). TypeError is raised if `k` isn't a string.
 
 The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
 There are a few things to watch out for:
 - In Python, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - Strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
-- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`.
+- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
 
 ## Future work
 
 There's a lot to do here.
+- Make the Python module also work in Python 3.
 - Use a more efficient locking strategy. Currently we use spinlocks.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).
