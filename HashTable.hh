@@ -67,6 +67,18 @@ public:
   bool insert(const std::string& k, const std::string& v,
       const CheckRequest* check = NULL);
 
+  // atomically increments the value of a numeric key, returning the new value.
+  // if the key is missing, creates it with the given value, as either a 64-bit
+  // integer or double-precision floating-point vlaue. keys in HashTables don't
+  // have types, so make sure to only use one version of incr (int or float) on
+  // any given key. integer increments can be done on values of 1, 2, 4, or 8
+  // bytes in native byte order. floating-point increments can be done on values
+  // of 4 or 8 bytes, also in native byte order.
+  int64_t incr(const void* k, size_t k_size, int64_t delta);
+  int64_t incr(const std::string& k, int64_t delta);
+  double incr(const void* k, size_t k_size, double delta);
+  double incr(const std::string& k, double delta);
+
   // deletes a key.
   bool erase(const void* k, size_t k_size, const CheckRequest* check = NULL);
   bool erase(const std::string& k, const CheckRequest* check = NULL);

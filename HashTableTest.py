@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 
 import os
+import struct
 import subprocess
 import sys
 import time
@@ -199,6 +200,98 @@ def run_collision_test(allocator_type):
     verify_state(expected, table)
 
 
+def run_incr_test(allocator_type):
+  print('-- [%s] incr' % allocator_type)
+  table = sharedstructures.HashTable('test-table', allocator_type, 0, 6)
+  expected = {}
+
+  def insert_both(k, v):
+    table[k] = v
+    expected[k] = v
+
+  def delete_both(k):
+    del table[k]
+    del expected[k]
+
+  # giving garbage to incr() should cause a TypeError
+  try:
+    table.incr(b'missing', b'not a number, lolz')
+    assert False
+  except TypeError:
+    pass
+  try:
+    table.incr(b'missing', {'still': 'not', 'a': 'number'})
+    assert False
+  except TypeError:
+    pass
+
+  assert 0 == len(table)
+  insert_both(b'int8', struct.pack(b'@b', 40))
+  insert_both(b'int16', struct.pack(b'@h', 4000))
+  insert_both(b'int32', struct.pack(b'@l', 60000000))
+  insert_both(b'int64', struct.pack(b'@q', 800000000000000))
+  insert_both(b'float', struct.pack(b'@f', 10.0))
+  insert_both(b'double', struct.pack(b'@d', 15.5))
+  insert_both(b'string', b'7 bytes')
+  assert 7 == len(table)
+
+  # incr should create the key if it doesn't exist
+  assert -10 == table.incr(b"int8-2", -10)
+  assert -4000 == table.incr(b"int16-2", -4000)
+  assert -60000000 == table.incr(b"int32-2", -60000000)
+  assert -800000000000000 == table.incr(b"int64-2", -800000000000000)
+  assert -10.0 == table.incr(b"float-2", -10.0)
+  assert -15.5 == table.incr(b"double-2", -15.5)
+  assert 13 == len(table)
+
+  # all the keys should have the values we set, but the keys created by incr
+  # should all be 64 bits
+  assert struct.pack(b'@b', 40) == table[b"int8"]
+  assert struct.pack(b'@h', 4000) == table[b"int16"]
+  assert struct.pack(b'@l', 60000000) == table[b"int32"]
+  assert struct.pack(b'@q', 800000000000000) == table[b"int64"]
+  assert struct.pack(b'@f', 10.0) == table[b"float"]
+  assert struct.pack(b'@d', 15.5) == table[b"double"]
+  assert struct.pack(b'@q', -10) == table[b"int8-2"]
+  assert struct.pack(b'@q', -4000) == table[b"int16-2"]
+  assert struct.pack(b'@q', -60000000) == table[b"int32-2"]
+  assert struct.pack(b'@q', -800000000000000) == table[b"int64-2"]
+  assert struct.pack(b'@d', -10.0) == table[b"float-2"]
+  assert struct.pack(b'@d', -15.5) == table[b"double-2"]
+  assert 13 == table.size()
+
+  # incr should return the new value of the key
+  assert struct.pack(b'@b', 44) == table.incr(b"int8", 4)
+  assert struct.pack(b'@h', 4010) == table.incr(b"int16", 10)
+  assert struct.pack(b'@l', 60000100) == table.incr(b"int32", 100)
+  assert struct.pack(b'@q', 800000000001000) == table.incr(b"int64", 1000)
+  assert struct.pack(b'@f', 30.0) == table.incr(b"float", 20.0)
+  assert struct.pack(b'@d', 25.5) == table.incr(b"double", 10.0)
+  assert struct.pack(b'@q', -14) == table.incr(b"int8-2", -4)
+  assert struct.pack(b'@q', -4010) == table.incr(b"int16-2", -10)
+  assert struct.pack(b'@q', -60000100) == table.incr(b"int32-2", -100)
+  assert struct.pack(b'@q', -800000000001000) == table.incr(b"int64-2", -1000)
+  assert struct.pack(b'@d', -30.0) == table.incr(b"float-2", -20.0)
+  assert struct.pack(b'@d', -25.5) == table.incr(b"double-2", -10.0)
+  assert 13 == table.size()
+
+  # test incr() on keys of the wrong size
+  try:
+    table.incr(b"string", 14)
+    assert False
+  except ValueError:
+    pass
+  try:
+    table.incr(b"string", 15.0)
+    assert False
+  except ValueError:
+    pass
+
+  # we're done here
+  table.clear()
+  assert len(table) == 0
+
+
 # TODO: deduplicate this with PrefixTreeTest
 def run_concurrent_readers_test(allocator_type):
   print('-- [%s] concurrent readers' % allocator_type)
@@ -262,6 +355,9 @@ def main():
       run_conditional_writes_test(allocator_type)
       sharedstructures.delete_pool('test-table')
       run_collision_test(allocator_type)
+      # TODO: enable this test again when the python module supports incr
+      # sharedstructures.delete_pool('test-table')
+      # run_incr_test(allocator_type)
       sharedstructures.delete_pool('test-table')
       run_concurrent_readers_test(allocator_type)
     print('all tests passed')

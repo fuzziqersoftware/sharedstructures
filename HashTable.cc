@@ -188,6 +188,256 @@ bool HashTable::insert(const string& k, const string& v,
   return this->insert(k.data(), k.size(), v.data(), v.size(), check);
 }
 
+int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
+  // TODO: reduce code duplication here with insert() and incr(double)
+
+  uint64_t hash = fnv1a64(k, k_size);
+
+  auto g = this->allocator->lock();
+  auto p = this->allocator->get_pool();
+
+  // get the slot pointer
+  HashTableBase* table = p->at<HashTableBase>(this->base_offset);
+  uint64_t slot_offset = table->slots_offset +
+      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  Slot* slot = p->at<Slot>(slot_offset);
+
+  // if the slot is empty, create a new 64-bit value
+  if (!slot->key_offset) {
+    // create the new key-value pair in the slot and copy the data in
+    slot->key_offset = this->allocator->allocate(k_size + sizeof(int64_t));
+    memcpy(p->at<void>(slot->key_offset), k, k_size);
+    memcpy(p->at<void>(slot->key_offset + k_size), &delta, sizeof(int64_t));
+    slot->key_size = k_size;
+    table->item_count++;
+    return delta;
+  }
+
+  // if the slot contains a direct value...
+  if (!(slot->key_offset & 1)) {
+
+    // if the key matches the key we're inserting, check and increment the value
+    if ((slot->key_size == k_size) &&
+        !memcmp(p->at<void>(slot->key_offset), k, k_size)) {
+      uint64_t v_offset = slot->key_offset + slot->key_size;
+      uint64_t v_size = this->allocator->block_size(slot->key_offset) -
+          slot->key_size;
+      if (v_size == 1) {
+        *p->at<int8_t>(v_offset) += delta;
+        return *p->at<int8_t>(v_offset);
+      } else if (v_size == 2) {
+        *p->at<int16_t>(v_offset) += delta;
+        return *p->at<int16_t>(v_offset);
+      } else if (v_size == 4) {
+        *p->at<int32_t>(v_offset) += delta;
+        return *p->at<int32_t>(v_offset);
+      } else if (v_size == 8) {
+        *p->at<int64_t>(v_offset) += delta;
+        return *p->at<int64_t>(v_offset);
+      } else {
+        throw out_of_range("incr() against key of wrong size");
+      }
+
+    // the key doesn't match. convert this to an indirect value
+    } else {
+      uint64_t existing_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      IndirectValue* existing = p->at<IndirectValue>(existing_offset);
+      IndirectValue* created = p->at<IndirectValue>(created_offset);
+      slot = p->at<Slot>(slot_offset); // may be invalidated
+      table = p->at<HashTableBase>(this->base_offset); // may be invalidated
+
+      created->next = 0;
+      created->key_offset = this->allocator->allocate(k_size + sizeof(int64_t));
+      memcpy(p->at<void>(created->key_offset), k, k_size);
+      memcpy(p->at<void>(created->key_offset + k_size), &delta,
+          sizeof(int64_t));
+      created->key_size = k_size;
+
+      existing->next = created_offset;
+      existing->key_offset = slot->key_offset;
+      existing->key_size = slot->key_size;
+
+      slot->key_offset = existing_offset | 1;
+      slot->key_size = 0;
+      table->item_count++;
+
+      return delta;
+    }
+
+  // the slot contains indirect values
+  } else {
+    // walk the list, looking for keys that match the one we're inserting
+    auto walk_ret = walk_indirect_list(slot->key_offset & (~1), k, k_size);
+
+    // if we found a match, check and increment the value
+    if (walk_ret.second) {
+      IndirectValue* indirect = p->at<IndirectValue>(walk_ret.second);
+      uint64_t v_offset = indirect->key_offset + indirect->key_offset;
+      uint64_t v_size = this->allocator->block_size(indirect->key_offset) -
+          indirect->key_size;
+      if (v_size == 1) {
+        *p->at<int8_t>(v_offset) += delta;
+        return *p->at<int8_t>(v_offset);
+      } else if (v_size == 2) {
+        *p->at<int16_t>(v_offset) += delta;
+        return *p->at<int16_t>(v_offset);
+      } else if (v_size == 4) {
+        *p->at<int32_t>(v_offset) += delta;
+        return *p->at<int32_t>(v_offset);
+      } else if (v_size == 8) {
+        *p->at<int64_t>(v_offset) += delta;
+        return *p->at<int64_t>(v_offset);
+      } else {
+        throw out_of_range("incr() against key of wrong size");
+      }
+
+    // no match; allocate a new indirect value at the end
+    } else {
+      uint64_t created_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      IndirectValue* prev = p->at<IndirectValue>(walk_ret.first);
+      IndirectValue* created = p->at<IndirectValue>(created_offset);
+      table = p->at<HashTableBase>(this->base_offset); // may be invalidated
+
+      prev->next = created_offset;
+      created->next = 0;
+      created->key_offset = this->allocator->allocate(k_size + sizeof(int64_t));
+      memcpy(p->at<void>(created->key_offset), k, k_size);
+      memcpy(p->at<void>(created->key_offset + k_size), &delta,
+          sizeof(int64_t));
+      created->key_size = k_size;
+      table->item_count++;
+
+      return delta;
+    }
+  }
+}
+
+int64_t HashTable::incr(const std::string& k, int64_t delta) {
+  return this->incr(k.data(), k.size(), delta);
+}
+
+double HashTable::incr(const void* k, size_t k_size, double delta) {
+  // TODO: reduce code duplication here with insert() and incr(int64_t)
+
+  uint64_t hash = fnv1a64(k, k_size);
+
+  auto g = this->allocator->lock();
+  auto p = this->allocator->get_pool();
+
+  // get the slot pointer
+  HashTableBase* table = p->at<HashTableBase>(this->base_offset);
+  uint64_t slot_offset = table->slots_offset +
+      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  Slot* slot = p->at<Slot>(slot_offset);
+
+  // if the slot is empty, create a new 64-bit value
+  if (!slot->key_offset) {
+    // create the new key-value pair in the slot and copy the data in
+    slot->key_offset = this->allocator->allocate(k_size + sizeof(double));
+    memcpy(p->at<void>(slot->key_offset), k, k_size);
+    memcpy(p->at<void>(slot->key_offset + k_size), &delta, sizeof(double));
+    slot->key_size = k_size;
+    table->item_count++;
+    return delta;
+  }
+
+  // if the slot contains a direct value...
+  if (!(slot->key_offset & 1)) {
+
+    // if the key matches the key we're inserting, check and increment the value
+    if ((slot->key_size == k_size) &&
+        !memcmp(p->at<void>(slot->key_offset), k, k_size)) {
+      uint64_t v_offset = slot->key_offset + slot->key_size;
+      uint64_t v_size = this->allocator->block_size(slot->key_offset) -
+          slot->key_size;
+      if (v_size == 4) {
+        *p->at<float>(v_offset) += delta;
+        return *p->at<float>(v_offset);
+      } else if (v_size == 8) {
+        *p->at<double>(v_offset) += delta;
+        return *p->at<double>(v_offset);
+      } else {
+        throw out_of_range("incr() against key of wrong size");
+      }
+
+    // the key doesn't match. convert this to an indirect value
+    } else {
+      uint64_t existing_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      IndirectValue* existing = p->at<IndirectValue>(existing_offset);
+      IndirectValue* created = p->at<IndirectValue>(created_offset);
+      slot = p->at<Slot>(slot_offset); // may be invalidated
+      table = p->at<HashTableBase>(this->base_offset); // may be invalidated
+
+      created->next = 0;
+      created->key_offset = this->allocator->allocate(k_size + sizeof(double));
+      memcpy(p->at<void>(created->key_offset), k, k_size);
+      memcpy(p->at<void>(created->key_offset + k_size), &delta, sizeof(double));
+      created->key_size = k_size;
+
+      existing->next = created_offset;
+      existing->key_offset = slot->key_offset;
+      existing->key_size = slot->key_size;
+
+      slot->key_offset = existing_offset | 1;
+      slot->key_size = 0;
+      table->item_count++;
+
+      return delta;
+    }
+
+  // the slot contains indirect values
+  } else {
+    // walk the list, looking for keys that match the one we're inserting
+    auto walk_ret = walk_indirect_list(slot->key_offset & (~1), k, k_size);
+
+    // if we found a match, check and increment the value
+    if (walk_ret.second) {
+      IndirectValue* indirect = p->at<IndirectValue>(walk_ret.second);
+      uint64_t v_offset = indirect->key_offset + indirect->key_offset;
+      uint64_t v_size = this->allocator->block_size(indirect->key_offset) -
+          indirect->key_size;
+      if (v_size == 4) {
+        *p->at<float>(v_offset) += delta;
+        return *p->at<float>(v_offset);
+      } else if (v_size == 8) {
+        *p->at<double>(v_offset) += delta;
+        return *p->at<double>(v_offset);
+      } else {
+        throw out_of_range("incr() against key of wrong size");
+      }
+
+    // no match; allocate a new indirect value at the end
+    } else {
+      uint64_t created_offset = this->allocator->allocate(
+          sizeof(IndirectValue));
+      IndirectValue* prev = p->at<IndirectValue>(walk_ret.first);
+      IndirectValue* created = p->at<IndirectValue>(created_offset);
+      table = p->at<HashTableBase>(this->base_offset); // may be invalidated
+
+      prev->next = created_offset;
+      created->next = 0;
+      created->key_offset = this->allocator->allocate(k_size + sizeof(double));
+      memcpy(p->at<void>(created->key_offset), k, k_size);
+      memcpy(p->at<void>(created->key_offset + k_size), &delta, sizeof(double));
+      created->key_size = k_size;
+      table->item_count++;
+
+      return delta;
+    }
+  }
+}
+
+double HashTable::incr(const std::string& k, double delta) {
+  return this->incr(k.data(), k.size(), delta);
+}
+
 bool HashTable::erase(const void* k, size_t k_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
@@ -420,7 +670,7 @@ void HashTable::print(FILE* stream) const {
 
   for (size_t slot_id = 0; slot_id < (size_t)(1 << h->bits); slot_id++) {
     if (!slots[slot_id].key_offset) {
-      continue; //fprintf(stream, "  Slot %zu: empty\n", slot_id);
+      continue;
 
     } else if (!(slots[slot_id].key_offset & 1)) {
       fprintf(stream, "  Slot %zu: value=%" PRIu64 ":%" PRIu64 "\n", slot_id,

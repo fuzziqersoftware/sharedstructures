@@ -33,6 +33,8 @@ PrefixTree implements a binary-safe map of strings to values of any of the follo
 - Boolean values
 - Null (this is not the same as the key not existing - a key can exist and have a Null value)
 
+Both structures support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. All of these operations are supported in both C++ and Python, except atomic increments on HashTables (these are supported only in C++).
+
 The header files (HashTable.hh and PrefixTree.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc and PrefixTreeTest.cc) for usage examples.
 
 ### Iteration semantics
@@ -63,6 +65,6 @@ There's a lot to do here.
 - Use a more efficient locking strategy. Currently we use spinlocks.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).
-- Write `HashTable::incr`.
+- Make hash tables support atomic increments in Python.
 - Return immutable objects for complex types in Python to make in-place modification not fail silently.
 - Add more data structures to the library.

@@ -216,6 +216,99 @@ void run_conditional_writes_test(const string& allocator_type) {
 }
 
 
+template <typename T>
+static bool insert_typed(HashTable& table, const char* key, T v) {
+  return table.insert(key, strlen(key), &v, sizeof(v));
+}
+
+template <typename T>
+static T at_typed(HashTable& table, const char* key) {
+  string ret = table.at(key, strlen(key));
+  if (ret.size() != sizeof(T)) {
+    throw out_of_range("key didn\'t match expected size");
+  }
+  return *(const T*)ret.data();
+}
+
+void run_incr_test(const string& allocator_type) {
+  printf("-- [%s] incr\n", allocator_type.c_str());
+
+  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
+  HashTable table(alloc, 0, 6);
+
+  size_t initial_pool_allocated = table.get_allocator()->bytes_allocated();
+
+  // add some keys
+  expect_eq(0, table.size());
+  expect_eq(true, insert_typed<int8_t>(table, "int8", 40));
+  expect_eq(true, insert_typed<int16_t>(table, "int16", 4000));
+  expect_eq(true, insert_typed<int32_t>(table, "int32", 60000000));
+  expect_eq(true, insert_typed<int64_t>(table, "int64", 800000000000000));
+  expect_eq(true, insert_typed<float>(table, "float", 10.0));
+  expect_eq(true, insert_typed<double>(table, "double", 15.5));
+  expect_eq(true, table.insert("string", 6, "7 bytes", 7));
+  expect_eq(7, table.size());
+
+  // incr should create the key if it doesn't exist
+  expect_eq(-10, table.incr("int8-2", (int64_t)-10));
+  expect_eq(-4000, table.incr("int16-2", (int64_t)-4000));
+  expect_eq(-60000000, table.incr("int32-2", (int64_t)-60000000));
+  expect_eq(-800000000000000, table.incr("int64-2", (int64_t)-800000000000000));
+  expect_eq(-10.0, table.incr("float-2", -10.0));
+  expect_eq(-15.5, table.incr("double-2", -15.5));
+  expect_eq(13, table.size());
+
+  // all the keys should have the values we set, but the keys created by incr
+  // should all be 64 bits
+  expect_eq(40, at_typed<int8_t>(table, "int8"));
+  expect_eq(4000, at_typed<int16_t>(table, "int16"));
+  expect_eq(60000000, at_typed<int32_t>(table, "int32"));
+  expect_eq(800000000000000, at_typed<int64_t>(table, "int64"));
+  expect_eq(10.0, at_typed<float>(table, "float"));
+  expect_eq(15.5, at_typed<double>(table, "double"));
+  expect_eq(-10, at_typed<int64_t>(table, "int8-2"));
+  expect_eq(-4000, at_typed<int64_t>(table, "int16-2"));
+  expect_eq(-60000000, at_typed<int64_t>(table, "int32-2"));
+  expect_eq(-800000000000000, at_typed<int64_t>(table, "int64-2"));
+  expect_eq(-10.0, at_typed<double>(table, "float-2"));
+  expect_eq(-15.5, at_typed<double>(table, "double-2"));
+  expect_eq(13, table.size());
+
+  // incr should return the new value of the key
+  expect_eq(44, table.incr("int8", (int64_t)4));
+  expect_eq(4010, table.incr("int16", (int64_t)10));
+  expect_eq(60000100, table.incr("int32", (int64_t)100));
+  expect_eq(800000000001000, table.incr("int64", (int64_t)1000));
+  expect_eq(30.0, table.incr("float", 20.0));
+  expect_eq(25.5, table.incr("double", 10.0));
+  expect_eq(-14, table.incr("int8-2", (int64_t)-4));
+  expect_eq(-4010, table.incr("int16-2", (int64_t)-10));
+  expect_eq(-60000100, table.incr("int32-2", (int64_t)-100));
+  expect_eq(-800000000001000, table.incr("int64-2", (int64_t)-1000));
+  expect_eq(-30.0, table.incr("float-2", -20.0));
+  expect_eq(-25.5, table.incr("double-2", -10.0));
+  expect_eq(13, table.size());
+
+  // test incr() on keys of the wrong type
+  try {
+    table.incr("string", 6, (int64_t)14);
+    expect(false);
+  } catch (const out_of_range& e) { }
+  try {
+    table.incr("string", 6, 15.0);
+    expect(false);
+  } catch (const out_of_range& e) { }
+
+  // we're done here
+  table.clear();
+  expect_eq(0, table.size());
+
+  // the empty table should not leak any allocated memory
+  expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
+}
+
+
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
@@ -298,6 +391,8 @@ int main(int argc, char* argv[]) {
       Pool::delete_pool("test-table");
       run_collision_test(allocator_type);
       Pool::delete_pool("test-table");
+      run_incr_test(allocator_type);
+      Pool::delete_pool("test-table");
       run_concurrent_readers_test(allocator_type);
     }
     printf("all tests passed\n");
@@ -306,7 +401,7 @@ int main(int argc, char* argv[]) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  Pool::delete_pool("test-table");
+  //Pool::delete_pool("test-table");
 
   return retcode;
 }
