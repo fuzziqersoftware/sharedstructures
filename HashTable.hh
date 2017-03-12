@@ -69,7 +69,7 @@ public:
 
   // atomically increments the value of a numeric key, returning the new value.
   // if the key is missing, creates it with the given value, as either a 64-bit
-  // integer or double-precision floating-point vlaue. keys in HashTables don't
+  // integer or double-precision floating-point value. keys in HashTables don't
   // have types, so make sure to only use one version of incr (int or float) on
   // any given key. integer increments can be done on values of 1, 2, 4, or 8
   // bytes in native byte order. floating-point increments can be done on values

@@ -1,8 +1,10 @@
 #define _STDC_FORMAT_MACROS
 
 #include <inttypes.h>
+#include <sched.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <phosg/Process.hh>
 #include <phosg/Time.hh>
@@ -31,6 +33,9 @@ void run_acquisitions_test() {
     if (pid == -1) {
       break;
     } else {
+      if (pid) {
+        printf("--   child process %d started\n", pid);
+      }
       child_pids.emplace(pid);
     }
   }
@@ -50,15 +55,23 @@ void run_acquisitions_test() {
       {
         ProcessSpinlockGuard g(pool.get(), 0x08);
         expect_eq(0, *pool_pid);
-        if (*pool_last_pid) {
+        if (*pool_last_pid && ((pid_t)*pool_last_pid != pid)) {
           num_after_loops++;
         }
         *pool_pid = pid;
         *pool_last_pid = pid;
-        usleep(1); // yield to other processes
+
+        // normally you shouldn't yield while holding the lock; we do this so
+        // other processes get a chance to check the lock (which allows this
+        // test to actually test mutual exclusion)
+        sched_yield();
+
         expect_eq(pid, *pool_pid);
         *pool_pid = 0;
       }
+      // don't grab the lock again immediately; give other processes a chance
+      sched_yield();
+
       num_loops++;
     }
 

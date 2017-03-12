@@ -43,7 +43,7 @@ libsharedstructures.a: $(OBJECTS)
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
-cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest AllocatorBenchmark
+cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest AllocatorBenchmark PrefixTreeBenchmark
 	./ProcessSpinlockTest
 	./AllocatorTest
 	./PrefixTreeTest
@@ -53,6 +53,9 @@ cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest Allocat
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 AllocatorBenchmark: AllocatorBenchmark.o $(OBJECTS)
+	$(CXX) $^ $(LDFLAGS) -o $@
+
+PrefixTreeBenchmark: PrefixTreeBenchmark.o $(OBJECTS)
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 

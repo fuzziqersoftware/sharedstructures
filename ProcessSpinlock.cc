@@ -1,5 +1,7 @@
 #include "ProcessSpinlock.hh"
 
+#include <sched.h>
+
 #include <phosg/Process.hh>
 
 using namespace std;
@@ -31,8 +33,10 @@ ProcessSpinlockGuard::ProcessSpinlockGuard(Pool* pool, uint64_t offset) :
       spin_count++;
     }
 
-    // if we didn't get the lock, check if the process holding it is running
+    // if we didn't get the lock, yield, then check if the holder is running
     if (!lock_taken) {
+      sched_yield();
+
       pid_t pid = expected_value & ((1 << 20) - 1);
       uint64_t start_time_token = expected_value & ~((1 << 20) - 1);
       if ((start_time_for_pid(pid) << 20) != start_time_token) {

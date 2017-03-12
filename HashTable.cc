@@ -802,7 +802,7 @@ bool HashTable::execute_check(const CheckRequest& check) const {
 HashTableIterator::HashTableIterator(const HashTable* table,
     uint64_t slot_index) : table(table), slot_index(slot_index),
     result_index(0), slot_contents() {
-  if (this->slot_index < (1 << this->table->bits())) {
+  if (this->slot_index < (1ULL << this->table->bits())) {
     this->slot_contents = this->table->get_slot_contents(this->slot_index);
     this->advance_to_nonempty_slot();
   }
@@ -830,7 +830,7 @@ bool HashTableIterator::operator!=(const HashTableIterator& other) const {
 }
 
 HashTableIterator& HashTableIterator::operator++() {
-  if (this->slot_index >= (1 << this->table->bits())) {
+  if (this->slot_index >= (1ULL << this->table->bits())) {
     throw invalid_argument("can\'t advance iterator beyond end position");
   }
 
@@ -858,7 +858,7 @@ void HashTableIterator::advance_to_nonempty_slot() {
   while (this->result_index >= this->slot_contents.size()) {
     this->result_index = 0;
     this->slot_index++;
-    if (this->slot_index < (1 << this->table->bits())) {
+    if (this->slot_index < (1ULL << this->table->bits())) {
       this->slot_contents = this->table->get_slot_contents(this->slot_index);
     } else {
       this->slot_contents.clear();
