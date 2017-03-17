@@ -152,7 +152,6 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
 
     // return the new block
     block->allocated.size_allocated = size | (1ULL << 63);
-    this->verify();
     return block_offset + sizeof(AllocatedBlock);
   }
 
@@ -276,7 +275,6 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   // update counts and we're done
   data->bytes_allocated += size;
   data->bytes_committed += size_for_order(needed_order);
-  this->verify();
   return allocated_block_offset + sizeof(AllocatedBlock);
 }
 
