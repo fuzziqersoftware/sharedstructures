@@ -174,6 +174,9 @@ public:
   // inspection methods.
   size_t size() const; // key count
   size_t node_size() const; // node count
+  // bytes used by the subtree rooted at prefix
+  size_t bytes_for_prefix(const void* prefix, size_t p_size) const;
+  size_t bytes_for_prefix(const std::string& prefix) const;
 
   void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0,
       uint64_t indent = 0) const;
@@ -212,6 +215,7 @@ private:
     Double      = 4,
     Trivial     = 5, // inlined int; 0=false, 1=true, 2=null
     ShortString = 6, // inlined string; up to 7 bytes
+    // TODO: eliminate ShortString and overload String for this use case
     // can be up to 7 (this is a 3-bit field)
   };
 
@@ -232,8 +236,10 @@ private:
     std::vector<uint64_t> node_offsets;
   };
 
-  Traversal traverse(const void* k, size_t s, bool with_nodes, bool create);
-  Traversal traverse(const void* k, size_t s, bool with_nodes) const;
+  Traversal traverse(const void* k, size_t s, bool return_values_only,
+      bool with_nodes, bool create);
+  Traversal traverse(const void* k, size_t s, bool return_values_only,
+      bool with_nodes) const;
 
   bool execute_check(const CheckRequest& check) const;
 
@@ -241,6 +247,8 @@ private:
       const void* current, size_t size, bool return_value) const;
 
   LookupResult lookup_result_for_contents(uint64_t contents) const;
+
+  size_t bytes_for_contents(uint64_t contents) const;
 
   void clear_node(uint64_t node_offset);
   void clear_value_slot(uint64_t slot_offset);

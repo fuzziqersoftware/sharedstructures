@@ -1492,6 +1492,28 @@ static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
   return sharedstructures_PrefixTree_iterkeys(py_self);
 }
 
+static const char* sharedstructures_PrefixTree_bytes_for_prefix_doc =
+"Returns the size of the subtree rooted at the given prefix.\n\
+\n\
+This includes tree node overhead, but does not include allocator overhead.";
+
+static PyObject* sharedstructures_PrefixTree_bytes_for_prefix(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+
+  char* p;
+  Py_ssize_t p_size;
+  if (!PyArg_ParseTuple(args, "s#", &p, &p_size)) {
+    return NULL;
+  }
+
+#ifdef IS_PY3K
+  return PyLong_FromSize_t(self->table->bytes_for_prefix(p, p_size));
+#else
+  return PyInt_FromSize_t(self->table->bytes_for_prefix(p, p_size));
+#endif
+}
+
 static const char* sharedstructures_PrefixTree_pool_bytes_doc =
 "Returns the size of the underlying shared memory pool.";
 
@@ -1529,6 +1551,8 @@ static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_s
 }
 
 static PyMethodDef sharedstructures_PrefixTree_methods[] = {
+  {"bytes_for_prefix", (PyCFunction)sharedstructures_PrefixTree_bytes_for_prefix, METH_VARARGS,
+      sharedstructures_PrefixTree_bytes_for_prefix_doc},
   {"pool_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_bytes, METH_NOARGS,
       sharedstructures_PrefixTree_pool_bytes_doc},
   {"pool_free_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_free_bytes, METH_NOARGS,

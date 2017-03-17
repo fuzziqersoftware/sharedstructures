@@ -90,6 +90,8 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(3, table->size());
   expect_eq(4, table->node_size());
 
+  expect_eq(104, table->bytes_for_prefix("k", 1));
+
   LookupResult r;
   r.type = PrefixTree::ResultValueType::String;
   r.as_string = "value1";
