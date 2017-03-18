@@ -737,7 +737,48 @@ size_t PrefixTree::bytes_for_prefix(const void* prefix, size_t p_size) const {
     return this->bytes_for_contents(*p->at<uint64_t>(value_slot_offset));
 
   } else {
-    return this->bytes_for_contents(this->allocator->base_object_offset());
+    // this counts the slot that refers to the given node, but there is no slot
+    // that refers to the root node, so we correct for that manually
+    return this->bytes_for_contents(
+        this->base_offset + offsetof(TreeBase, root)) - sizeof(uint64_t);
+  }
+}
+
+size_t PrefixTree::nodes_for_contents(uint64_t contents) const {
+  auto p = this->allocator->get_pool();
+
+  if ((contents == 0) ||
+      (this->type_for_slot_contents(contents) != StoredValueType::SubNode)) {
+    // it's an empty slot, or a value
+    return 0;
+  }
+
+  size_t ret = 1;
+  Node* n = p->at<Node>(contents);
+  for (uint16_t x = 0; x < ((uint16_t)n->end - (uint16_t)n->start + 1); x++) {
+    ret += this->nodes_for_contents(n->children[x]);
+  }
+  return ret;
+}
+
+size_t PrefixTree::nodes_for_prefix(const string& prefix) const {
+  return this->nodes_for_prefix(prefix.data(), prefix.size());
+}
+
+size_t PrefixTree::nodes_for_prefix(const void* prefix, size_t p_size) const {
+  auto g = this->allocator->lock();
+  auto p = this->allocator->get_pool();
+
+  if (p_size) {
+    uint64_t value_slot_offset = this->traverse(prefix, p_size, false, true)
+        .value_slot_offset;
+    if (!value_slot_offset) {
+      return 0;
+    }
+    return this->nodes_for_contents(*p->at<uint64_t>(value_slot_offset));
+
+  } else {
+    return this->nodes_for_contents(this->base_offset + offsetof(TreeBase, root));
   }
 }
 

@@ -90,7 +90,10 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(3, table->size());
   expect_eq(4, table->node_size());
 
+  expect_eq(3, table->nodes_for_prefix("k", 1));
+  expect_eq(4, table->nodes_for_prefix("", 0));
   expect_eq(104, table->bytes_for_prefix("k", 1));
+  expect_eq(2160, table->bytes_for_prefix("", 0)); // the root node has 00-FF
 
   LookupResult r;
   r.type = PrefixTree::ResultValueType::String;

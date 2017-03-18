@@ -177,6 +177,9 @@ public:
   // bytes used by the subtree rooted at prefix
   size_t bytes_for_prefix(const void* prefix, size_t p_size) const;
   size_t bytes_for_prefix(const std::string& prefix) const;
+  // nodes contained in the subtree rooted at prefix
+  size_t nodes_for_prefix(const void* prefix, size_t p_size) const;
+  size_t nodes_for_prefix(const std::string& prefix) const;
 
   void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0,
       uint64_t indent = 0) const;
@@ -249,6 +252,7 @@ private:
   LookupResult lookup_result_for_contents(uint64_t contents) const;
 
   size_t bytes_for_contents(uint64_t contents) const;
+  size_t nodes_for_contents(uint64_t contents) const;
 
   void clear_node(uint64_t node_offset);
   void clear_value_slot(uint64_t slot_offset);
