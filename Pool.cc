@@ -83,7 +83,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
 
     this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
-    if (!this->data) {
+    if (this->data == MAP_FAILED) {
       unlink_segment(this->name.c_str(), file);
       throw bad_alloc();
     }
@@ -136,7 +136,7 @@ void Pool::check_size_and_remap() const {
     this->pool_size = new_pool_size;
     this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
-    if (!this->data) {
+    if (this->data == MAP_FAILED) {
       throw runtime_error("mmap failed: " + string_for_error(errno));
     }
   }
