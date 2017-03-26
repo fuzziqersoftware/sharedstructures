@@ -116,6 +116,10 @@ string PrefixTree::LookupResult::str() const {
 }
 
 
+PrefixTree::CheckRequest::CheckRequest() : key(NULL), key_size(0),
+    value(ResultValueType::Missing) { }
+
+
 bool PrefixTree::insert(const void* k, size_t k_size, const void* v,
     size_t v_size, const CheckRequest* check) {
   auto g = this->allocator->lock();
