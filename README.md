@@ -8,7 +8,7 @@ sharedstructures is a C++ and Python 2/3 library for storing data structures in 
 - Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only`, `make py_only`, or `make py3_only`.
 - Run `sudo make install`.
 
-If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.11 and Ubuntu 16.04.
+If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 16.04.
 
 ## Interfaces and objects
 
