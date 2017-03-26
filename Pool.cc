@@ -7,14 +7,6 @@
 
 #include <phosg/Strings.hh>
 
-// this mmap flag is required on OSX but doesn't exist on Linux
-#ifndef MACOSX
-#define MAP_HASSEMAPHORE 0
-#endif
-
-// TODO: this assumption might be wrong on some less-common architectures
-#define PAGE_SIZE 4096
-
 using namespace std;
 
 namespace sharedstructures {

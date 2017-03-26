@@ -206,6 +206,9 @@ ProcessSpinlockGuard SimpleAllocator::lock() const {
   ProcessSpinlockGuard g(const_cast<Pool*>(this->pool.get()),
       offsetof(Data, data_lock));
   this->pool->check_size_and_remap();
+  if (g.stolen) {
+    const_cast<SimpleAllocator*>(this)->repair();
+  }
   return g;
 }
 
@@ -227,7 +230,7 @@ void SimpleAllocator::repair() {
   auto data = this->data();
 
   uint64_t bytes_allocated = 0;
-  uint64_t bytes_committed = 0;
+  uint64_t bytes_committed = sizeof(Data);
 
   uint64_t prev_offset = 0;
   uint64_t block_offset = data->head;
@@ -237,7 +240,7 @@ void SimpleAllocator::repair() {
     block->prev = prev_offset;
 
     bytes_allocated += block->size;
-    bytes_committed += (block->size + sizeof(AllocatedBlock));
+    bytes_committed += (block->effective_size() + sizeof(AllocatedBlock));
 
     prev_offset = block_offset;
     block_offset = block->next;

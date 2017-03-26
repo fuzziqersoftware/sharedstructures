@@ -3,8 +3,17 @@
 #include <atomic>
 #include <phosg/Filesystem.hh>
 #include <string>
+#include <sys/mman.h>
+
+// this mmap flag is required on OSX but doesn't exist on Linux
+#ifndef MACOSX
+#define MAP_HASSEMAPHORE 0
+#endif
 
 namespace sharedstructures {
+
+// TODO: this assumption might be wrong on some less-common architectures
+#define PAGE_SIZE 4096
 
 // TODO: we probably shouldn't assume 64-bit pointers everywhere
 
@@ -25,7 +34,7 @@ public:
   // one will "win" and create the pool normally, but the other may see an
   // inconsistent view of the pool and fail. the following errors can be thrown:
   // - cannot_open_file: the pool exists, but we can't open it. this can happen
-  //   is someone else called delete_pool while we were trying to open it - try
+  //   if someone else called delete_pool while we were trying to open it - try
   //   again.
   // - runtime_error: the pool exists, but its size is zero (if we were opening
   //   it), or we can't increase its size (if we created it). this can happen if
@@ -60,15 +69,63 @@ public:
 
   // converts an offset into a usable pointer
   template <typename T> T* at(uint64_t offset) {
+    if (!this->data) {
+      throw std::bad_alloc();
+    }
     return (T*)((uint8_t*)this->data + offset);
   }
   template <typename T> const T* at(uint64_t offset) const {
+    if (!this->data) {
+      throw std::bad_alloc();
+    }
     return (T*)((uint8_t*)this->data + offset);
   }
 
   // converts a usable pointer into an offset
   template <typename T> uint64_t at(const T* ptr) const {
+    if (!this->data) {
+      throw std::bad_alloc();
+    }
     return (uint64_t)ptr - (uint64_t)this->data;
+  }
+
+
+  // temporary-state accessor functions.
+  // these are necessary only in special situations - for example, if we lock
+  // the pool and expand it, but it then doesn't fit in the current process'
+  // address space. to unlock the pool after such an occurrence, we map only the
+  // page containing the lock, clear it, and unmap the page immediately.
+  template <typename T> T map_and_read_atomic(uint64_t offset) const {
+    uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
+    uint64_t offset_within_page = offset ^ page_offset;
+
+    // map two pages if it spans a page boundary
+    uint8_t page_count = 1 + ((offset_within_page + sizeof(T)) > PAGE_SIZE);
+    void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ,
+        MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
+    if (data == MAP_FAILED) {
+      throw std::bad_alloc();
+    }
+    std::atomic<T>* var = (std::atomic<T>*)((char*)data + offset_within_page);
+    T ret = var->load();
+    munmap(data, page_count * PAGE_SIZE);
+    return ret;
+  }
+
+  template <typename T> void map_and_write_atomic(uint64_t offset, T value) {
+    uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
+    uint64_t offset_within_page = offset ^ page_offset;
+
+    // map two pages if it spans a page boundary
+    uint8_t page_count = 1 + ((offset_within_page + sizeof(T)) > PAGE_SIZE);
+    void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
+        MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
+    if (data == MAP_FAILED) {
+      throw std::bad_alloc();
+    }
+    std::atomic<T>* var = (std::atomic<T>*)((char*)data + offset_within_page);
+    var->store(value);
+    munmap(data, page_count * PAGE_SIZE);
   }
 
 

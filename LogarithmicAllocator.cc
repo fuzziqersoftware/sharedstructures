@@ -88,10 +88,12 @@ LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
     return;
   }
 
+  uint64_t start_offset = next_order_boundary(sizeof(Data), Data::minimum_order);
+
   data->initialized = 1;
   data->base_object_offset = 0;
   data->bytes_allocated = 0;
-  data->bytes_committed = sizeof(Data);
+  data->bytes_committed = start_offset;
 
   for (size_t x = 0; x < 60; x++) {
     data->free_head[x] = 0;
@@ -99,8 +101,7 @@ LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
   }
 
   // set up free blocks starting at the end of the Data struct
-  uint64_t offset = next_order_boundary(sizeof(Data), Data::minimum_order);
-  this->create_free_blocks(offset, data->size - offset);
+  this->create_free_blocks(start_offset, data->size - start_offset);
 }
 
 
@@ -450,6 +451,9 @@ ProcessSpinlockGuard LogarithmicAllocator::lock() const {
   ProcessSpinlockGuard g(const_cast<Pool*>(this->pool.get()),
       offsetof(Data, data_lock));
   this->pool->check_size_and_remap();
+  if (g.stolen) {
+    const_cast<LogarithmicAllocator*>(this)->repair();
+  }
   return g;
 }
 
@@ -521,14 +525,14 @@ void LogarithmicAllocator::repair() {
 
   // in the first pass, we make the linked list structure consistent again and
   // count allocated and committed bytes
-  uint64_t bytes_allocated = 0, bytes_committed = 0;
+  uint64_t bytes_allocated = 0, bytes_committed = offset;
   while (offset < data->size) {
     Block* block = this->pool->at<Block>(offset);
 
     // if it's allocated, it shouldn't be added to a list - just skip it
     int8_t order;
     if (block->allocated.allocated()) {
-      order = order_for_size(block->allocated.size());
+      order = order_for_size(block->allocated.size() + sizeof(AllocatedBlock));
       bytes_allocated += block->allocated.size();
       bytes_committed += size_for_order(order);
 
@@ -553,7 +557,7 @@ void LogarithmicAllocator::repair() {
     // if it's allocated, it can't be merged - just skip it
     int8_t order;
     if (block->allocated.allocated()) {
-      order = order_for_size(block->allocated.size());
+      order = order_for_size(block->allocated.size() + sizeof(AllocatedBlock));
       offset += size_for_order(order);
 
     // if it's not allocated, try to merge it

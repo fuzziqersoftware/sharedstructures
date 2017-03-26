@@ -16,7 +16,7 @@ ProcessSpinlockGuard::ProcessSpinlockGuard(ProcessSpinlockGuard&& other) :
 
 ProcessSpinlockGuard::ProcessSpinlockGuard(Pool* pool, uint64_t offset) :
     stolen(false), pool(pool), offset(offset) {
-  atomic<uint64_t>* lock = this->pool->at<atomic<uint64_t>>(offset);
+  atomic<uint64_t>* lock = this->pool->at<atomic<uint64_t>>(this->offset);
 
   // heuristic: every 100 spins, we check if the process holding the lock is
   // still running; if it's not, we steal the lock (the process likely crashed)
@@ -55,8 +55,18 @@ ProcessSpinlockGuard::ProcessSpinlockGuard(Pool* pool, uint64_t offset) :
 }
 
 ProcessSpinlockGuard::~ProcessSpinlockGuard() {
-  atomic<uint64_t>* lock = this->pool->at<atomic<uint64_t>>(offset);
-  lock->store(0);
+  if (!this->pool) {
+    return;
+  }
+
+  try {
+    atomic<uint64_t>* lock = this->pool->at<atomic<uint64_t>>(this->offset);
+    lock->store(0);
+  } catch (const bad_alloc& e) {
+    // this can happen if the pool was expanded and no longer fits in this
+    // process' address space
+    this->pool->map_and_write_atomic<uint64_t>(this->offset, 0);
+  }
 }
 
 } // namespace sharedstructures
