@@ -462,7 +462,7 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
         new sharedstructures::HashTable(allocator, base_offset, bits));
 
   } catch (const exception& e) {
-    PyErr_SetString(PyExc_RuntimeError, "failed to initialize table");
+    PyErr_Format(PyExc_RuntimeError, "failed to initialize hash table: %s", e.what());
     Py_DECREF(self);
     return NULL;
   }
@@ -1081,7 +1081,7 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
         new sharedstructures::PrefixTree(allocator, base_offset));
 
   } catch (const exception& e) {
-    PyErr_SetString(PyExc_RuntimeError, "failed to initialize prefix tree");
+    PyErr_Format(PyExc_RuntimeError, "failed to initialize prefix tree: %s", e.what());
     Py_DECREF(self);
     return NULL;
   }
