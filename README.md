@@ -59,10 +59,24 @@ There are a few things to watch out for:
 - `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
 - HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
 
+## Reliability
+
+Operations on shared data structures use a global lock over the entire structure. Since operations generally involve only a few memory accesses, the critical sections should be quite short. However, processes can still crash or be killed during these critical sections, which leads to the lock being "held" by a dead process.
+
+Currently, the lock wait algorithm will check periodically if the process holding the lock is still alive. If the holding process has died, the waiting process will "steal" the lock from that process and repair the allocator's internal data structures. This may be slow for large data structures, since it involves walking the entire list of allocated regions.
+
+The lock wait algorithm can't tell the difference between a running process and a zombie process. Make sure not to let zombie processes stick around for a long time.
+
+HashTable is not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable if a process crashed while operating on it.
+
+PrefixTree is always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked, and there may be some extra (empty) nodes left over. These nodes won't be visible to gets or iterations, and will be deleted or reused when a write operation next touches them.
+
 ## Future work
 
 There's a lot to do here.
 - Use a more efficient locking strategy. Currently we use spinlocks.
+- Figure out some way to deal with zombie processes holding locks.
+- Make hash tables always consistent for crash recovery.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).
 - Make hash tables support atomic increments in Python.
