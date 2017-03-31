@@ -290,7 +290,7 @@ bool PrefixTree::insert(const void* k, size_t k_size, double v,
       .value_slot_offset;
 
   uint64_t contents = *p->at<uint64_t>(value_slot_offset);
-  StoredValueType type = this->type_for_slot_contents(contents);
+  StoredValueType type = this->type_for_contents(contents);
 
   // if the value is zero, we can store it a little more efficiently
   if (v == 0.0) {
@@ -301,11 +301,11 @@ bool PrefixTree::insert(const void* k, size_t k_size, double v,
   // if the value already exists and is a double or long int, reuse the storage
   } else if ((type == StoredValueType::Double) ||
              (type == StoredValueType::LongInt)) {
-    uint64_t value_offset = this->value_for_slot_contents(contents);
+    uint64_t value_offset = this->value_for_contents(contents);
     *p->at<double>(value_offset) = v;
     if (type == StoredValueType::LongInt) {
       *p->at<uint64_t>(value_slot_offset) =
-          this->value_for_slot_contents(contents) |
+          this->value_for_contents(contents) |
           (uint64_t)StoredValueType::Double;
     }
 
@@ -409,19 +409,19 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
   uint64_t value_slot_offset = this->traverse(k, k_size, true, false, true)
       .value_slot_offset;
   uint64_t contents = *p->at<uint64_t>(value_slot_offset);
-  StoredValueType type = this->type_for_slot_contents(contents);
+  StoredValueType type = this->type_for_contents(contents);
 
   int64_t value;
   if (type == StoredValueType::Int) {
     // value is stored directly in the slot
-    value = this->value_for_slot_contents(contents) >> 3;
+    value = this->value_for_contents(contents) >> 3;
     if (value & 0x1000000000000000) {
       value |= 0xE000000000000000; // sign-extend the last 3 bits
     }
 
   } else if (type == StoredValueType::LongInt) {
     // value is stored indirectly
-    value = *p->at<int64_t>(this->value_for_slot_contents(contents));
+    value = *p->at<int64_t>(this->value_for_contents(contents));
 
   } else if (!contents) {
     // key didn't exist; we'll create it now
@@ -444,14 +444,14 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
     *p->at<int64_t>(value_slot_offset) = (value << 3) |
         (int64_t)StoredValueType::Int;
     if (type == StoredValueType::LongInt) {
-      this->allocator->free(this->value_for_slot_contents(contents));
+      this->allocator->free(this->value_for_contents(contents));
     }
 
   // otherwise, the resulting type is LongInt
   } else {
     // if the type is already LongInt, just update it
     if (type == StoredValueType::LongInt) {
-      *p->at<int64_t>(this->value_for_slot_contents(contents)) = value;
+      *p->at<int64_t>(this->value_for_contents(contents)) = value;
 
     // else, allocate space, put the value there, and link the slot to it
     } else {
@@ -477,13 +477,12 @@ double PrefixTree::incr(const void* k, size_t k_size, double delta) {
   uint64_t value_slot_offset = this->traverse(k, k_size, true, false, true)
       .value_slot_offset;
   uint64_t contents = *p->at<uint64_t>(value_slot_offset);
-  StoredValueType type = this->type_for_slot_contents(contents);
+  StoredValueType type = this->type_for_contents(contents);
 
   if (type == StoredValueType::Double) {
     // value is stored indirectly
-    double ret = *p->at<double>(this->value_for_slot_contents(contents)) +
-        delta;
-    *p->at<double>(this->value_for_slot_contents(contents)) = ret;
+    double ret = *p->at<double>(this->value_for_contents(contents)) + delta;
+    *p->at<double>(this->value_for_contents(contents)) = ret;
     return ret;
 
   } else if (!contents) {
@@ -593,7 +592,7 @@ PrefixTree::ResultValueType PrefixTree::type(const void* k,
   }
 
   uint64_t contents = *p->at<uint64_t>(value_slot_offset);
-  switch (this->type_for_slot_contents(contents)) {
+  switch (this->type_for_contents(contents)) {
     case StoredValueType::SubNode:
       return ResultValueType::Missing;
 
@@ -609,7 +608,7 @@ PrefixTree::ResultValueType PrefixTree::type(const void* k,
       return ResultValueType::Double;
 
     case StoredValueType::Trivial:
-      if (this->value_for_slot_contents(contents) == (2 << 3)) {
+      if (this->value_for_contents(contents) == (2 << 3)) {
         return ResultValueType::Null;
       }
       return ResultValueType::Bool;
@@ -688,7 +687,7 @@ size_t PrefixTree::node_size() const {
 size_t PrefixTree::bytes_for_contents(uint64_t contents) const {
   auto p = this->allocator->get_pool();
 
-  switch (this->type_for_slot_contents(contents)) {
+  switch (this->type_for_contents(contents)) {
     case StoredValueType::SubNode: {
       if (contents == 0) {
         return sizeof(uint64_t); // the slot is empty, but it exists
@@ -704,7 +703,7 @@ size_t PrefixTree::bytes_for_contents(uint64_t contents) const {
     }
 
     case StoredValueType::String: {
-      uint64_t data_offset = this->value_for_slot_contents(contents);
+      uint64_t data_offset = this->value_for_contents(contents);
       return sizeof(uint64_t) + this->allocator->block_size(data_offset);
     }
 
@@ -752,7 +751,7 @@ size_t PrefixTree::nodes_for_contents(uint64_t contents) const {
   auto p = this->allocator->get_pool();
 
   if ((contents == 0) ||
-      (this->type_for_slot_contents(contents) != StoredValueType::SubNode)) {
+      (this->type_for_contents(contents) != StoredValueType::SubNode)) {
     // it's an empty slot, or a value
     return 0;
   }
@@ -805,18 +804,18 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
   fprintf(stream, "%02hhX(%c) @ %" PRIX64 " (%02hhX, %02hhX), from=%02hhX",
       k, isprint(k) ? k : '?', node_offset, n->start, n->end, n->parent_slot);
   if (n->value) {
-    StoredValueType t = this->type_for_slot_contents(n->value);
+    StoredValueType t = this->type_for_contents(n->value);
     fprintf(stream, " +%d@%" PRIX64 "\n", (int)t,
-        this->value_for_slot_contents(n->value));
+        this->value_for_contents(n->value));
   } else {
     fputc('\n', stream);
   }
   for (uint16_t x = 0; x < ((uint16_t)n->end - (uint16_t)n->start + 1); x++) {
     uint64_t contents = n->children[x];
-    StoredValueType type = this->type_for_slot_contents(contents);
+    StoredValueType type = this->type_for_contents(contents);
     if (type != StoredValueType::SubNode) {
       print_indent(stream, indent + 2);
-      uint64_t value = this->value_for_slot_contents(contents);
+      uint64_t value = this->value_for_contents(contents);
       uint8_t k = x + n->start;
       fprintf(stream, "(%X(%c)) +%d@%" PRIX64 "\n", k, isprint(k) ? k : '?',
           (int)type, value);
@@ -912,8 +911,7 @@ PrefixTree::Traversal PrefixTree::traverse(const void* k, size_t s,
 
     // if the next node is a value, return it only if we're at the end
     // of the key. if it's not the end, we may have to make some changes
-    if (this->type_for_slot_contents(next_node_offset) !=
-        StoredValueType::SubNode) {
+    if (this->type_for_contents(next_node_offset) != StoredValueType::SubNode) {
       if (k_data == k_end - 1) {
         t.value_slot_offset = p->at(&node->children[*k_data - node->start]);
         return t;
@@ -1111,7 +1109,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
       // if the slot contains a value instead of a subnode, we're done here;
       // we'll start by examining the following slot
       uint64_t next_node_offset = node->children[*k_data - node->start];
-      if (this->type_for_slot_contents(next_node_offset) !=
+      if (this->type_for_contents(next_node_offset) !=
           StoredValueType::SubNode) {
         slot_id = *k_data + 1;
         break;
@@ -1161,14 +1159,14 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     }
 
     // if the slot contains a value, we're done
-    StoredValueType type = this->type_for_slot_contents(contents);
+    StoredValueType type = this->type_for_contents(contents);
     if (type != StoredValueType::SubNode) {
       value = contents;
       break;
     }
 
     // the slot contains a subnode, so move to it and check if it has a value
-    node_offset = this->value_for_slot_contents(contents);
+    node_offset = this->value_for_contents(contents);
     node_offsets.emplace_back(node_offset);
     slot_id = -1;
   }
@@ -1196,13 +1194,13 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
 
 PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
     uint64_t contents) const {
-  switch (this->type_for_slot_contents(contents)) {
+  switch (this->type_for_contents(contents)) {
     case StoredValueType::SubNode:
       throw out_of_range("");
       break;
 
     case StoredValueType::String: {
-      uint64_t data_offset = this->value_for_slot_contents(contents);
+      uint64_t data_offset = this->value_for_contents(contents);
       if (data_offset) {
         return LookupResult(this->allocator->get_pool()->at<char>(data_offset),
             this->allocator->block_size(data_offset));
@@ -1220,7 +1218,7 @@ PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
     }
 
     case StoredValueType::Int: {
-      int64_t v = this->value_for_slot_contents(contents) >> 3;
+      int64_t v = this->value_for_contents(contents) >> 3;
       if (v & 0x1000000000000000) {
         v |= 0xE000000000000000; // sign-extend the last 3 bits
       }
@@ -1228,13 +1226,13 @@ PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
     }
 
     case StoredValueType::LongInt: {
-      uint64_t num_offset = this->value_for_slot_contents(contents);
+      uint64_t num_offset = this->value_for_contents(contents);
       return LookupResult(*this->allocator->get_pool()->at<int64_t>(
           num_offset));
     }
 
     case StoredValueType::Double: {
-      uint64_t num_offset = this->value_for_slot_contents(contents);
+      uint64_t num_offset = this->value_for_contents(contents);
       if (!num_offset) {
         return LookupResult(0.0);
       }
@@ -1242,7 +1240,7 @@ PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
     }
 
     case StoredValueType::Trivial: {
-      uint64_t trivial_id = this->value_for_slot_contents(contents) >> 3;
+      uint64_t trivial_id = this->value_for_contents(contents) >> 3;
       if (trivial_id == 2) {
         return LookupResult(); // Null
       }
@@ -1272,10 +1270,10 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
     return; // slot is already empty
   }
 
-  switch (this->type_for_slot_contents(contents)) {
+  switch (this->type_for_contents(contents)) {
     case StoredValueType::SubNode: {
       // delete the entire subtree recursively
-      uint64_t node_offset = this->value_for_slot_contents(contents);
+      uint64_t node_offset = this->value_for_contents(contents);
       this->clear_node(node_offset);
 
       // unlink the node and free the object
@@ -1291,7 +1289,7 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
       // these types all point to a buffer; just clear the pointer and free it.
       // the buffer can be null though (e.g. for empty strings or zero-valued
       // doubles)
-      uint64_t value_offset = this->value_for_slot_contents(contents);
+      uint64_t value_offset = this->value_for_contents(contents);
       *p->at<uint64_t>(slot_offset) = 0;
       if (value_offset) {
         this->allocator->free(value_offset);
@@ -1311,12 +1309,11 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
 }
 
 
-uint64_t PrefixTree::value_for_slot_contents(uint64_t s) {
+uint64_t PrefixTree::value_for_contents(uint64_t s) {
   return s & (~7);
 }
 
-PrefixTree::StoredValueType PrefixTree::type_for_slot_contents(
-    uint64_t s) {
+PrefixTree::StoredValueType PrefixTree::type_for_contents(uint64_t s) {
   return (StoredValueType)(s & 7);
 }
 

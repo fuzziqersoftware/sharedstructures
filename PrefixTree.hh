@@ -218,7 +218,6 @@ private:
     Double      = 4,
     Trivial     = 5, // inlined int; 0=false, 1=true, 2=null
     ShortString = 6, // inlined string; up to 7 bytes
-    // TODO: eliminate ShortString and overload String for this use case
     // can be up to 7 (this is a 3-bit field)
   };
 
@@ -257,8 +256,8 @@ private:
   void clear_node(uint64_t node_offset);
   void clear_value_slot(uint64_t slot_offset);
 
-  static uint64_t value_for_slot_contents(uint64_t s);
-  static StoredValueType type_for_slot_contents(uint64_t s);
+  static uint64_t value_for_contents(uint64_t s);
+  static StoredValueType type_for_contents(uint64_t s);
   static bool slot_has_child(uint64_t s);
 };
 
