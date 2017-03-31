@@ -480,10 +480,33 @@ double PrefixTree::incr(const void* k, size_t k_size, double delta) {
   StoredValueType type = this->type_for_contents(contents);
 
   if (type == StoredValueType::Double) {
-    // value is stored indirectly
-    double ret = *p->at<double>(this->value_for_contents(contents)) + delta;
-    *p->at<double>(this->value_for_contents(contents)) = ret;
-    return ret;
+    uint64_t offset = this->value_for_contents(contents);
+
+    // if offset == 0, then the existing value is 0.0; otherwise, read the value
+    // at offset
+    double existing_value = (offset == 0) ? 0.0 : *p->at<double>(offset);
+    double new_value = existing_value + delta;
+
+    // if the new value is 0.0, free any allocated storage
+    if (new_value == 0.0) {
+      *p->at<uint64_t>(value_slot_offset) = (int64_t)StoredValueType::Double;
+      if (offset) {
+        this->allocator->free(offset);
+      }
+
+    // else, allocate storage if needed and write the value
+    } else {
+      if (offset) {
+        *p->at<double>(offset) = new_value;
+      } else {
+        offset = this->allocator->allocate(sizeof(double));
+        *p->at<double>(offset) = delta;
+        *p->at<uint64_t>(value_slot_offset) = offset |
+            (int64_t)StoredValueType::Double;
+      }
+    }
+
+    return new_value;
 
   } else if (!contents) {
     // key didn't exist; we'll create it now

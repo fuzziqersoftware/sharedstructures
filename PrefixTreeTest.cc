@@ -578,6 +578,10 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(LookupResult(0.0), table->at("key-double2", 11));
   expect_eq(6, table->size());
 
+  expect_eq(3.0, table->incr("key-double2", 11, 3.0));
+  expect_eq(LookupResult(3.0), table->at("key-double2", 11));
+  expect_eq(6, table->size());
+
   // test incr() on keys of the wrong type
   expect_eq(true, table->insert("key-null", 8));
   expect_eq(true, table->insert("key-string", 10, "value-string", 12));
