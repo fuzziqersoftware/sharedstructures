@@ -181,6 +181,8 @@ public:
   size_t nodes_for_prefix(const void* prefix, size_t p_size) const;
   size_t nodes_for_prefix(const std::string& prefix) const;
 
+  // prints the tree's structure to the given stream. the optional arguments are
+  // used for recursive calls; external callers shouldn't need to pass them.
   void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0,
       uint64_t indent = 0) const;
 
@@ -211,14 +213,48 @@ private:
   };
 
   enum class StoredValueType {
+    // here we take advantage of the restriction that all allocations are
+    // aligned on a 8-byte boundary. this leaves the 3 low bits of all offsets
+    // available, and we can store information about the object's type there.
+    // the lowest 3 bits of a slot's contents determine what type of data is
+    // stored in the slot, according to the below values:
+
+    // SubNode refers to a Node structure. the high 61 bits of the contents are
+    // the Node's offset. but if the offset is 0, the slot is empty. (this means
+    // that a slot is empty if and only if its contents == 0.)
     SubNode     = 0,
+
+    // String refers to a raw data buffer. the high 61 bits of the contents are
+    // the buffer's offset. the length isn't stored explicitly anywhere; it's
+    // retrieved from the allocator.
     String      = 1,
-    Int         = 2, // 61-bit inlined int; for 64-bit ints use LongInt
+
+    // Int is a 61-bit inlined integer. the lowest 3 bits are 010, and the other
+    // bits are the integer's value. when read, it's sign-extended to 64 bits.
+    Int         = 2,
+
+    // LongInt is a 64-bit integer. this type is only used when the top 4 bits
+    // of the value don't all match (so sign-extension will produce the wrong
+    // result). the high 61 bits of the slot contents are the offset of an
+    // 8-byte region that holds the integer's value.
     LongInt     = 3,
+
+    // Double is a floating-point value. it's implemented similarly to LongInt,
+    // except the value is a double instead of an int64_t, and the value 0.0 is
+    // stored with no extra storage (the offset is 0).
     Double      = 4,
-    Trivial     = 5, // inlined int; 0=false, 1=true, 2=null
-    ShortString = 6, // inlined string; up to 7 bytes
-    // can be up to 7 (this is a 3-bit field)
+
+    // Trivial is a singleton value. the high 61 bits identify which singleton
+    // is stored here: 0 = false, 1 = true, 2 = null.
+    Trivial     = 5,
+
+    // ShortString is a 7-byte or shorter string. the string's contents are
+    // stored in the high 7 bytes of the slot contents; the low byte stores the
+    // type in the low 3 bits and the string's length (0-7) in the next 3 bits.
+    // the high 2 bits are unused.
+    ShortString = 6,
+
+    // StoredValueTypes can be up to 7 (this is a 3-bit field)
   };
 
   struct TreeBase {
