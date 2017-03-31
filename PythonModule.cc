@@ -281,10 +281,14 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
     return NULL;
   }
 
-  // args: (tree_obj, return_keys, return_values)
+  // PyArg_ParseTupleAndKeywords takes a char** where it should take a const
+  // char** (this argument is never modified), so we have to const_cast it, sigh
+  static const char* kwarg_names[] = {"table_obj", "return_keys", "return_values", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   PyObject* return_keys_obj;
   PyObject* return_values_obj;
-  if (!PyArg_ParseTuple(args, "OOO", &self->table_obj, &return_keys_obj, &return_values_obj)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO", kwarg_names_arg,
+      &self->table_obj, &return_keys_obj, &return_values_obj)) {
     Py_DECREF(self);
     return NULL;
   }
@@ -444,12 +448,16 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
     return NULL;
   }
 
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"pool_name", "allocator_type",
+      "base_offset", "bits", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
   Py_ssize_t base_offset = 0;
   uint8_t bits = 8;
   const char* allocator_type = NULL;
-  if (!PyArg_ParseTuple(args, "s|snb", &pool_name, &allocator_type,
-      &base_offset, &bits)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|snb", kwarg_names_arg,
+      &pool_name, &allocator_type, &base_offset, &bits)) {
     Py_DECREF(self);
     return NULL;
   }
@@ -906,10 +914,13 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
     return NULL;
   }
 
-  // args: (tree_obj, return_keys, return_values)
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"tree_obj", "return_keys", "return_values", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   PyObject* return_keys_obj;
   PyObject* return_values_obj;
-  if (!PyArg_ParseTuple(args, "OOO", &self->tree_obj, &return_keys_obj, &return_values_obj)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO", kwarg_names_arg,
+      &self->tree_obj, &return_keys_obj, &return_values_obj)) {
     Py_DECREF(self);
     return NULL;
   }
@@ -1065,11 +1076,14 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
     return NULL;
   }
 
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
   Py_ssize_t base_offset = 0;
   const char* allocator_type = NULL;
-  if (!PyArg_ParseTuple(args, "s|sn", &pool_name, &allocator_type,
-      &base_offset)) {
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
+      &pool_name, &allocator_type, &base_offset)) {
     Py_DECREF(self);
     return NULL;
   }
