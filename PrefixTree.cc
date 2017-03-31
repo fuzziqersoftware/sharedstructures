@@ -434,10 +434,7 @@ int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
   int64_t value;
   if (type == StoredValueType::Int) {
     // value is stored directly in the slot as Int (not LongInt)
-    value = this->value_for_contents(contents) >> 3;
-    if (value & 0x1000000000000000) {
-      value |= 0xE000000000000000; // sign-extend the last 3 bits
-    }
+    value = this->int_value_for_contents(contents);
 
   } else if (type == StoredValueType::LongInt) {
     // value is stored indirectly
@@ -884,6 +881,11 @@ void PrefixTree::print(FILE* stream, uint8_t k, uint64_t node_offset,
   }
 }
 
+string PrefixTree::get_structure() const {
+  uint64_t root_offset = this->base_offset + offsetof(TreeBase, root);
+  return this->get_structure_for_contents(root_offset);
+}
+
 
 PrefixTree::Node::Node(uint8_t start, uint8_t end, uint8_t parent_slot,
     uint64_t value) : start(start), end(end), parent_slot(parent_slot),
@@ -1152,7 +1154,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     Node* node = p->at<Node>(node_offset);
     if (node->value) {
       return make_pair("", return_value ?
-          lookup_result_for_contents(node->value) : LookupResult());
+          this->lookup_result_for_contents(node->value) : LookupResult());
     }
 
   // current is not NULL - we're continuing iteration, or starting with a prefix
@@ -1260,7 +1262,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     key += (char)slot_id;
   }
 
-  return make_pair(key, return_value ? lookup_result_for_contents(value) :
+  return make_pair(key, return_value ? this->lookup_result_for_contents(value) :
       LookupResult());
 }
 
@@ -1291,10 +1293,7 @@ PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(
     }
 
     case StoredValueType::Int: {
-      int64_t v = this->value_for_contents(contents) >> 3;
-      if (v & 0x1000000000000000) {
-        v |= 0xE000000000000000; // sign-extend the last 3 bits
-      }
+      int64_t v = this->int_value_for_contents(contents);
       return LookupResult(v);
     }
 
@@ -1382,8 +1381,119 @@ void PrefixTree::clear_value_slot(uint64_t slot_offset) {
 }
 
 
+static bool should_escape_char_for_structure(char ch) {
+  return (ch == ',') || (ch == '\"') || (ch == '\\') || (ch <= ' ') ||
+      (ch > 0x7E);
+}
+
+string PrefixTree::get_structure_for_contents(uint64_t contents) const {
+  auto p = this->allocator->get_pool();
+
+  switch (this->type_for_contents(contents)) {
+    case StoredValueType::SubNode: {
+      if (contents == 0) {
+        return "#";
+      }
+
+      // result: ([start,end]@parent_slot+value,slot1,slot2,...)
+      const Node* n = p->at<Node>(contents);
+      string ret = string_printf("([%02hhX,%02hhX]@%02hhX+", n->start, n->end,
+          n->parent_slot);
+
+      ret += this->get_structure_for_contents(n->value);
+
+      for (uint16_t x = 0; x < ((uint16_t)n->end - (uint16_t)n->start + 1);
+          x++) {
+        if (n->children[x] == 0) {
+          continue;
+        }
+        ret += string_printf(",%02hhX:", x + n->start);
+        ret += this->get_structure_for_contents(n->children[x]);
+      }
+
+      ret += ')';
+      return ret;
+    }
+
+    case StoredValueType::String: {
+      uint64_t data_offset = this->value_for_contents(contents);
+      if (data_offset == 0) {
+        return "S\"\"";
+      }
+
+      string ret = "S\"";
+      const char* data = p->at<const char>(data_offset);
+
+      for (size_t x = 0; x < this->allocator->block_size(data_offset); x++) {
+        if (should_escape_char_for_structure(data[x])) {
+          ret += string_printf("\\x%02hhX", data[x]);
+        } else {
+          ret += data[x];
+        }
+      }
+
+      ret += '\"';
+      return ret;
+    }
+
+    case StoredValueType::ShortString: {
+      string ret = "s\"";
+      size_t v_size = (contents >> 3) & 0x7;
+      size_t chars_read = 0;
+      for (uint8_t shift = 56; chars_read < v_size; shift -= 8, chars_read++) {
+        char ch = (contents >> shift) & 0xFF;
+        if (should_escape_char_for_structure(ch)) {
+          ret += string_printf("\\x%02hhX", ch);
+        } else {
+          ret += ch;
+        }
+      }
+      ret += '\"';
+      return ret;
+    }
+
+    case StoredValueType::Int:
+      return string_printf("i%" PRId64, this->int_value_for_contents(contents));
+
+    case StoredValueType::LongInt: {
+      uint64_t num_offset = this->value_for_contents(contents);
+      return string_printf("I%" PRId64, *p->at<int64_t>(num_offset));
+    }
+
+    case StoredValueType::Double: {
+      uint64_t num_offset = this->value_for_contents(contents);
+      if (!num_offset) {
+        return "d0";
+      }
+      return string_printf("D%lg", *p->at<double>(num_offset));
+    }
+
+    case StoredValueType::Trivial: {
+      uint64_t trivial_id = this->value_for_contents(contents) >> 3;
+      if (trivial_id == 0) {
+        return "false";
+      } else if (trivial_id == 1) {
+        return "true";
+      } else if (trivial_id == 2) {
+        return "null";
+      }
+      throw invalid_argument("slot has invalid trivial value");
+    }
+  }
+  throw invalid_argument("slot has unknown type");
+}
+
+
 uint64_t PrefixTree::value_for_contents(uint64_t s) {
   return s & (~7);
+}
+
+int64_t PrefixTree::int_value_for_contents(uint64_t s) {
+  int64_t v = PrefixTree::value_for_contents(s) >> 3;
+  if (v & 0x1000000000000000) {
+    v |= 0xE000000000000000; // sign-extend the last 3 bits
+  }
+  return v;
 }
 
 PrefixTree::StoredValueType PrefixTree::type_for_contents(uint64_t s) {

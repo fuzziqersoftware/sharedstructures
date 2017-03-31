@@ -183,8 +183,17 @@ public:
 
   // prints the tree's structure to the given stream. the optional arguments are
   // used for recursive calls; external callers shouldn't need to pass them.
+  // this method does not lock the tree; it's intended only for debugging. don't
+  // call this on a tree that may be open in other processes.
   void print(FILE* stream, uint8_t k = 0, uint64_t node_offset = 0,
       uint64_t indent = 0) const;
+  // returns the tree's structure as a string. this isn't the same as what
+  // print() outputs; it's not human-readable, but is ascii-encodable and
+  // contains no whitespace. the optional argument is used for recursive calls;
+  // external callers shouldn't need to pass it. this method does not lock the
+  // tree; it's intended only for debugging. don't call this on a tree that may
+  // be open in other processes.
+  std::string get_structure() const;
 
 private:
   std::shared_ptr<Allocator> allocator;
@@ -292,6 +301,9 @@ private:
   void clear_node(uint64_t node_offset);
   void clear_value_slot(uint64_t slot_offset);
 
+  std::string get_structure_for_contents(uint64_t contents) const;
+
+  static int64_t int_value_for_contents(uint64_t s);
   static uint64_t value_for_contents(uint64_t s);
   static StoredValueType type_for_contents(uint64_t s);
   static bool slot_has_child(uint64_t s);
