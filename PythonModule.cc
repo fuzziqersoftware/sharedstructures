@@ -559,10 +559,12 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
 
 static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
+  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we do pretend base_offset
+  // is a pointer instead
   return PyBytes_FromFormat(
-      "<sharedstructures.HashTable on %s:0x%" PRIX64 " at %p>",
+      "<sharedstructures.HashTable on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
-      self->table->base(), py_self);
+      (const void*)self->table->base(), py_self);
 }
 
 static const char* sharedstructures_HashTable_clear_doc =
@@ -1264,10 +1266,12 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
 
 static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we do pretend base_offset
+  // is a pointer instead
   return PyBytes_FromFormat(
-      "<sharedstructures.PrefixTree on %s:0x%" PRIX64 " at %p>",
+      "<sharedstructures.PrefixTree on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
-      self->table->base(), py_self);
+      (const void*)self->table->base(), py_self);
 }
 
 static const char* sharedstructures_PrefixTree_clear_doc =
