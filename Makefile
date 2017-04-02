@@ -82,6 +82,6 @@ py3_test: sharedstructures.abi3.so
 
 
 clean:
-	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so *Test AllocatorBenchmark
+	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so sharedstructures.abi3.so *Test AllocatorBenchmark PrefixTreeBenchmark
 
 .PHONY: all cpp_only py_only clean cpp_test py_test py3_test
