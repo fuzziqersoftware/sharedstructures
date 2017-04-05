@@ -24,20 +24,20 @@ static uint64_t fnv1a64(const void* data, size_t size,
 
 HashTable::HashTable(shared_ptr<Allocator> allocator, uint8_t bits) :
     allocator(allocator) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   this->base_offset = this->create_hash_base(bits);
 }
 
 HashTable::HashTable(shared_ptr<Allocator> allocator, uint64_t base_offset,
     uint8_t bits) : allocator(allocator), base_offset(base_offset) {
   if (!this->base_offset) {
-    auto g = this->allocator->lock();
+    auto g = this->allocator->lock(false);
     this->base_offset = this->allocator->base_object_offset();
   }
 
   if (!this->base_offset) {
 
-    auto g = this->allocator->lock();
+    auto g = this->allocator->lock(true);
     this->base_offset = this->allocator->base_object_offset();
     if (!this->base_offset) {
       this->base_offset = this->create_hash_base(bits);
@@ -79,7 +79,7 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
     size_t v_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   if (check && !this->execute_check(*check)) {
     return false;
@@ -193,7 +193,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
 
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
 
   // get the slot pointer
@@ -325,7 +325,7 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
 
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
 
   // get the slot pointer
@@ -441,7 +441,7 @@ double HashTable::incr(const std::string& k, double delta) {
 bool HashTable::erase(const void* k, size_t k_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   if (check && !this->execute_check(*check)) {
     return false;
@@ -525,7 +525,7 @@ bool HashTable::erase(const std::string& k, const CheckRequest* check) {
 
 
 void HashTable::clear() {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
 
   HashTableBase* h = p->at<HashTableBase>(this->base_offset);
@@ -568,7 +568,7 @@ void HashTable::clear() {
 bool HashTable::exists(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto walk_ret = this->walk_tables(k, k_size, hash);
   return (walk_ret.first != 0);
 }
@@ -582,7 +582,7 @@ string HashTable::at(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
   {
-    auto g = this->allocator->lock();
+    auto g = this->allocator->lock(false);
     auto walk_ret = this->walk_tables(k, k_size, hash);
     if (walk_ret.first) {
       return string(this->allocator->get_pool()->at<char>(walk_ret.first),
@@ -601,7 +601,7 @@ vector<pair<string, string>> HashTable::get_slot_contents(
     uint64_t slot_index) const {
   vector<pair<string, string>> ret;
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   const HashTableBase* table = p->at<HashTableBase>(this->base_offset);
@@ -647,19 +647,19 @@ HashTableIterator HashTable::end() const {
 
 
 size_t HashTable::size() const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   return this->allocator->get_pool()->at<HashTableBase>(
       this->base_offset)->item_count;
 }
 
 uint8_t HashTable::bits() const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   return this->allocator->get_pool()->at<HashTableBase>(
       this->base_offset)->bits;
 }
 
 void HashTable::print(FILE* stream) const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   const HashTableBase* h = p->at<HashTableBase>(this->base_offset);

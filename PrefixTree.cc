@@ -15,7 +15,7 @@ namespace sharedstructures {
 
 
 PrefixTree::PrefixTree(shared_ptr<Allocator> allocator) : allocator(allocator) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // we can't use sizeof() here because the Node structure varies in size
   this->base_offset = this->allocator->allocate_object<TreeBase>(
@@ -25,12 +25,12 @@ PrefixTree::PrefixTree(shared_ptr<Allocator> allocator) : allocator(allocator) {
 PrefixTree::PrefixTree(shared_ptr<Allocator> allocator, uint64_t base_offset) :
     allocator(allocator), base_offset(base_offset) {
   if (!this->base_offset) {
-    auto g = this->allocator->lock();
+    auto g = this->allocator->lock(false);
     this->base_offset = this->allocator->base_object_offset();
   }
 
   if (!this->base_offset) {
-    auto g = this->allocator->lock();
+    auto g = this->allocator->lock(true);
     this->base_offset = this->allocator->base_object_offset();
     if (!this->base_offset) {
       // we can't use sizeof() here because the Node structure varies in size
@@ -125,7 +125,7 @@ PrefixTree::CheckRequest::CheckRequest() : key(NULL), key_size(0),
 
 bool PrefixTree::insert(const void* k, size_t k_size, const void* v,
     size_t v_size, const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -191,7 +191,7 @@ bool PrefixTree::insert(const void* k, size_t k_size, const struct iovec* iov,
     v_size += iov[x].iov_len;
   }
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -247,7 +247,7 @@ bool PrefixTree::insert(const string& k, const struct iovec* iov,
 
 bool PrefixTree::insert(const void* k, size_t k_size, int64_t v,
     const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -286,7 +286,7 @@ bool PrefixTree::insert(const string& k, int64_t v, const CheckRequest* check) {
 
 bool PrefixTree::insert(const void* k, size_t k_size, double v,
     const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -342,7 +342,7 @@ bool PrefixTree::insert(const string& k, double v, const CheckRequest* check) {
 
 bool PrefixTree::insert(const void* k, size_t k_size, bool v,
     const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -369,7 +369,7 @@ bool PrefixTree::insert(const string& k, bool v, const CheckRequest* check) {
 
 bool PrefixTree::insert(const void* k, size_t k_size,
     const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -422,7 +422,7 @@ bool PrefixTree::insert(const string& k, const LookupResult& r,
 
 
 int64_t PrefixTree::incr(const void* k, size_t k_size, int64_t delta) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
 
   // get or create the value slot
@@ -487,7 +487,7 @@ int64_t PrefixTree::incr(const string& k, int64_t delta) {
 }
 
 double PrefixTree::incr(const void* k, size_t k_size, double delta) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
 
   // get or create the value slot
@@ -557,7 +557,7 @@ double PrefixTree::incr(const string& k, double delta) {
 
 bool PrefixTree::erase(const void* k, size_t k_size,
     const CheckRequest* check) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
 
   // if a check was given and it fails, do nothing
   if (check && !this->execute_check(*check)) {
@@ -611,13 +611,13 @@ bool PrefixTree::erase(const string& key, const CheckRequest* check) {
 
 
 void PrefixTree::clear() {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(true);
   this->clear_node(this->base_offset + offsetof(TreeBase, root));
 }
 
 
 bool PrefixTree::exists(const void* k, size_t k_size) {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   return this->traverse(k, k_size, true, false, false).value_slot_offset != 0;
 }
 
@@ -628,7 +628,7 @@ bool PrefixTree::exists(const string& key) {
 
 PrefixTree::ResultValueType PrefixTree::type(const void* k,
     size_t k_size) const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   // find the value slot for this key
@@ -671,7 +671,7 @@ PrefixTree::ResultValueType PrefixTree::type(const string& key) const {
 
 
 PrefixTree::LookupResult PrefixTree::at(const void* k, size_t k_size) const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   // find the value slot for this key
@@ -723,13 +723,13 @@ PrefixTreeIterator PrefixTree::end() const {
 
 
 size_t PrefixTree::size() const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   return this->allocator->get_pool()->at<TreeBase>(
       this->base_offset)->item_count;
 }
 
 size_t PrefixTree::node_size() const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   return this->allocator->get_pool()->at<TreeBase>(
       this->base_offset)->node_count;
 }
@@ -784,7 +784,7 @@ size_t PrefixTree::bytes_for_prefix(const string& prefix) const {
 }
 
 size_t PrefixTree::bytes_for_prefix(const void* prefix, size_t p_size) const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   if (p_size) {
@@ -825,7 +825,7 @@ size_t PrefixTree::nodes_for_prefix(const string& prefix) const {
 }
 
 size_t PrefixTree::nodes_for_prefix(const void* prefix, size_t p_size) const {
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   if (p_size) {
@@ -1145,7 +1145,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
   node_offsets.reserve(size);
   node_offsets.emplace_back(node_offset);
 
-  auto g = this->allocator->lock();
+  auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
   // if current is NULL, then we're just starting the iteration - check the root

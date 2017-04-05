@@ -81,7 +81,7 @@ LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
     return;
   }
 
-  auto g = this->lock();
+  auto g = this->lock(true);
   data = this->data(); // may be invalidated by lock()
 
   if (data->initialized) {
@@ -446,10 +446,10 @@ size_t LogarithmicAllocator::bytes_free() const {
 }
 
 
-ProcessLockGuard LogarithmicAllocator::lock() const {
+ProcessReadWriteLockGuard LogarithmicAllocator::lock(bool writing) const {
   this->pool->check_size_and_remap();
-  ProcessLockGuard g(const_cast<Pool*>(this->pool.get()),
-      offsetof(Data, data_lock));
+  ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()),
+      offsetof(Data, data_lock), writing);
   this->pool->check_size_and_remap();
   if (g.stolen) {
     const_cast<LogarithmicAllocator*>(this)->repair();
@@ -457,8 +457,8 @@ ProcessLockGuard LogarithmicAllocator::lock() const {
   return g;
 }
 
-bool LogarithmicAllocator::is_locked() const {
-  return this->data()->data_lock != 0;
+bool LogarithmicAllocator::is_locked(bool writing) const {
+  return this->pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(writing);
 }
 
 

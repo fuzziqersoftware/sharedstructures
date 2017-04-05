@@ -174,7 +174,7 @@ void run_lock_test(const string& allocator_type) {
   pid_t child_pid = fork();
   if (!child_pid) {
     {
-      auto g = alloc->lock();
+      auto g = alloc->lock(true);
       usleep(1000000);
     }
     _exit(0);
@@ -184,7 +184,7 @@ void run_lock_test(const string& allocator_type) {
   // we should have to wait to get the lock; the child process is holding it
   uint64_t end_time;
   {
-    auto g = alloc->lock();
+    auto g = alloc->lock(true);
     end_time = now();
   }
   expect_ge(end_time - start_time, 1000000);
@@ -207,7 +207,7 @@ void run_crash_test(const string& allocator_type) {
     auto alloc = create_allocator(pool, allocator_type);
 
     while (offset_to_data.size() < 100) {
-      auto g = alloc->lock();
+      auto g = alloc->lock(true);
       expect_eq(false, g.stolen);
       uint64_t offset = alloc->allocate(2048);
 
@@ -231,7 +231,7 @@ void run_crash_test(const string& allocator_type) {
     shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
     auto alloc = create_allocator(pool, allocator_type);
 
-    auto g = alloc->lock();
+    auto g = alloc->lock(true);
     expect_eq(false, g.stolen);
 
     sigset_t sigs;
@@ -247,7 +247,7 @@ void run_crash_test(const string& allocator_type) {
   auto alloc = create_allocator(pool, allocator_type);
   try {
     usleep(500000);
-    expect_eq(true, alloc->is_locked());
+    expect_eq(true, alloc->is_locked(true));
   } catch (const exception& e) {
     kill(pid, SIGKILL);
     throw;
@@ -263,8 +263,8 @@ void run_crash_test(const string& allocator_type) {
 
   // even though the pool is still locked, we should be able to lock the pool
   // because the child was killed, and the lock should show that it was stolen
-  expect_eq(true, alloc->is_locked());
-  auto g = alloc->lock();
+  expect_eq(true, alloc->is_locked(true));
+  auto g = alloc->lock(true);
   expect_eq(true, g.stolen);
   expect_eq(bytes_allocated, alloc->bytes_allocated());
   expect_eq(bytes_free, alloc->bytes_free());

@@ -35,8 +35,8 @@ public:
   virtual size_t bytes_free() const;
 
   // locks the entire pool
-  virtual ProcessLockGuard lock() const;
-  virtual bool is_locked() const;
+  virtual ProcessReadWriteLockGuard lock(bool writing) const;
+  virtual bool is_locked(bool writing) const;
 
 
 private:
@@ -47,7 +47,7 @@ private:
 
     std::atomic<uint8_t> initialized;
 
-    std::atomic<uint64_t> data_lock;
+    ProcessReadWriteLock data_lock;
 
     std::atomic<uint64_t> base_object_offset;
     std::atomic<uint64_t> bytes_allocated; // sum of allocated block sizes

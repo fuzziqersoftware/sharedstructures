@@ -84,8 +84,8 @@ public:
 
   // locking functions.
 
-  virtual ProcessLockGuard lock() const = 0;
-  virtual bool is_locked() const = 0;
+  virtual ProcessReadWriteLockGuard lock(bool writing) const = 0;
+  virtual bool is_locked(bool writing) const = 0;
 
 
 protected:

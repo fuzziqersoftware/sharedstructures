@@ -14,7 +14,7 @@ SimpleAllocator::SimpleAllocator(std::shared_ptr<Pool> pool) : Allocator(pool) {
     return;
   }
 
-  auto g = this->lock();
+  auto g = this->lock(true);
   data = this->data(); // may be invalidated by lock()
 
   if (data->initialized) {
@@ -201,10 +201,10 @@ size_t SimpleAllocator::bytes_free() const {
 }
 
 
-ProcessLockGuard SimpleAllocator::lock() const {
+ProcessReadWriteLockGuard SimpleAllocator::lock(bool writing) const {
   this->pool->check_size_and_remap();
-  ProcessLockGuard g(const_cast<Pool*>(this->pool.get()),
-      offsetof(Data, data_lock));
+  ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()),
+      offsetof(Data, data_lock), writing);
   this->pool->check_size_and_remap();
   if (g.stolen) {
     const_cast<SimpleAllocator*>(this)->repair();
@@ -212,8 +212,8 @@ ProcessLockGuard SimpleAllocator::lock() const {
   return g;
 }
 
-bool SimpleAllocator::is_locked() const {
-  return this->data()->data_lock != 0;
+bool SimpleAllocator::is_locked(bool writing) const {
+  return this->pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(writing);
 }
 
 
