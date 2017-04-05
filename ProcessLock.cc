@@ -72,10 +72,14 @@ static bool process_for_token_is_running(int32_t token) {
 static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
     const struct timespec* timeout) {
   if (syscall(SYS_futex, lock, FUTEX_WAIT, expected_value, timeout, NULL, 0) == -1) {
-    if ((errno != EAGAIN) && (errno != EINTR) && (errno != ETIMEDOUT) && (errno != EWOULDBLOCK)) {
-      throw runtime_error("futex_wait failed: " + string_for_error(errno));
+    if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+      return true; // value didn't match the input
     }
-    return false;
+    if ((errno == EINTR) || (errno == ETIMEDOUT)) {
+      return false; // timed out or interrupted
+    }
+    // some other thing
+    throw runtime_error("futex_wait failed: " + string_for_error(errno));
   }
   return true;
 }
@@ -251,7 +255,6 @@ ProcessLockGuard::~ProcessLockGuard() {
     // this can happen if the pool was expanded and no longer fits in this
     // process' address space
     this->pool->map_and_call(this->offset, sizeof(int32_t), &release_cb);
-    throw;
   }
 }
 
