@@ -446,9 +446,9 @@ size_t LogarithmicAllocator::bytes_free() const {
 }
 
 
-ProcessSpinlockGuard LogarithmicAllocator::lock() const {
+ProcessLockGuard LogarithmicAllocator::lock() const {
   this->pool->check_size_and_remap();
-  ProcessSpinlockGuard g(const_cast<Pool*>(this->pool.get()),
+  ProcessLockGuard g(const_cast<Pool*>(this->pool.get()),
       offsetof(Data, data_lock));
   this->pool->check_size_and_remap();
   if (g.stolen) {

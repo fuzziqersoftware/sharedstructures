@@ -1,4 +1,4 @@
-OBJECTS=Pool.o ProcessSpinlock.o Allocator.o SimpleAllocator.o LogarithmicAllocator.o HashTable.o PrefixTree.o
+OBJECTS=Pool.o ProcessLock.o Allocator.o SimpleAllocator.o LogarithmicAllocator.o HashTable.o PrefixTree.o
 CXX=g++ -fPIC
 CXXFLAGS=-I/usr/local/include -std=c++14 -g -Wall -Werror
 LDFLAGS=-L/usr/local/lib -std=c++14 -lphosg -g
@@ -43,8 +43,8 @@ libsharedstructures.a: $(OBJECTS)
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
-cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessSpinlockTest AllocatorBenchmark PrefixTreeBenchmark
-	./ProcessSpinlockTest
+cpp_test: AllocatorTest HashTableTest PrefixTreeTest ProcessLockTest AllocatorBenchmark PrefixTreeBenchmark
+	./ProcessLockTest
 	./AllocatorTest
 	./PrefixTreeTest
 	./HashTableTest

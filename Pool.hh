@@ -128,6 +128,9 @@ public:
     munmap(data, page_count * PAGE_SIZE);
   }
 
+  void map_and_call(uint64_t offset, size_t size,
+      std::function<void(void*, size_t)> cb);
+
 
   // full-featured accessor.
   // in most situations you can treat this like a normal pointer, except that

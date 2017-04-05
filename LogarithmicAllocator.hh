@@ -24,7 +24,7 @@ public:
   virtual size_t bytes_allocated() const;
   virtual size_t bytes_free() const;
 
-  virtual ProcessSpinlockGuard lock() const;
+  virtual ProcessLockGuard lock() const;
   virtual bool is_locked() const;
 
   // for debugging

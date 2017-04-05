@@ -138,6 +138,22 @@ size_t Pool::size() const {
   return this->data->size;
 }
 
+void Pool::map_and_call(uint64_t offset, size_t size,
+    function<void(void*, size_t)> cb) {
+  uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
+  uint64_t offset_within_page = offset ^ page_offset;
+
+  // map two pages if it spans a page boundary
+  uint8_t page_count = 1 + ((offset_within_page + size) > PAGE_SIZE);
+  void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
+      MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
+  if (data == MAP_FAILED) {
+    throw bad_alloc();
+  }
+  cb((char*)data + offset_within_page, size);
+  munmap(data, page_count * PAGE_SIZE);
+}
+
 
 bool Pool::delete_pool(const std::string& name, bool file) {
   int ret = unlink_segment(name.c_str(), file || MAP_HASSEMAPHORE);

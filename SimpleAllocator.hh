@@ -35,7 +35,7 @@ public:
   virtual size_t bytes_free() const;
 
   // locks the entire pool
-  virtual ProcessSpinlockGuard lock() const;
+  virtual ProcessLockGuard lock() const;
   virtual bool is_locked() const;
 
 

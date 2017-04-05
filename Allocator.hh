@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "Pool.hh"
-#include "ProcessSpinlock.hh"
+#include "ProcessLock.hh"
 
 namespace sharedstructures {
 
@@ -84,7 +84,7 @@ public:
 
   // locking functions.
 
-  virtual ProcessSpinlockGuard lock() const = 0;
+  virtual ProcessLockGuard lock() const = 0;
   virtual bool is_locked() const = 0;
 
 
