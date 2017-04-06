@@ -308,9 +308,11 @@ bool PrefixTree::insert(const void* k, size_t k_size, double v,
     *p->at<uint64_t>(value_slot_offset) = (int64_t)StoredValueType::Double;
     this->increment_item_count(1);
 
-  // if the value already exists and is a Double or LongInt, reuse the storage
-  } else if ((type == StoredValueType::Double) ||
-             (type == StoredValueType::LongInt)) {
+  // if the old value is a LongInt or a nonzero double, we can reuse its
+  // allocated storage
+  } else if (((type == StoredValueType::Double) ||
+              (type == StoredValueType::LongInt)) &&
+             (contents != (uint64_t)StoredValueType::Double)) {
     uint64_t value_offset = this->value_for_contents(contents);
     *p->at<double>(value_offset) = v;
 
