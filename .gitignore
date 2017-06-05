@@ -1,5 +1,7 @@
 .DS_Store
 AllocatorBenchmark
+PrefixTreeBenchmark
+benchmark-pool
 *Test
 *.o
 *.pyc
