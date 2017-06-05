@@ -1,6 +1,6 @@
 # sharedstructures
 
-sharedstructures is a C++ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way. Currently hash tables and prefix trees are implemented.
+sharedstructures is a C++ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way. Currently hash tables and prefix trees are implemented, though only prefix trees are currently recommended for production use.
 
 ## Building
 
@@ -9,6 +9,40 @@ sharedstructures is a C++ and Python 2/3 library for storing data structures in 
 - Run `sudo make install`.
 
 If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 14.04 and 16.04.
+
+## Basic usage
+
+The following C++ code opens a prefix tree object, creating it if it doesn't exist:
+
+    #include <memory>
+    #include <sharedstructures/Pool.hh>
+    #include <sharedstructures/LogarithmicAllocator.hh>
+    #include <sharedstructures/PrefixTree.hh>
+
+    using namespace sharedstructures;
+
+    std::shared_ptr<Pool> pool(new Pool(filename));
+    std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
+    std::shared_ptr<PrefixTree> tree(new PrefixTree(alloc, 0));
+
+    // note: k1, k2, etc. are all std::string
+    tree->insert(k1, v1);  // insert or overwrite a value
+    PrefixTree::LookupResult v2 = tree->at(k2);  // retrieve a value
+    bool was_erased = tree->erase(k3);  // delete a value
+    bool key_exists = tree->exists(k4);  // check if a key exists
+
+See PrefixTree.hh for more details on how to use the tree object.
+
+Python usage is a bit more intuitive - sharedstructures objects behave mostly like dicts (but read the "Python wrapper" section below):
+
+    import sharedstructures
+
+    tree = sharedstructures.PrefixTree(filename, 'logarithmic', 0)
+
+    tree[k1] = v1   # insert or overwrite a value
+    v2 = tree[k2]   # retrieve a value
+    del tree[k3]    # delete a value
+    if k4 in tree:  # check if a key exists
 
 ## Interfaces and objects
 
@@ -49,7 +83,7 @@ For both structures, the iterator objects cache one or more results on the itera
 
 ## Python wrapper
 
-HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). TypeError is raised if `k` isn't a string (bytes in Python 3).
+HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key.
 
 The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
@@ -79,3 +113,8 @@ There's a lot to do here.
 - Make hash tables support atomic increments in Python.
 - Return immutable objects for complex types in Python to make in-place modification not fail silently.
 - Add more data structures to the library.
+- Make pool creation race-free. Currently processes can get weird errors if they both attempt to create the same pool at the same time.
+
+## Companies using sharedstructures in production
+
+- [Quora](http://www.quora.com/)
