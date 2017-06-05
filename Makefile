@@ -1,7 +1,7 @@
 OBJECTS=Pool.o ProcessLock.o Allocator.o SimpleAllocator.o LogarithmicAllocator.o HashTable.o PrefixTree.o
 CXX=g++ -fPIC
-CXXFLAGS=-I/usr/local/include -std=c++14 -g -Wall -Werror
-LDFLAGS=-L/usr/local/lib -std=c++14 -lphosg -g
+CXXFLAGS=-std=c++14 -g -Wall -Werror
+LDFLAGS=-std=c++14 -lphosg -g
 
 INSTALL_DIR=/usr/local
 
@@ -13,14 +13,14 @@ PYTHON3_LIBS=$(shell python3-config --libs)
 
 UNAME = $(shell uname -s)
 ifeq ($(UNAME),Darwin)
-	CXXFLAGS +=  -arch i386 -arch x86_64 -DMACOSX
-	LDFLAGS +=  -arch i386 -arch x86_64
+	CXXFLAGS +=  -arch i386 -arch x86_64 -DMACOSX -I/opt/local/include
+	LDFLAGS +=  -arch i386 -arch x86_64 -L/opt/local/lib
 	PYTHON_MODULE_CXXFLAGS = -dynamic -DMACOSX
 	PYTHON_MODULE_LDFLAGS = -bundle -undefined dynamic_lookup
 endif
 ifeq ($(UNAME),Linux)
-	CXXFLAGS +=  -DLINUX
-	LDFLAGS +=  -lrt -pthread
+	CXXFLAGS +=  -DLINUX -I/usr/local/include
+	LDFLAGS +=  -lrt -pthread -L/usr/local/lib
 	PYTHON_MODULE_CXXFLAGS = -DLINUX
 	PYTHON_MODULE_LDFLAGS = -shared
 endif
