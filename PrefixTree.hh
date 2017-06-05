@@ -20,10 +20,13 @@ public:
   PrefixTree(const PrefixTree&) = delete;
   PrefixTree(PrefixTree&&) = delete;
 
-  // create constructor - allocates and initializes a new prefix tree.
+  // unconditional create constructor - allocates a new prefix tree. this
+  // constructor doesn't affect the allocator's base object offset; you'll need
+  // to explicitly pass a nonzero offset when opening this tree later. use the
+  // base() method to get the required offset.
   explicit PrefixTree(std::shared_ptr<Allocator> allocator);
-  // (conditional) create constructor.
-  // - if base_offset != 0, opens an existing prefix tree.
+  // create or open constructor.
+  // - if base_offset != 0, opens an existing prefix tree at that offset.
   // - if base_offset == 0, opens the prefix tree at the allocator's base object
   //   offset, creating one if the base object offset is also 0.
   PrefixTree(std::shared_ptr<Allocator> allocator, uint64_t base_offset);
@@ -32,9 +35,7 @@ public:
 
   // returns the allocator for this prefix tree
   std::shared_ptr<Allocator> get_allocator() const;
-  // returns the base offset for this prefix tree. if it was automatically
-  // allocated with the conditional create constructor, this will tell you how
-  // to open it again later.
+  // returns the base offset for this prefix tree
   uint64_t base() const;
 
   enum class ResultValueType {
@@ -189,15 +190,23 @@ public:
       uint64_t indent = 0) const;
   // returns the tree's structure as a string. this isn't the same as what
   // print() outputs; it's not human-readable, but is ascii-encodable and
-  // contains no whitespace. the optional argument is used for recursive calls;
-  // external callers shouldn't need to pass it. this method does not lock the
-  // tree; it's intended only for debugging. don't call this on a tree that may
-  // be open in other processes.
+  // contains no whitespace. this method does not lock the tree; it's intended
+  // only for debugging. don't call this on a tree that may be open in other
+  // processes.
   std::string get_structure() const;
 
 private:
   std::shared_ptr<Allocator> allocator;
   uint64_t base_offset;
+
+  // the tree's structure is a recursive set of Node objects. each Node has a
+  // value slot as well as 1-256 child slots, depending on the range of subnodes
+  // allocated. the root node always exists and has 256 slots. to find the value
+  // for a key, we start at the root node and move to the node specified by the
+  // value slot for the next character in the key. if we end up at a node, then
+  // the key's value is whatever is in the node's value slot. if the last
+  // character in the key leaves us at a slot with a value, then that is the
+  // key's value. otherwise, the key isn't in the tree.
 
   struct Node {
     uint8_t start;
@@ -235,7 +244,8 @@ private:
 
     // String refers to a raw data buffer. the high 61 bits of the contents are
     // the buffer's offset. the length isn't stored explicitly anywhere; it's
-    // retrieved from the allocator.
+    // retrieved from the allocator. for zero-length strings, the bufer offset
+    // is 0 and no buffer is allocated.
     String      = 1,
 
     // Int is a 61-bit inlined integer. the lowest 3 bits are 010, and the other
