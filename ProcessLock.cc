@@ -35,6 +35,14 @@ bool ProcessReadWriteLock::is_locked(bool writing) const {
   return false;
 }
 
+size_t ProcessReadWriteLock::reader_count() const {
+  size_t count = 0;
+  for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
+    count += (this->reader_tokens[x].load() != 0);
+  }
+  return count;
+}
+
 
 
 static const uint8_t PID_BITS = 18;
@@ -125,7 +133,7 @@ static void release_process_lock(atomic<int32_t>* lock) {
 
 static bool wait_for_reader_release(atomic<int32_t>* lock,
     int32_t existing_token) {
-  static const struct timespec timeout = {1, 0}; // 1 second
+  static const struct timespec timeout = {0, 10000}; // 10ms
 
   while (!futex_wait(lock, existing_token, &timeout)) {
     if (!process_for_token_is_running(existing_token)) {
@@ -290,7 +298,7 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
     do {
       // take the write lock, find an empty reader slot and take it, then release
       // the write lock
-      acquire_process_lock(&data->write_lock);
+      this->stolen = acquire_process_lock(&data->write_lock);
       for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
         if (data->reader_tokens[x] == 0) {
           data->reader_tokens[x].store(reader_token);

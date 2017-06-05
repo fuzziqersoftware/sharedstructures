@@ -8,7 +8,7 @@ sharedstructures is a C++ and Python 2/3 library for storing data structures in 
 - Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only`, `make py_only`, or `make py3_only`.
 - Run `sudo make install`.
 
-If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 16.04.
+If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 14.04 and 16.04.
 
 ## Interfaces and objects
 
@@ -65,8 +65,6 @@ Operations on shared data structures use a global lock over the entire structure
 
 Currently, the lock wait algorithm will check periodically if the process holding the lock is still alive. If the holding process has died, the waiting process will "steal" the lock from that process and repair the allocator's internal data structures. This may be slow for large data structures, since it involves walking the entire list of allocated regions.
 
-The lock wait algorithm can't tell the difference between a running process and a zombie process. Make sure not to let zombie processes stick around for a long time.
-
 HashTable is not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable if a process crashed while operating on it.
 
 PrefixTree is always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked, and there may be some extra (empty) nodes left over. These nodes won't be visible to gets or iterations, and will be deleted or reused when a write operation next touches them.
@@ -75,7 +73,6 @@ PrefixTree is always consistent and doesn't need any extra repairs after a crash
 
 There's a lot to do here.
 - Use a more efficient locking strategy. Currently we use spinlocks.
-- Figure out some way to deal with zombie processes holding locks.
 - Make hash tables always consistent for crash recovery.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).

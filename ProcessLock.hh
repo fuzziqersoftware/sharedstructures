@@ -20,6 +20,7 @@ struct ProcessReadWriteLock {
   std::atomic<int32_t> reader_tokens[NUM_READER_SLOTS];
 
   bool is_locked(bool writing) const;
+  size_t reader_count() const;
 };
 
 

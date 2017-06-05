@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <sched.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -80,20 +81,25 @@ void run_basic_test() {
 
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
+  expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   {
     ProcessReadWriteLockGuard g(pool.get(), 0x18, false);
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
+    expect_eq(1, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
+  expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   {
     ProcessReadWriteLockGuard g(pool.get(), 0x18, true);
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
+    expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
+  expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
 }
 
 
@@ -178,6 +184,7 @@ void run_read_write_lock_test() {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, true);
       expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
       expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
+      expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
       expect_eq(0, *pool_pid);
       if (*pool_last_pid && ((pid_t)*pool_last_pid != pid)) {
         num_after_loops++;
@@ -230,6 +237,102 @@ void run_read_write_lock_test() {
 }
 
 
+void run_write_crash_test_case(bool parent_write_lock) {
+  printf("-- write crash (parent %s)\n", parent_write_lock ? "write" : "read");
+
+  unordered_set<pid_t> child_pids = fork_children(1);
+  auto pool = create_pool();
+
+  if (child_pids.empty()) {
+    printf("--   child acquiring write lock\n");
+    ProcessReadWriteLockGuard g(pool.get(), 0x18, true);
+    expect_eq(false, g.stolen);
+    printf("--   child dying\n");
+    _exit(0);
+
+  } else {
+    pid_t child_pid = *child_pids.begin();
+
+    printf("--   parent waiting for lock to be acquired\n");
+    auto* lock = pool->at<ProcessReadWriteLock>(0x18);
+    while (!lock->is_locked(true) && pid_exists(child_pid)) {
+      sched_yield();
+    }
+    expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+
+    // this should steal the lock even though the child exists as a zombie, and
+    // should appear stolen even if locking for reading
+    printf("--   parent acquiring lock\n");
+    ProcessReadWriteLockGuard g(pool.get(), 0x18, parent_write_lock);
+    expect_eq(true, g.stolen);
+
+    // the child should have died with status 0
+    wait_for_children(child_pids);
+  }
+}
+
+void run_write_crash_test() {
+  run_write_crash_test_case(false);
+  run_write_crash_test_case(true);
+}
+
+static unordered_set<pid_t> fill_reader_slots(shared_ptr<Pool> pool) {
+  unordered_set<pid_t> all_zombie_pids;
+  for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
+    unordered_set<pid_t> child_pids = fork_children(1);
+
+    if (child_pids.empty()) {
+      printf("--   child taking reader slot %zu\n", x);
+      auto pool = create_pool();
+      expect_eq(x, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+      ProcessReadWriteLockGuard g(pool.get(), 0x18, false);
+      expect_eq(false, g.stolen);
+      expect_eq(x + 1, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+      _exit(0);
+
+    } else {
+      pid_t child_pid = *child_pids.begin();
+      while (start_time_for_pid(child_pid) != 0) {
+        sched_yield();
+      }
+      all_zombie_pids.insert(child_pid);
+    }
+  }
+  return all_zombie_pids;
+}
+
+void run_read_crash_test() {
+  printf("-- read crash\n");
+
+  auto pool = create_pool();
+
+  // with all the reader slots full, any lock call should clear them all out.
+  // the lock shouldn't appear stolen because the processes crashed while
+  // reading, so no repairs are needed
+  auto zombie_pids = fill_reader_slots(pool);
+  expect_eq(NUM_READER_SLOTS, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+  {
+    ProcessReadWriteLockGuard g(pool.get(), 0x18, true);
+    expect_eq(false, g.stolen);
+  }
+  expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+  wait_for_children(zombie_pids);
+
+  // behavior should be similar when we lock the pool for reading, except we
+  // shouldn't clear all the reader slots; we should clear only one
+  zombie_pids = fill_reader_slots(pool);
+  expect_eq(NUM_READER_SLOTS,
+      pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+  {
+    ProcessReadWriteLockGuard g(pool.get(), 0x18, false);
+    expect_eq(false, g.stolen);
+  }
+  expect_eq(NUM_READER_SLOTS - 1,
+      pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+  wait_for_children(zombie_pids);
+}
+
+
 int main(int argc, char* argv[]) {
   int retcode = 0;
   try {
@@ -241,6 +344,8 @@ int main(int argc, char* argv[]) {
     run_basic_test();
     run_lock_test();
     run_read_write_lock_test();
+    run_write_crash_test();
+    run_read_crash_test();
     printf("all tests passed\n");
 
     // only delete the pool if the tests pass; if they don't, we might want to
