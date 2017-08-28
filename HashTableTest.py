@@ -27,6 +27,12 @@ def verify_state(expected, table):
     assert table[k] == v
   for k, v in table.items():
     assert expected[k] == v
+  verify_allocator(table)
+
+
+def verify_allocator(table):
+  ret = table.verify()
+  assert ret is None, ret.decode('utf-8')
 
 
 def run_basic_test(allocator_type):

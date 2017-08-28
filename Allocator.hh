@@ -88,6 +88,11 @@ public:
   virtual bool is_locked(bool writing) const = 0;
 
 
+  // for debugging
+
+  virtual void verify() const = 0;
+
+
 protected:
   std::shared_ptr<Pool> pool;
 

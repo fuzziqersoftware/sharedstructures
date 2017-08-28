@@ -13,30 +13,32 @@ PYTHON3_LIBS=$(shell python3-config --libs)
 
 UNAME = $(shell uname -s)
 ifeq ($(UNAME),Darwin)
-	CXXFLAGS +=  -arch i386 -arch x86_64 -DMACOSX -I/opt/local/include
-	LDFLAGS +=  -arch i386 -arch x86_64 -L/opt/local/lib
+	CXXFLAGS += -DMACOSX -I/opt/local/include
+	LDFLAGS += -L/opt/local/lib
 	PYTHON_MODULE_CXXFLAGS = -dynamic -DMACOSX
 	PYTHON_MODULE_LDFLAGS = -bundle -undefined dynamic_lookup
 endif
 ifeq ($(UNAME),Linux)
-	CXXFLAGS +=  -DLINUX -I/usr/local/include
-	LDFLAGS +=  -lrt -pthread -L/usr/local/lib
+	CXXFLAGS += -DLINUX -I/usr/local/include
+	LDFLAGS += -lrt -pthread -L/usr/local/lib
 	PYTHON_MODULE_CXXFLAGS = -DLINUX
 	PYTHON_MODULE_LDFLAGS = -shared
 endif
 
 all: cpp_only py_only py3_only
 
+test: cpp_test py_test py3_test
+
 install: libsharedstructures.a
 	mkdir -p $(INSTALL_DIR)/include/sharedstructures
 	cp libsharedstructures.a $(INSTALL_DIR)/lib/
 	cp -r *.hh $(INSTALL_DIR)/include/sharedstructures/
 
-cpp_only: libsharedstructures.a cpp_test
+cpp_only: libsharedstructures.a
 
-py_only: sharedstructures.so py_test
+py_only: sharedstructures.so
 
-py3_only: sharedstructures.abi3.so py3_test
+py3_only: sharedstructures.abi3.so
 
 libsharedstructures.a: $(OBJECTS)
 	rm -f libsharedstructures.a

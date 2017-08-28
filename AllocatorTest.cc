@@ -75,6 +75,7 @@ void run_basic_test(const string& allocator_type) {
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
+  auto g = alloc->lock(true);
 
   size_t orig_free_bytes = alloc->bytes_free();
   expect_eq(0, alloc->bytes_allocated());
@@ -119,6 +120,7 @@ void run_smart_pointer_test(const string& allocator_type) {
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
+  auto g = alloc->lock(true);
 
   // make sure allocate_object/free_object call constructors/destructors
   expect_eq(0, TestClass::instance_count);
@@ -156,6 +158,7 @@ void run_expansion_boundary_test(const string& allocator_type) {
 
   shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
+  auto g = alloc->lock(true);
 
   run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x20);
   run_expansion_boundary_test_with_size(alloc, alloc->bytes_free() - 0x18);

@@ -217,6 +217,11 @@ bool SimpleAllocator::is_locked(bool writing) const {
 }
 
 
+void SimpleAllocator::verify() const {
+  // TODO
+}
+
+
 SimpleAllocator::Data* SimpleAllocator::data() {
   return this->pool->at<Data>(0);
 }

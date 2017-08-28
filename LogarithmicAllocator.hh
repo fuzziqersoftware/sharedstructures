@@ -28,7 +28,7 @@ public:
   virtual bool is_locked(bool writing) const;
 
   // for debugging
-  void verify() const;
+  virtual void verify() const;
   void print(FILE* stream) const;
 
 private:

@@ -38,6 +38,8 @@ public:
   virtual ProcessReadWriteLockGuard lock(bool writing) const;
   virtual bool is_locked(bool writing) const;
 
+  virtual void verify() const;
+
 
 private:
   // pool structure

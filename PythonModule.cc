@@ -484,6 +484,23 @@ static void sharedstructures_HashTable_Dealloc(PyObject* obj) {
   Py_TYPE(self)->tp_free((PyObject*)self);
 }
 
+static const char* sharedstructures_HashTable_verify_doc =
+"Checks the internal state of the shared allocator.\n\
+\n\
+On success, returns None. Otherwise, returns a bytes object with a description\n\
+of the error.";
+
+static PyObject* sharedstructures_HashTable_verify(PyObject* py_self) {
+  sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
+  try {
+    self->table->get_allocator()->verify();
+  } catch (const exception& e) {
+    return PyBytes_FromStringAndSize(e.what(), strlen(e.what()));
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
 static Py_ssize_t sharedstructures_HashTable_Len(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
   return self->table->size();
@@ -839,6 +856,8 @@ static PyMethodDef sharedstructures_HashTable_methods[] = {
       sharedstructures_HashTable_iteritems_doc},
   {"items", (PyCFunction)sharedstructures_HashTable_iteritems, METH_NOARGS,
       sharedstructures_HashTable_iteritems_doc},
+  {"verify", (PyCFunction)sharedstructures_HashTable_verify, METH_NOARGS,
+      sharedstructures_HashTable_verify_doc},
   {NULL},
 };
 
@@ -1109,6 +1128,20 @@ static void sharedstructures_PrefixTree_Dealloc(PyObject* obj) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)obj;
   self->table.~shared_ptr();
   Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static const char* sharedstructures_PrefixTree_verify_doc =
+    sharedstructures_HashTable_verify_doc;
+
+static PyObject* sharedstructures_PrefixTree_verify(PyObject* py_self) {
+  sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
+  try {
+    self->table->get_allocator()->verify();
+  } catch (const exception& e) {
+    return PyBytes_FromStringAndSize(e.what(), strlen(e.what()));
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 static Py_ssize_t sharedstructures_PrefixTree_Len(PyObject* py_self) {
@@ -1619,6 +1652,8 @@ static PyMethodDef sharedstructures_PrefixTree_methods[] = {
       sharedstructures_PrefixTree_iteritems_doc},
   {"items", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
       sharedstructures_PrefixTree_iteritems_doc},
+  {"verify", (PyCFunction)sharedstructures_PrefixTree_verify, METH_NOARGS,
+      sharedstructures_PrefixTree_verify_doc},
   {NULL},
 };
 

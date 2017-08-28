@@ -106,6 +106,10 @@ LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
 
 
 uint64_t LogarithmicAllocator::allocate(size_t size) {
+  // make sure we hold the lock for writing
+  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))
+      ->is_locked(true));
+
   // need to store an AllocatedBlock too, and size must be a multiple of 8. this
   // means needed_size is >= 0x10.
   int8_t needed_order = order_for_size(size + sizeof(AllocatedBlock));
@@ -291,9 +295,6 @@ void LogarithmicAllocator::create_free_block(uint64_t offset, int8_t order) {
   // link it appropriately
   if (*tail) {
     FreeBlock* prev_block = this->pool->at<FreeBlock>(*tail);
-    if (prev_block->order() != order) {
-      this->print(stderr);
-    }
     assert(prev_block->order() == order);
     prev_block->next = offset;
     *tail = offset;
@@ -328,6 +329,10 @@ void LogarithmicAllocator::create_free_blocks(uint64_t offset,
 }
 
 void LogarithmicAllocator::free(uint64_t offset) {
+  // make sure we hold the lock for writing
+  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))
+      ->is_locked(true));
+
   auto data = this->data();
   if ((offset < sizeof(Data) + sizeof(AllocatedBlock)) ||
       (offset > data->size)) {
@@ -472,41 +477,94 @@ const LogarithmicAllocator::Data* LogarithmicAllocator::data() const {
 
 
 void LogarithmicAllocator::verify() const {
-  try {
-    auto data = this->data();
-    for (int8_t order = Data::minimum_order; order < Data::maximum_order;
-         order++) {
-      uint64_t offset = data->free_head[order - Data::minimum_order];
-      uint64_t prev_offset = 0;
-      while (offset) {
-        FreeBlock* block = this->pool->at<FreeBlock>(offset);
-        if (block->allocated()) {
-          throw runtime_error(string_printf(
-              "block at %llX is linked and allocated", offset));
-        }
-        if (block->prev() != prev_offset) {
-          throw runtime_error(string_printf(
-              "block at %llX has incorrect prev link (is %llX, should be %llX)",
-              offset, block->prev(), prev_offset));
-        }
-        if (block->order() != order) {
-          throw runtime_error(string_printf(
-              "block at %llX has incorrect order (is %hhd, should be %hhd)",
-              offset, block->order(), order));
-        }
-        prev_offset = offset;
-        offset = block->next;
-      }
-      if (data->free_tail[order - Data::minimum_order] != prev_offset) {
+  auto lock = this->lock(false);
+  auto data = this->data();
+
+  // check all blocks
+  uint64_t bytes_allocated = 0;
+  uint64_t bytes_committed = next_order_boundary(sizeof(Data), Data::minimum_order);
+  uint64_t offset = next_order_boundary(sizeof(Data), Data::minimum_order);
+  while (offset < data->size) {
+    const Block* block = this->pool->at<Block>(offset);
+
+    uint64_t next_offset;
+    if (block->allocated.allocated()) {
+      size_t committed_bytes = size_for_order(order_for_size(
+          block->allocated.size() + sizeof(AllocatedBlock)));
+      bytes_allocated += block->allocated.size();
+      bytes_committed += committed_bytes;
+
+      next_offset = offset + committed_bytes;
+
+    } else { // free block
+      const FreeBlock* fb = reinterpret_cast<const FreeBlock*>(block);
+      if ((fb->order() < data->minimum_order) || (fb->order() > data->maximum_order)) {
         throw runtime_error(string_printf(
-            "free list %hhd has incorrect tail link (is %llX, should be %llX)",
-            order, data->free_tail[order - Data::minimum_order].load(),
-            prev_offset));
+            "free block at %llX has incorrect order (%hhd not in range [%hhd,%hhd])",
+            offset, fb->order(), data->minimum_order, data->maximum_order));
       }
+      if (next_order_boundary(fb->prev(), fb->order()) != fb->prev()) {
+        throw runtime_error(string_printf(
+            "free block at %llX has misaligned prev link (%llX)", offset, fb->prev()));
+      }
+      if (next_order_boundary(fb->next, fb->order()) != fb->next) {
+        throw runtime_error(string_printf(
+            "free block at %llX has misaligned next link (%llX)", offset, fb->next));
+      }
+
+      next_offset = offset + size_for_order(fb->order());
     }
-  } catch (const runtime_error& e) {
-    this->print(stderr);
-    throw;
+
+    if (next_offset <= offset) {
+      throw runtime_error(string_printf(
+          "%s block at %llX has incorrect size (next block at %llX)",
+          block->allocated.allocated() ? "allocated" : "free", offset, next_offset));
+    }
+    offset = next_offset;
+  }
+
+  // check allocated/committed bytes
+  if (data->bytes_allocated != bytes_allocated) {
+    throw runtime_error(string_printf(
+        "allocated byte count is incorrect (is %llX, should be %llX)",
+        data->bytes_allocated.load(), bytes_allocated));
+  }
+  if (data->bytes_committed != bytes_committed) {
+    throw runtime_error(string_printf(
+        "committed byte count is incorrect (is %llX, should be %llX)",
+        data->bytes_committed.load(), bytes_committed));
+  }
+
+  // check the free lists
+  for (int8_t order = Data::minimum_order; order < Data::maximum_order;
+       order++) {
+    uint64_t offset = data->free_head[order - Data::minimum_order];
+    uint64_t prev_offset = 0;
+    while (offset) {
+      FreeBlock* block = this->pool->at<FreeBlock>(offset);
+      if (block->order() != order) {
+        throw runtime_error(string_printf(
+            "block at %llX has incorrect order (is %hhd, should be %hhd)",
+            offset, block->order(), order));
+      }
+      if (block->allocated()) {
+        throw runtime_error(string_printf(
+            "block at %llX is linked and allocated", offset));
+      }
+      if (block->prev() != prev_offset) {
+        throw runtime_error(string_printf(
+            "block at %llX has incorrect prev link (is %llX, should be %llX)",
+            offset, block->prev(), prev_offset));
+      }
+      prev_offset = offset;
+      offset = block->next;
+    }
+    if (data->free_tail[order - Data::minimum_order] != prev_offset) {
+      throw runtime_error(string_printf(
+          "free list %hhd has incorrect tail link (is %llX, should be %llX)",
+          order, data->free_tail[order - Data::minimum_order].load(),
+          prev_offset));
+    }
   }
 }
 

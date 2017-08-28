@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <phosg/Strings.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
@@ -915,6 +916,60 @@ void run_concurrent_readers_test(const string& allocator_type) {
 }
 
 
+void run_concurrent_writers_test(const string& allocator_type) {
+  printf("-- [%s] concurrent writers\n", allocator_type.c_str());
+
+  unordered_set<pid_t> child_pids;
+  while ((child_pids.size() < 10) && !child_pids.count(0)) {
+    pid_t pid = fork();
+    if (pid == -1) {
+      break;
+    } else {
+      child_pids.emplace(pid);
+    }
+  }
+
+  if (child_pids.count(0)) {
+    // child process: try up to 3 seconds to get the key
+    auto table = get_or_create_tree("test-table", allocator_type);
+
+    uint64_t start_time = now();
+    do {
+      string key = string_printf("key%d", rand());
+      string value = string_printf("value%d", rand());
+      table->insert(key, value);
+      usleep(1); // yield to other processes
+    } while (now() < (start_time + 1000000));
+
+    _exit(0);
+
+  } else {
+    // parent process: wait for children to terminate
+    auto table = get_or_create_tree("test-table", allocator_type);
+
+    int num_failures = 0;
+    int exit_status;
+    pid_t exited_pid;
+    while ((exited_pid = wait(&exit_status)) != -1) {
+      child_pids.erase(exited_pid);
+      if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
+        printf("-- [%s]   child %d terminated successfully\n",
+            allocator_type.c_str(), exited_pid);
+      } else {
+        printf("-- [%s]   child %d failed (%d)\n", allocator_type.c_str(),
+            exited_pid, exit_status);
+        num_failures++;
+      }
+    }
+
+    expect_eq(true, child_pids.empty());
+    expect_eq(0, num_failures);
+
+    table->get_allocator()->verify();
+  }
+}
+
+
 int main(int argc, char* argv[]) {
   int retcode = 0;
 
@@ -929,6 +984,7 @@ int main(int argc, char* argv[]) {
       run_types_test(allocator_type);
       run_incr_test(allocator_type);
       run_concurrent_readers_test(allocator_type);
+      run_concurrent_writers_test(allocator_type);
     }
     printf("all tests passed\n");
 

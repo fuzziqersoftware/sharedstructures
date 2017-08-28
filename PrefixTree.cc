@@ -620,7 +620,7 @@ void PrefixTree::clear() {
 
 bool PrefixTree::exists(const void* k, size_t k_size) {
   auto g = this->allocator->lock(false);
-  return this->traverse(k, k_size, true, false, false).value_slot_offset != 0;
+  return this->traverse(k, k_size, true, false).value_slot_offset != 0;
 }
 
 bool PrefixTree::exists(const string& key) {
