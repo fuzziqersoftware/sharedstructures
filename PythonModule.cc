@@ -384,13 +384,13 @@ static PyObject* sharedstructures_HashTableIterator_Next(PyObject* py_self) {
 }
 
 static PyObject* sharedstructures_HashTableIterator_Repr(PyObject* py_self) {
-  sharedstructures_HashTableIterator* self = (sharedstructures_HashTableIterator*)py_self;
-  PyObject* table_obj_repr = PyObject_Repr((PyObject*)self->table_obj);
-  PyObject* ret = PyBytes_FromFormat(
-      "<sharedstructures.HashTable.iterator on %s at %p>",
-      PyBytes_AsString(table_obj_repr), py_self);
-  Py_DECREF(table_obj_repr);
-  return ret;
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.HashTable.iterator at %p>", py_self);
+#else
+  return PyBytes_FromFormat(
+      "<sharedstructures.HashTable.iterator at %p>", py_self);
+#endif
 }
 
 static PyTypeObject sharedstructures_HashTableIteratorType = {
@@ -576,12 +576,20 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
 
 static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we do pretend base_offset
-  // is a pointer instead
+  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we pretend base_offset is
+  // a pointer instead
+
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.HashTable on %s:%p at %p>",
+      self->table->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->table->base(), py_self);
+#else
   return PyBytes_FromFormat(
       "<sharedstructures.HashTable on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->table->base(), py_self);
+#endif
 }
 
 static const char* sharedstructures_HashTable_clear_doc =
@@ -1034,13 +1042,13 @@ static PyObject* sharedstructures_PrefixTreeIterator_Next(PyObject* py_self) {
 }
 
 static PyObject* sharedstructures_PrefixTreeIterator_Repr(PyObject* py_self) {
-  sharedstructures_PrefixTreeIterator* self = (sharedstructures_PrefixTreeIterator*)py_self;
-  PyObject* tree_obj_repr = PyObject_Repr((PyObject*)self->tree_obj);
-  PyObject* ret = PyBytes_FromFormat(
-      "<sharedstructures.PrefixTree.iterator on %s at %p>",
-      PyBytes_AsString(tree_obj_repr), py_self);
-  Py_DECREF(tree_obj_repr);
-  return ret;
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.PrefixTree.iterator on %p>", py_self);
+#else
+  return PyBytes_FromFormat(
+      "<sharedstructures.PrefixTree.iterator on %p>", py_self);
+#endif
 }
 
 static PyTypeObject sharedstructures_PrefixTreeIteratorType = {
@@ -1299,12 +1307,20 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
 
 static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we do pretend base_offset
-  // is a pointer instead
+  // PyBytes_FromFormat doesn't support e.g. PRIx64 so we pretend base_offset is
+  // a pointer instead
+
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.PrefixTree on %s:%p at %p>",
+      self->table->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->table->base(), py_self);
+#else
   return PyBytes_FromFormat(
       "<sharedstructures.PrefixTree on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->table->base(), py_self);
+#endif
 }
 
 static const char* sharedstructures_PrefixTree_clear_doc =
