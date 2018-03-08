@@ -57,6 +57,15 @@ def run_basic_test(allocator_type):
   insert_both(expected, table, b'key3', b'value3')
   verify_state(expected, table)
 
+  assert [b'key2', b'key3'] == list(table.keys_from(b'key2'))
+  assert [(b'key2', b'value2'), (b'key3', b'value3')] == list(table.items_from(b'key2'))
+
+  assert [b'key3'] == list(table.keys_from(b'key3'))
+  assert [(b'key3', b'value3')] == list(table.items_from(b'key3'))
+
+  assert [] == list(table.keys_from(b'key4'))
+  assert [] == list(table.items_from(b'key4'))
+
   delete_both(expected, table, b'key2')
   verify_state(expected, table)
   try:

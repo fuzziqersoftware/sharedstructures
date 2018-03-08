@@ -171,6 +171,12 @@ public:
   // these functions implement standard C++ iteration.
   PrefixTreeIterator begin() const;
   PrefixTreeIterator end() const;
+  PrefixTreeIterator find(const void* key, size_t size) const;
+  PrefixTreeIterator find(const std::string& key) const;
+  PrefixTreeIterator lower_bound(const void* key, size_t size) const;
+  PrefixTreeIterator lower_bound(const std::string& key) const;
+  PrefixTreeIterator upper_bound(const void* key, size_t size) const;
+  PrefixTreeIterator upper_bound(const std::string& key) const;
 
   // inspection methods.
   size_t size() const; // key count
@@ -327,13 +333,17 @@ public:
   PrefixTreeIterator(PrefixTreeIterator&& other) = default;
   PrefixTreeIterator(const PrefixTree* tree); // for end()
   PrefixTreeIterator(const PrefixTree* tree, const std::string* location);
+  PrefixTreeIterator(const PrefixTree* tree, const std::string& key,
+      const PrefixTree::LookupResult& value);
   ~PrefixTreeIterator() = default;
 
   bool operator==(const PrefixTreeIterator& other) const;
   bool operator!=(const PrefixTreeIterator& other) const;
   PrefixTreeIterator& operator++();
   PrefixTreeIterator operator++(int);
+
   const std::pair<std::string, PrefixTree::LookupResult>& operator*() const;
+  const std::pair<std::string, PrefixTree::LookupResult>* operator->() const;
 
 private:
   const PrefixTree* tree;

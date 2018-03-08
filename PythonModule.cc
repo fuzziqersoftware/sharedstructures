@@ -944,12 +944,14 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
   }
 
   // see comment in sharedstructures_HashTableIterator_New about const_cast
-  static const char* kwarg_names[] = {"tree_obj", "return_keys", "return_values", NULL};
+  static const char* kwarg_names[] = {"tree_obj", "return_keys", "return_values",
+      "prefix", NULL};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
-  PyObject* return_keys_obj;
-  PyObject* return_values_obj;
-  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO", kwarg_names_arg,
-      &self->tree_obj, &return_keys_obj, &return_values_obj)) {
+  PyObject* return_keys_obj = Py_True;
+  PyObject* return_values_obj = Py_True;
+  PyObject* prefix_obj = NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OOO", kwarg_names_arg,
+      &self->tree_obj, &return_keys_obj, &return_values_obj, &prefix_obj)) {
     Py_DECREF(self);
     return NULL;
   }
@@ -979,7 +981,16 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
 
   Py_INCREF(self->tree_obj);
 
-  new (&self->it) sharedstructures::PrefixTreeIterator(self->tree_obj->table->begin());
+  if (prefix_obj) {
+    char* key = NULL;
+    Py_ssize_t key_length = 0;
+    if (PyBytes_AsStringAndSize(prefix_obj, &key, &key_length) == -1) {
+      return NULL;
+    }
+    new (&self->it) sharedstructures::PrefixTreeIterator(self->tree_obj->table->lower_bound(key, key_length));
+  } else {
+    new (&self->it) sharedstructures::PrefixTreeIterator(self->tree_obj->table->begin());
+  }
 
   return (PyObject*)self;
 }
@@ -1517,12 +1528,18 @@ static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
 }
 
 static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
-    bool return_keys, bool return_values) {
+    bool return_keys, bool return_values, PyObject* prefix = NULL) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
 
   // args: table, return_keys, return_values
-  PyObject* args = Py_BuildValue("OOO", self, return_keys ? Py_True : Py_False,
+  PyObject* args = NULL;
+  if (prefix) {
+    args = Py_BuildValue("OOOO", self, return_keys ? Py_True : Py_False,
+      return_values ? Py_True : Py_False, prefix);
+  } else {
+    args = Py_BuildValue("OOO", self, return_keys ? Py_True : Py_False,
       return_values ? Py_True : Py_False);
+  }
   if (!args) {
     return NULL;
   }
@@ -1541,6 +1558,14 @@ static PyObject* sharedstructures_PrefixTree_iterkeys(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, false);
 }
 
+static const char* sharedstructures_PrefixTree_keys_from_doc =
+"Returns an iterator over all keys in the table, starting at the given key or prefix.";
+
+static PyObject* sharedstructures_PrefixTree_keys_from(PyObject* py_self,
+    PyObject* prefix) {
+  return sharedstructures_PrefixTree_iter_generic(py_self, true, false, prefix);
+}
+
 static const char* sharedstructures_PrefixTree_itervalues_doc =
 "Returns an iterator over all values in the table.";
 
@@ -1548,11 +1573,27 @@ static PyObject* sharedstructures_PrefixTree_itervalues(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, false, true);
 }
 
+static const char* sharedstructures_PrefixTree_values_from_doc =
+"Returns an iterator over all values in the table, starting at the given key or prefix.";
+
+static PyObject* sharedstructures_PrefixTree_values_from(PyObject* py_self,
+    PyObject* prefix) {
+  return sharedstructures_PrefixTree_iter_generic(py_self, false, true, prefix);
+}
+
 static const char* sharedstructures_PrefixTree_iteritems_doc =
 "Returns an iterator over all key/value pairs in the table.";
 
 static PyObject* sharedstructures_PrefixTree_iteritems(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, true);
+}
+
+static const char* sharedstructures_PrefixTree_items_from_doc =
+"Returns an iterator over all items in the table, starting at the given key or prefix.";
+
+static PyObject* sharedstructures_PrefixTree_items_from(PyObject* py_self,
+    PyObject* prefix) {
+  return sharedstructures_PrefixTree_iter_generic(py_self, true, true, prefix);
 }
 
 static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
@@ -1660,14 +1701,20 @@ static PyMethodDef sharedstructures_PrefixTree_methods[] = {
       sharedstructures_PrefixTree_iterkeys_doc},
   {"keys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,
       sharedstructures_PrefixTree_iterkeys_doc},
+  {"keys_from", (PyCFunction)sharedstructures_PrefixTree_keys_from, METH_O,
+      sharedstructures_PrefixTree_keys_from_doc},
   {"itervalues", (PyCFunction)sharedstructures_PrefixTree_itervalues, METH_NOARGS,
       sharedstructures_PrefixTree_itervalues_doc},
   {"values", (PyCFunction)sharedstructures_PrefixTree_itervalues, METH_NOARGS,
       sharedstructures_PrefixTree_itervalues_doc},
+  {"values_from", (PyCFunction)sharedstructures_PrefixTree_values_from, METH_O,
+      sharedstructures_PrefixTree_values_from_doc},
   {"iteritems", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
       sharedstructures_PrefixTree_iteritems_doc},
   {"items", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
       sharedstructures_PrefixTree_iteritems_doc},
+  {"items_from", (PyCFunction)sharedstructures_PrefixTree_items_from, METH_O,
+      sharedstructures_PrefixTree_items_from_doc},
   {"verify", (PyCFunction)sharedstructures_PrefixTree_verify, METH_NOARGS,
       sharedstructures_PrefixTree_verify_doc},
   {NULL},

@@ -73,11 +73,11 @@ The header files (HashTable.hh and PrefixTree.hh) document how to use these obje
 
 ### Iteration semantics
 
-Iteration over either of these structures doesn't lock the structure, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
+Iteration over either of these structures only locks the structure while advancing the iterator, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
 
-Iterating a HashTable produces items in pseudorandom order. If an item exists in the table for the duration of the iteration, then it will be returned; if it's created or deleted during the iteration, then it may or may not be returned. Similarly, if its value is changed during the iteration, then either its new or old value may be returned.
+Iterating a HashTable produces items in pseudorandom order. If an item exists in the table for the duration of the iteration, then it will be returned; if it's created or deleted during the iteration, then it may or may not be returned. Similarly, if a key's value is changed during the iteration, then either its new or old value may be returned.
 
-Iterating a PrefixTree produces items in lexicographic order. This ordering makes its behavior with concurrent modifications easier to predict: concurrent changes after the current key (lexicographically) will be visible, changes at or before the current key will not.
+Iterating a PrefixTree produces items in lexicographic order. Concurrent changes after the current key (lexicographically) will be visible, changes at or before the current key will not. Additionally, PrefixTree supports `lower_bound` and `upper_bound` in C++, and has `keys_from`, `values_from`, and `items_from` in Python to support starting iteration at places within the tree.
 
 For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
 

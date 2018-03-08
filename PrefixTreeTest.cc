@@ -131,6 +131,29 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(3, table->size());
   expect_eq(4, table->node_size());
 
+  {
+    PrefixTreeIterator key2_it = table->find("key2", 4);
+    PrefixTreeIterator key3_it = table->find("key3", 4);
+    PrefixTreeIterator key4_it = table->find("key4", 4);
+    expect_ne(table->end(), key2_it);
+    expect_eq("key2", key2_it->first);
+    expect_eq(LookupResult("value222", 8), key2_it->second);
+    expect_ne(table->end(), key3_it);
+    expect_eq("key3", key3_it->first);
+    expect_eq(LookupResult("value3", 6), key3_it->second);
+    expect_eq(table->end(), key4_it);
+
+    expect_eq(key2_it, table->lower_bound("key2", 4));
+    expect_eq(key2_it, table->lower_bound("key11", 5));
+    expect_eq(key3_it, table->lower_bound("key21", 5));
+
+    expect_eq(key2_it, table->upper_bound("key1", 4));
+    expect_eq(key2_it, table->upper_bound("key11", 5));
+    expect_eq(key3_it, table->upper_bound("key2", 4));
+
+    expect_eq(key4_it, table->upper_bound("key31", 5));
+  }
+
   expect_eq(true, table->erase("key2", 4));
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());

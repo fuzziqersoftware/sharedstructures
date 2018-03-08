@@ -723,6 +723,50 @@ PrefixTreeIterator PrefixTree::end() const {
   return PrefixTreeIterator(this);
 }
 
+PrefixTreeIterator PrefixTree::find(const void* key, size_t size) const {
+  try {
+    auto res = this->at(key, size);
+    return PrefixTreeIterator(this, string(
+        reinterpret_cast<const char*>(key), size), res);
+  } catch (const std::out_of_range&) {
+    return PrefixTreeIterator(this);
+  }
+}
+
+PrefixTreeIterator PrefixTree::find(const string& key) const {
+  return this->find(key.data(), key.size());
+}
+
+PrefixTreeIterator PrefixTree::lower_bound(const void* key, size_t size) const {
+  try {
+    auto res = this->at(key, size);
+    return PrefixTreeIterator(this, string(
+        reinterpret_cast<const char*>(key), size), res);
+  } catch (const std::out_of_range&) { }
+
+  // lower_bound returns an iterator to the first element that's greater than or
+  // equal to the given key. at this point we know that there's no element equal
+  // to the given key, so this reduces to upper_bound
+  return this->upper_bound(key, size);
+}
+
+PrefixTreeIterator PrefixTree::lower_bound(const string& key) const {
+  return this->lower_bound(key.data(), key.size());
+}
+
+PrefixTreeIterator PrefixTree::upper_bound(const void* key, size_t size) const {
+  try {
+    auto res = this->next_key_value(key, size);
+    return PrefixTreeIterator(this, res.first, res.second);
+  } catch (const std::out_of_range&) { }
+
+  return PrefixTreeIterator(this);
+}
+
+PrefixTreeIterator PrefixTree::upper_bound(const string& key) const {
+  return this->upper_bound(key.data(), key.size());
+}
+
 
 size_t PrefixTree::size() const {
   auto g = this->allocator->lock(false);
@@ -1519,6 +1563,10 @@ PrefixTreeIterator::PrefixTreeIterator(const PrefixTree* tree,
   }
 }
 
+PrefixTreeIterator::PrefixTreeIterator(const PrefixTree* tree,
+    const string& key, const PrefixTree::LookupResult& value) : tree(tree),
+    current_result(key, value), complete(false) { }
+
 bool PrefixTreeIterator::operator==(const PrefixTreeIterator& other) const {
   if (this->tree != other.tree) {
     return false;
@@ -1558,6 +1606,11 @@ PrefixTreeIterator PrefixTreeIterator::operator++(int) {
 const pair<string, PrefixTree::LookupResult>&
 PrefixTreeIterator::operator*() const {
   return this->current_result;
+}
+
+const pair<string, PrefixTree::LookupResult>*
+PrefixTreeIterator::operator->() const {
+  return &this->current_result;
 }
 
 
