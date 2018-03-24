@@ -1055,10 +1055,10 @@ static PyObject* sharedstructures_PrefixTreeIterator_Next(PyObject* py_self) {
 static PyObject* sharedstructures_PrefixTreeIterator_Repr(PyObject* py_self) {
 #ifdef IS_PY3K
   return PyUnicode_FromFormat(
-      "<sharedstructures.PrefixTree.iterator on %p>", py_self);
+      "<sharedstructures.PrefixTree.iterator at %p>", py_self);
 #else
   return PyBytes_FromFormat(
-      "<sharedstructures.PrefixTree.iterator on %p>", py_self);
+      "<sharedstructures.PrefixTree.iterator at %p>", py_self);
 #endif
 }
 
