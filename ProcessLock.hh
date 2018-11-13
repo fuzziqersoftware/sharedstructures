@@ -44,13 +44,24 @@ private:
 
 class ProcessReadWriteLockGuard {
 public:
+  enum class Behavior {
+    Read = 0,
+    Write,
+
+    // if stolen, the returned lock is held for writing instead. the caller must
+    // not forget to check for this case!
+    ReadUnlessStolen,
+  };
+
   ProcessReadWriteLockGuard() = delete;
   ProcessReadWriteLockGuard(const ProcessReadWriteLockGuard&) = delete;
   ProcessReadWriteLockGuard(ProcessReadWriteLockGuard&&);
-  ProcessReadWriteLockGuard(Pool* pool, uint64_t offset, bool writing);
+  ProcessReadWriteLockGuard(Pool* pool, uint64_t offset, Behavior behavior);
   ~ProcessReadWriteLockGuard();
 
   static size_t data_size();
+
+  void downgrade();
 
   bool stolen;
 

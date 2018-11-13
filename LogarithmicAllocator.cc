@@ -453,11 +453,21 @@ size_t LogarithmicAllocator::bytes_free() const {
 
 ProcessReadWriteLockGuard LogarithmicAllocator::lock(bool writing) const {
   this->pool->check_size_and_remap();
+
+  ProcessReadWriteLockGuard::Behavior behavior = writing ?
+      ProcessReadWriteLockGuard::Behavior::Write :
+      ProcessReadWriteLockGuard::Behavior::ReadUnlessStolen;
   ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()),
-      offsetof(Data, data_lock), writing);
+      offsetof(Data, data_lock), behavior);
+
   this->pool->check_size_and_remap();
   if (g.stolen) {
+    // if the lock was stolen, then we are holding it for writing and can call
+    // repair(). but we may need to downgrade to a read lock afterward
     const_cast<LogarithmicAllocator*>(this)->repair();
+    if (!writing) {
+      g.downgrade();
+    }
   }
   return g;
 }

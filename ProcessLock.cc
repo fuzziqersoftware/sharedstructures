@@ -281,10 +281,11 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(
 }
 
 ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
-    uint64_t offset, bool writing) : stolen(false), pool(pool), offset(offset) {
+    uint64_t offset, Behavior behavior) : stolen(false), pool(pool),
+    offset(offset) {
   auto* data = this->pool->at<ProcessReadWriteLock>(this->offset);
 
-  if (writing) {
+  if (behavior == Behavior::Write) {
     // take the write lock, then wait for readers to drain or die. because we're
     // holding the write lock, no new readers can be added
     this->reader_slot = -1;
@@ -296,12 +297,18 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
 
     int32_t reader_token = this_process_token();
     do {
-      // take the write lock, find an empty reader slot and take it, then release
-      // the write lock
+      // take the write lock, find an empty reader slot and take it, then
+      // release the write lock. but if the caller needs to write when stolen
+      // (for example, to call repair()), then return immediately
       this->stolen = acquire_process_lock(&data->write_lock);
+      if (this->stolen && (behavior == Behavior::ReadUnlessStolen)) {
+        this->reader_slot = -1;
+        wait_for_reader_drain(data, true);
+        return;
+      }
       for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
-        if (data->reader_tokens[x] == 0) {
-          data->reader_tokens[x].store(reader_token);
+        int32_t expected_value = 0;
+        if (data->reader_tokens[x].compare_exchange_strong(expected_value, reader_token)) {
           this->reader_slot = x;
           break;
         }
@@ -328,6 +335,28 @@ ProcessReadWriteLockGuard::~ProcessReadWriteLockGuard() {
   } else {
     release_process_lock(&data->reader_tokens[this->reader_slot]);
   }
+}
+
+void ProcessReadWriteLockGuard::downgrade() {
+  if (this->reader_slot != -1) {
+    throw logic_error("attempted to downgrade a non-write lock");
+  }
+
+  auto* data = this->pool->at<ProcessReadWriteLock>(this->offset);
+
+  int32_t reader_token = this_process_token();
+  for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
+    int32_t expected_value = 0;
+    if (data->reader_tokens[x].compare_exchange_strong(expected_value, reader_token)) {
+      this->reader_slot = x;
+      release_process_lock(&data->write_lock);
+      return;
+    }
+  }
+
+  // if we're holding a write lock, there had better not be any readers.
+  // shouldn't we have waited for them to drain before returning?!
+  throw logic_error("write lock held with no available reader slots");
 }
 
 } // namespace sharedstructures
