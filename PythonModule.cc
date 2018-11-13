@@ -171,7 +171,11 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
 
   } else if (PyUnicode_Check(o)) {
     LookupResult res("\x01", 1);
+#ifdef IS_PY3K
+    Py_ssize_t count = PyUnicode_GetLength(o);
+#else
     Py_ssize_t count = PyUnicode_GetSize(o);
+#endif
     const Py_UNICODE* data = PyUnicode_AsUnicode(o);
     if (!data) {
       throw runtime_error("failed to convert python object to LookupResult");
@@ -1261,7 +1265,11 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   }
 
   if (PyUnicode_Check(value)) {
+#ifdef IS_PY3K
+    Py_ssize_t size = PyUnicode_GetLength(value);
+#else
     Py_ssize_t size = PyUnicode_GetSize(value);
+#endif
     if (size < 0) {
       return -1;
     }
