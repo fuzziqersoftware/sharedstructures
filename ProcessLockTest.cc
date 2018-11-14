@@ -89,6 +89,7 @@ void run_basic_test() {
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
     expect_eq(1, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+    expect_eq(false, g.stolen);
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
@@ -98,6 +99,7 @@ void run_basic_test() {
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
     expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
+    expect_eq(false, g.stolen);
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
@@ -184,6 +186,7 @@ void run_read_write_lock_test() {
     // lock the pool for writes, put our pid there, and let other processes read
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Write);
+      expect_eq(false, g.stolen);
       expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
       expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
       expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
@@ -208,6 +211,7 @@ void run_read_write_lock_test() {
     // now read; check if the pid doesn't match our pid
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
+      expect_eq(false, g.stolen);
 
       // we don't check if the lock is locked for writing - it's possible that
       // is_locked returns true if a writer is waiting for readers to drain

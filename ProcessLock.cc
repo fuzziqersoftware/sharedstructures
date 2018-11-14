@@ -1,5 +1,7 @@
 #include "ProcessLock.hh"
 
+#include <inttypes.h>
+#include <limits.h>
 #ifdef LINUX
 #include <linux/futex.h>
 #include <sys/syscall.h>
@@ -79,6 +81,11 @@ static bool process_for_token_is_running(int32_t token) {
 
 static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
     const struct timespec* timeout) {
+  // wait on a futex. returns true if futex_wake was called by another process
+  // or if the value didn't match the expected value at call time. returns false
+  // if the syscall was interrupted or the timeout expired. neither of these
+  // return values makes any guarantee about the futex's value, they just tell
+  // what the most likely scenario is (is the value different or not?).
   if (syscall(SYS_futex, lock, FUTEX_WAIT, expected_value, timeout, NULL, 0) == -1) {
     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
       return true; // value didn't match the input
@@ -93,60 +100,14 @@ static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
 }
 
 static void futex_wake(atomic<int32_t>* lock, int32_t num_wakes) {
-  if (syscall(SYS_futex, lock, FUTEX_WAKE, 0, NULL, NULL, 0) == -1) {
+  if (syscall(SYS_futex, lock, FUTEX_WAKE, num_wakes, NULL, NULL, 0) == -1) {
     throw runtime_error("futex_wake failed: " + string_for_error(errno));
   }
 }
 
-static bool acquire_process_lock(atomic<int32_t>* lock) {
-  static const struct timespec timeout = {1, 0}; // 1 second
-  int32_t desired_value = this_process_token();
-
-  for (;;) {
-    int32_t expected_value = 0;
-    if (lock->compare_exchange_strong(expected_value, desired_value)) {
-      return false;
-    }
-
-    // someone else is holding the lock; wait for them to be done.
-    // expected_value now contains the other process' token (not zero). if we
-    // were not woken by FUTEX_WAKE, then another process may still be holding
-    // the lock; check if it's running.
-    if (!futex_wait(lock, expected_value, &timeout)) {
-      if (!process_for_token_is_running(expected_value)) {
-        // the holding process died; steal the lock from it. if we get the lock,
-        // repair the allocator structures since they could be in an
-        // inconsistent state. if we don't get the lock, then another process
-        // got there first and we'll just keep waiting
-        if (lock->compare_exchange_strong(expected_value, desired_value)) {
-          return true;
-        }
-      }
-    }
-  }
-}
-
-static void release_process_lock(atomic<int32_t>* lock) {
-  lock->store(0);
-  futex_wake(lock, 1);
-}
-
-static bool wait_for_reader_release(atomic<int32_t>* lock,
-    int32_t existing_token) {
-  static const struct timespec timeout = {0, 10000}; // 10ms
-
-  while (!futex_wait(lock, existing_token, &timeout)) {
-    if (!process_for_token_is_running(existing_token)) {
-      lock->store(0);
-      return true;
-    }
-  }
-  return false;
-}
+#endif
 
 
-
-#else // MACOSX
 
 static bool acquire_process_lock(atomic<int32_t>* lock) {
   int32_t desired_value = this_process_token();
@@ -154,7 +115,7 @@ static bool acquire_process_lock(atomic<int32_t>* lock) {
   for (;;) {
     // try several times to get the lock
     int32_t expected_value;
-    uint8_t spin_count = 0;
+    uint64_t spin_count = 0;
     while (spin_count < SPIN_LIMIT) {
       expected_value = 0;
       if (lock->compare_exchange_weak(expected_value, desired_value)) {
@@ -163,12 +124,22 @@ static bool acquire_process_lock(atomic<int32_t>* lock) {
       spin_count++;
     }
 
-    // if we didn't get the lock, wait up to 1 second, then check if the holder
-    // is still running
-
-    // os x doesn't have futex
-    // TODO: implement futex-like functionality on osx
+#ifdef LINUX
+    // someone else is holding the lock; wait for them to be done.
+    // expected_value now contains the other process' token (not zero). if the
+    // futex value is likely to be different (because either futex_wake was
+    // called or it's already different), don't bother checking if the other
+    // process is running.
+    static const struct timespec timeout = {1, 0}; // 1 second
+    if (futex_wait(lock, expected_value, &timeout)) {
+      continue;
+    }
+#else
+    // mac os doesn't have futex; we have to busy-wait
+    // TODO: implement futex-like functionality on mac os if possible (it must
+    // be possible somehow)
     sched_yield();
+#endif
 
     if (!process_for_token_is_running(expected_value)) {
       // the holding process died; steal the lock from it. if we get the lock,
@@ -183,14 +154,37 @@ static bool acquire_process_lock(atomic<int32_t>* lock) {
 }
 
 static void release_process_lock(atomic<int32_t>* lock) {
-  lock->store(0);
+  int32_t expected_value = this_process_token();
+  if (!lock->compare_exchange_strong(expected_value, 0)) {
+    throw logic_error("attempted to release non-held lock");
+  }
+#ifdef LINUX
+  // wake 'em all! last one to the lock is a rotten egg!
+  futex_wake(lock, INT_MAX);
+#endif
 }
 
-static bool wait_for_reader_release(atomic<int32_t>* lock,
-    int32_t existing_token) {
-  // TODO: do something better here (no futex on os x)
-  while (lock->load()) {
+static bool wait_for_reader_release(atomic<int32_t>* lock) {
+  for (;;) {
+    int32_t existing_token = lock->load();
+    if (!existing_token) {
+      return false;
+    }
+
+#ifdef LINUX
+    // existing_token now contains the other process' token (not zero). if the
+    // futex value is likely to be different (because either futex_wake was
+    // called or it's already different), don't bother checking if the other
+    // process is running.
+    static const struct timespec timeout = {0, 10000}; // 10ms
+    if (futex_wait(lock, existing_token, &timeout)) {
+      continue;
+    }
+#else
+    // TODO: implement futex-like functionality on mac os if possible
     sched_yield();
+#endif
+
     if (!process_for_token_is_running(existing_token)) {
       if (lock->compare_exchange_strong(existing_token, 0)) {
         return true;
@@ -200,7 +194,7 @@ static bool wait_for_reader_release(atomic<int32_t>* lock,
   return false;
 }
 
-#endif
+
 
 static void release_cb(void* void_lock, size_t size) {
   atomic<int32_t>* lock = reinterpret_cast<atomic<int32_t>*>(void_lock);
@@ -219,22 +213,23 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
       // process is still running, and clear the lock if it's not. because this
       // process was a reader, we don't need to repair the allocator state if we
       // cleared its lock.
-      wait_for_reader_release(&data->reader_tokens[x], existing_token);
+      wait_for_reader_release(&data->reader_tokens[x]);
     }
 
   } else {
-    // first check for an empty slot and return it if found
-    for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
-      int32_t existing_token = data->reader_tokens[x].load();
-      if (existing_token == 0) {
-        return;
+    for (;;) {
+      // first check for an empty slot and return it if found
+      for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
+        int32_t existing_token = data->reader_tokens[x].load();
+        if (existing_token == 0) {
+          return;
+        }
       }
-    }
 
-    // no empty slots; pick an "arbitrary" slot and wait on it
-    int32_t reader_slot = getpid_cached() % NUM_READER_SLOTS;
-    int32_t existing_token = data->reader_tokens[reader_slot].load();
-    wait_for_reader_release(&data->reader_tokens[reader_slot], existing_token);
+      // no empty slots; pick an "arbitrary" slot and wait on it
+      int32_t reader_slot = getpid_cached() % NUM_READER_SLOTS;
+      wait_for_reader_release(&data->reader_tokens[reader_slot]);
+    }
   }
 }
 

@@ -63,9 +63,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
   } else {
 
     // we created the shared memory object, so its size is zero. resize it to
-    // the minimum size and initialize the basic data structures. note that this
-    // procedure is safe from a concurrency perspective because we use 0 as the
-    // locked state for our mutexes.
+    // the minimum size and initialize the basic data structures.
     this->pool_size = PAGE_SIZE;
     if (ftruncate(this->fd, this->pool_size)) {
       unlink_segment(this->name.c_str(), file);
