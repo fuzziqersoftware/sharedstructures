@@ -461,7 +461,7 @@ ProcessReadWriteLockGuard LogarithmicAllocator::lock(bool writing) const {
       offsetof(Data, data_lock), behavior);
 
   this->pool->check_size_and_remap();
-  if (g.stolen) {
+  if (g.stolen_token()) {
     // if the lock was stolen, then we are holding it for writing and can call
     // repair(). but we may need to downgrade to a read lock afterward
     const_cast<LogarithmicAllocator*>(this)->repair();

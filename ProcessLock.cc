@@ -52,27 +52,44 @@ static const uint8_t START_TIME_BITS = 32 - PID_BITS;
 static const uint8_t SPIN_LIMIT = 10;
 
 static int32_t this_process_token() {
-  return (this_process_start_time() << PID_BITS) | getpid_cached();
+#ifdef MACOSX
+  int32_t start_time = this_process_start_time();
+  if (!start_time) {
+    throw runtime_error("cannot get start time for this process");
+  }
+  return (start_time << PID_BITS) | getpid_cached();
+#else
+  return getpid_cached();
+#endif
 }
 
+#ifdef MACOSX
 static int32_t start_time_for_token(int32_t token) {
   return (token & ~((1 << PID_BITS) - 1)) >> PID_BITS;
-}
-
-static pid_t pid_for_token(int32_t token) {
-  return token & ((1 << PID_BITS) - 1);
 }
 
 static int32_t mask_start_time(int32_t start_time) {
   return start_time & ((1 << START_TIME_BITS) - 1);
 }
+#endif
+
+static pid_t pid_for_token(int32_t token) {
+  return token & ((1 << PID_BITS) - 1);
+}
 
 static bool process_for_token_is_running(int32_t token) {
   pid_t pid = pid_for_token(token);
+#ifdef MACOSX
   uint64_t start_time_token = start_time_for_token(token);
   uint64_t start_time = start_time_for_pid(pid);
   return (start_time != 0) &&
          (mask_start_time(start_time) == mask_start_time(start_time_token));
+#else
+  if (!pid_exists(pid)) {
+    return false;
+  }
+  return !pid_is_zombie(pid);
+#endif
 }
 
 
@@ -109,9 +126,7 @@ static void futex_wake(atomic<int32_t>* lock, int32_t num_wakes) {
 
 
 
-static bool acquire_process_lock(atomic<int32_t>* lock) {
-  int32_t desired_value = this_process_token();
-
+static int32_t acquire_process_lock(atomic<int32_t>* lock, int32_t desired_value) {
   for (;;) {
     // try several times to get the lock
     int32_t expected_value;
@@ -119,7 +134,7 @@ static bool acquire_process_lock(atomic<int32_t>* lock) {
     while (spin_count < SPIN_LIMIT) {
       expected_value = 0;
       if (lock->compare_exchange_weak(expected_value, desired_value)) {
-        return false;
+        return 0;
       }
       spin_count++;
     }
@@ -147,16 +162,15 @@ static bool acquire_process_lock(atomic<int32_t>* lock) {
       // inconsistent state. if we don't get the lock, then another process
       // got there first and we'll just keep waiting
       if (lock->compare_exchange_strong(expected_value, desired_value)) {
-        return true;
+        return expected_value;
       }
     }
   }
 }
 
-static void release_process_lock(atomic<int32_t>* lock) {
-  int32_t expected_value = this_process_token();
-  if (!lock->compare_exchange_strong(expected_value, 0)) {
-    throw logic_error("attempted to release non-held lock");
+static void release_process_lock(atomic<int32_t>* lock, int32_t expected_token) {
+  if (!lock->compare_exchange_strong(expected_token, 0)) {
+    return;
   }
 #ifdef LINUX
   // wake 'em all! last one to the lock is a rotten egg!
@@ -196,11 +210,6 @@ static bool wait_for_reader_release(atomic<int32_t>* lock) {
 
 
 
-static void release_cb(void* void_lock, size_t size) {
-  atomic<int32_t>* lock = reinterpret_cast<atomic<int32_t>*>(void_lock);
-  release_process_lock(lock);
-}
-
 static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
   if (wait_all) {
     for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
@@ -235,15 +244,16 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
 
 
 
-ProcessLockGuard::ProcessLockGuard(ProcessLockGuard&& other) :
-    stolen(other.stolen), pool(other.pool), offset(other.offset) {
+ProcessLockGuard::ProcessLockGuard(ProcessLockGuard&& other) : pool(other.pool),
+    offset(other.offset), lock_token(other.lock_token),
+    stolen_lock_token(other.stolen_lock_token) {
   other.pool = NULL;
 }
 
-ProcessLockGuard::ProcessLockGuard(Pool* pool, uint64_t offset) : stolen(false),
-    pool(pool), offset(offset) {
+ProcessLockGuard::ProcessLockGuard(Pool* pool, uint64_t offset) : pool(pool),
+    offset(offset), lock_token(this_process_token()), stolen_lock_token(0) {
   atomic<int32_t>* lock = this->pool->at<atomic<int32_t>>(this->offset);
-  this->stolen = acquire_process_lock(lock);
+  this->stolen_lock_token = acquire_process_lock(lock, this->lock_token);
 }
 
 ProcessLockGuard::~ProcessLockGuard() {
@@ -251,14 +261,8 @@ ProcessLockGuard::~ProcessLockGuard() {
     return;
   }
 
-  try {
-    atomic<int32_t>* lock = this->pool->at<atomic<int32_t>>(this->offset);
-    release_process_lock(lock);
-  } catch (const bad_alloc& e) {
-    // this can happen if the pool was expanded and no longer fits in this
-    // process' address space
-    this->pool->map_and_call(this->offset, sizeof(int32_t), &release_cb);
-  }
+  atomic<int32_t>* lock = this->pool->at<atomic<int32_t>>(this->offset);
+  release_process_lock(lock, this->lock_token);
 }
 
 size_t ProcessLockGuard::data_size() {
@@ -267,24 +271,33 @@ size_t ProcessLockGuard::data_size() {
   return sizeof(int64_t);
 }
 
+int32_t ProcessLockGuard::token() const {
+  return this->lock_token;
+}
+
+int32_t ProcessLockGuard::stolen_token() const {
+  return this->stolen_lock_token;
+}
+
 
 
 ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(
-    ProcessReadWriteLockGuard&& other) : stolen(other.stolen), pool(other.pool),
-    offset(other.offset), reader_slot(other.reader_slot) {
+    ProcessReadWriteLockGuard&& other) : pool(other.pool), offset(other.offset),
+    reader_slot(other.reader_slot), lock_token(other.lock_token),
+    stolen_lock_token(other.stolen_lock_token) {
   other.pool = NULL;
 }
 
 ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
-    uint64_t offset, Behavior behavior) : stolen(false), pool(pool),
-    offset(offset) {
+    uint64_t offset, Behavior behavior) : pool(pool), offset(offset),
+    lock_token(this_process_token()), stolen_lock_token(0) {
   auto* data = this->pool->at<ProcessReadWriteLock>(this->offset);
 
   if (behavior == Behavior::Write) {
     // take the write lock, then wait for readers to drain or die. because we're
     // holding the write lock, no new readers can be added
     this->reader_slot = -1;
-    this->stolen = acquire_process_lock(&data->write_lock);
+    this->stolen_lock_token = acquire_process_lock(&data->write_lock, this->lock_token);
     wait_for_reader_drain(data, true);
 
   } else {
@@ -295,8 +308,8 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
       // take the write lock, find an empty reader slot and take it, then
       // release the write lock. but if the caller needs to write when stolen
       // (for example, to call repair()), then return immediately
-      this->stolen = acquire_process_lock(&data->write_lock);
-      if (this->stolen && (behavior == Behavior::ReadUnlessStolen)) {
+      this->stolen_lock_token = acquire_process_lock(&data->write_lock, this->lock_token);
+      if (this->stolen_lock_token && (behavior == Behavior::ReadUnlessStolen)) {
         this->reader_slot = -1;
         wait_for_reader_drain(data, true);
         return;
@@ -308,7 +321,7 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
           break;
         }
       }
-      release_process_lock(&data->write_lock);
+      release_process_lock(&data->write_lock, this->lock_token);
 
       // if there were no available reader slots, wait for any slot to drain and
       // try again
@@ -326,9 +339,9 @@ ProcessReadWriteLockGuard::~ProcessReadWriteLockGuard() {
 
   auto* data = this->pool->at<ProcessReadWriteLock>(this->offset);
   if (this->reader_slot < 0) {
-    release_process_lock(&data->write_lock);
+    release_process_lock(&data->write_lock, this->lock_token);
   } else {
-    release_process_lock(&data->reader_tokens[this->reader_slot]);
+    release_process_lock(&data->reader_tokens[this->reader_slot], this->lock_token);
   }
 }
 
@@ -344,7 +357,7 @@ void ProcessReadWriteLockGuard::downgrade() {
     int32_t expected_value = 0;
     if (data->reader_tokens[x].compare_exchange_strong(expected_value, reader_token)) {
       this->reader_slot = x;
-      release_process_lock(&data->write_lock);
+      release_process_lock(&data->write_lock, this->lock_token);
       return;
     }
   }
@@ -352,6 +365,14 @@ void ProcessReadWriteLockGuard::downgrade() {
   // if we're holding a write lock, there had better not be any readers.
   // shouldn't we have waited for them to drain before returning?!
   throw logic_error("write lock held with no available reader slots");
+}
+
+int32_t ProcessReadWriteLockGuard::token() const {
+  return this->lock_token;
+}
+
+int32_t ProcessReadWriteLockGuard::stolen_token() const {
+  return this->stolen_lock_token;
 }
 
 } // namespace sharedstructures

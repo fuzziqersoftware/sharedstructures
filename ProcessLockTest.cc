@@ -89,7 +89,7 @@ void run_basic_test() {
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
     expect_eq(1, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
@@ -99,7 +99,7 @@ void run_basic_test() {
     expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
     expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
     expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
   }
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
   expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
@@ -186,7 +186,7 @@ void run_read_write_lock_test() {
     // lock the pool for writes, put our pid there, and let other processes read
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Write);
-      expect_eq(false, g.stolen);
+      expect_eq(0, g.stolen_token());
       expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(true));
       expect_eq(false, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
       expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
@@ -211,7 +211,7 @@ void run_read_write_lock_test() {
     // now read; check if the pid doesn't match our pid
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
-      expect_eq(false, g.stolen);
+      expect_eq(0, g.stolen_token());
 
       // we don't check if the lock is locked for writing - it's possible that
       // is_locked returns true if a writer is waiting for readers to drain
@@ -264,7 +264,7 @@ void run_write_crash_test_case(Behavior parent_behavior) {
   if (child_pids.empty()) {
     printf("--   child acquiring write lock\n");
     ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Write);
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
     printf("--   child dying\n");
     _exit(0);
 
@@ -282,7 +282,7 @@ void run_write_crash_test_case(Behavior parent_behavior) {
     // should appear stolen even if locking for reading
     printf("--   parent acquiring lock\n");
     ProcessReadWriteLockGuard g(pool.get(), 0x18, parent_behavior);
-    expect_eq(true, g.stolen);
+    expect_ne(0, g.stolen_token());
     if (parent_behavior == Behavior::Read) {
       expect_eq(false, lock->is_locked(true));
       expect_eq(true, lock->is_locked(false));
@@ -315,7 +315,7 @@ static unordered_set<pid_t> fill_reader_slots(shared_ptr<Pool> pool) {
       auto pool = create_pool();
       expect_eq(x, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
-      expect_eq(false, g.stolen);
+      expect_eq(0, g.stolen_token());
       expect_eq(x + 1, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
       _exit(0);
 
@@ -342,7 +342,7 @@ void run_read_crash_test() {
   expect_eq(NUM_READER_SLOTS, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   {
     ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Write);
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
   }
   expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   wait_for_children(zombie_pids);
@@ -354,7 +354,7 @@ void run_read_crash_test() {
       pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   {
     ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
   }
   expect_eq(NUM_READER_SLOTS - 1,
       pool->at<ProcessReadWriteLock>(0x18)->reader_count());

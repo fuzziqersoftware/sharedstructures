@@ -211,7 +211,7 @@ void run_crash_test(const string& allocator_type) {
 
     while (offset_to_data.size() < 100) {
       auto g = alloc->lock(true);
-      expect_eq(false, g.stolen);
+      expect_eq(0, g.stolen_token());
       uint64_t offset = alloc->allocate(2048);
 
       string data;
@@ -235,7 +235,7 @@ void run_crash_test(const string& allocator_type) {
     auto alloc = create_allocator(pool, allocator_type);
 
     auto g = alloc->lock(true);
-    expect_eq(false, g.stolen);
+    expect_eq(0, g.stolen_token());
 
     sigset_t sigs;
     sigemptyset(&sigs);
@@ -268,7 +268,7 @@ void run_crash_test(const string& allocator_type) {
   // because the child was killed, and the lock should show that it was stolen
   expect_eq(true, alloc->is_locked(true));
   auto g = alloc->lock(true);
-  expect_eq(true, g.stolen);
+  expect_ne(0, g.stolen_token());
   expect_eq(bytes_allocated, alloc->bytes_allocated());
   expect_eq(bytes_free, alloc->bytes_free());
   for (const auto& it : offset_to_data) {

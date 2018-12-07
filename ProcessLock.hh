@@ -34,11 +34,14 @@ public:
 
   static size_t data_size();
 
-  bool stolen; // true if the process holding the lock had crashed
+  int32_t token() const;
+  int32_t stolen_token() const;
 
 private:
   Pool* pool;
   uint64_t offset;
+  int32_t lock_token;
+  int32_t stolen_lock_token;
 };
 
 
@@ -62,13 +65,15 @@ public:
   static size_t data_size();
 
   void downgrade();
-
-  bool stolen;
+  int32_t token() const;
+  int32_t stolen_token() const;
 
 private:
   Pool* pool;
   uint64_t offset;
   int32_t reader_slot; // -1 if writing
+  int32_t lock_token;
+  int32_t stolen_lock_token;
 };
 
 } // namespace sharedstructures
