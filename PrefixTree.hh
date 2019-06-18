@@ -250,7 +250,7 @@ private:
 
     // String refers to a raw data buffer. the high 61 bits of the contents are
     // the buffer's offset. the length isn't stored explicitly anywhere; it's
-    // retrieved from the allocator. for zero-length strings, the bufer offset
+    // retrieved from the allocator. for zero-length strings, the buffer offset
     // is 0 and no buffer is allocated.
     String      = 1,
 

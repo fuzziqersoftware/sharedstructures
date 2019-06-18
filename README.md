@@ -93,6 +93,27 @@ There are a few things to watch out for:
 - `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
 - HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
 
+## Thread safety
+
+The allocators are not thread-safe by default, but they include a global read-write lock that the caller can access to achieve thread-safety. To use it, do the following:
+
+    {
+      auto g = allocator->lock(false); // false = read lock
+      // now the pool cannot be expanded or remapped within this process, and
+      // it's safe to read from the pool
+    }
+    // now it's no longer safe to read from or write to the pool
+
+    {
+      auto g = allocator->lock(true); // true = write lock
+      // now the pool cannot be read or written by any other thread (even in
+      // other processes) and it's safe to call allocator->allocate,
+      // allocator->free, etc.
+    }
+    // now it's no longer safe to read from or write to the pool
+
+HashTable and PrefixTree use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
+
 ## Reliability
 
 Operations on shared data structures use a global lock over the entire structure. Since operations generally involve only a few memory accesses, the critical sections should be quite short. However, processes can still crash or be killed during these critical sections, which leads to the lock being "held" by a dead process.
