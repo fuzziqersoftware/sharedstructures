@@ -96,14 +96,13 @@ const string& Pool::get_name() const {
 
 
 void Pool::expand(size_t new_size) {
-  if (new_size < this->pool_size) {
-    return;
-  }
-
   // the new size must be a multiple of the page size, so round it up.
   new_size = (new_size + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
   if (this->max_size && (new_size > this->max_size)) {
     throw runtime_error("can\'t expand pool beyond maximum size");
+  }
+  if (new_size <= this->pool_size) {
+    return;
   }
 
   if (ftruncate(this->fd, new_size)) {

@@ -1,0 +1,109 @@
+from __future__ import unicode_literals
+
+import os
+import subprocess
+import sys
+import time
+
+import sharedstructures
+
+
+def get_current_process_lsof():
+  return subprocess.check_output(['lsof', '-p', str(os.getpid())])
+
+
+def run_basic_test():
+  print('-- basic')
+  before_lsof_count = len(get_current_process_lsof().splitlines())
+
+  v = sharedstructures.IntVector('test-vector')
+
+  limit = 1024
+
+  assert len(v) == 0
+  v.expand(10)
+  assert len(v) == 10
+  v.expand(5)
+  assert len(v) == 10
+  v.expand(limit)
+  assert len(v) == limit
+
+  # load, store
+  for x in range(limit):
+    assert v.load(x) == 0
+  for x in range(limit):
+    v.store(x, x)
+  for x in range(limit):
+    assert v.load(x) == x
+
+  # exchange
+  for x in range(limit):
+    assert v.exchange(x, x + 10) == x
+  for x in range(limit):
+    assert v.load(x) == x + 10
+  for x in range(limit):
+    assert v.exchange(x, x) == x + 10
+  for x in range(limit):
+    assert v.load(x) == x
+
+  # compare_exchange
+  for x in range(limit):
+    assert v.compare_exchange(x, 10, 15) == x
+  for x in range(limit):
+    assert v.load(x) == (15 if (x == 10) else x)
+  v.store(10, 10)
+
+  # add, subtract
+  for x in range(limit):
+    assert v.add(x, 30) == x
+  for x in range(limit):
+    assert v.load(x) == x + 30
+  for x in range(limit):
+    assert v.subtract(x, 30) == x + 30
+  for x in range(limit):
+    assert v.load(x) == x
+
+  # bitwise_and, bitwise_or
+  for x in range(limit):
+    assert v.bitwise_or(x, 0x7F) == x
+  for x in range(limit):
+    assert v.load(x) == x | 0x7F
+  for x in range(limit):
+    assert v.bitwise_and(x, ~0x7F) == x | 0x7F
+  for x in range(limit):
+    assert v.load(x) == x & ~0x7F
+
+  # reset for xor test
+  for x in range(limit):
+    v.store(x, x)
+
+  # bitwise_xor
+  for x in range(limit):
+    assert v.bitwise_xor(x, 0x7F) == x
+  for x in range(limit):
+    assert v.load(x) == x ^ 0x7F
+  for x in range(limit):
+    assert v.bitwise_xor(x, 0x7F) == x ^ 0x7F
+  for x in range(limit):
+    assert v.load(x) == x
+
+  del v  # this should unmap the shared memory pool and close the fd
+  sharedstructures.delete_pool('test-vector')
+
+  # make sure we didn't leak an fd
+  assert before_lsof_count == len(get_current_process_lsof().splitlines())
+
+
+def main():
+  try:
+    sharedstructures.delete_pool('test-vector')
+    run_basic_test()
+    print('all tests passed')
+    return 0
+
+  finally:
+    sharedstructures.delete_pool('test-vector')
+
+
+if __name__ == '__main__':
+  sys.exit(main())

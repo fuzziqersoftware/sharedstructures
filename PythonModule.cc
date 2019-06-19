@@ -17,6 +17,7 @@
 #include "LogarithmicAllocator.hh"
 #include "HashTable.hh"
 #include "PrefixTree.hh"
+#include "IntVector.hh"
 
 using namespace std;
 
@@ -31,7 +32,7 @@ using LookupResult = sharedstructures::PrefixTree::LookupResult;
 static const char* sharedstructures_doc =
 "Dynamically-sized shared-memory data structure module.\n\
 \n\
-This module provides the HashTable and PrefixTree classes.";
+This module provides the HashTable, PrefixTree, and IntVector classes.";
 
 
 
@@ -270,6 +271,20 @@ typedef struct {
   bool return_values;
 } sharedstructures_PrefixTreeIterator;
 
+static const char* sharedstructures_IntVector_doc =
+"Shared-memory atomic integer array object.\n\
+\n\
+sharedstructures.IntVector(pool_name)\n\
+\n\
+Arguments:\n\
+- pool_name: the name of the shared-memory pool to operate on.";
+
+typedef struct {
+  PyObject_HEAD
+  shared_ptr<sharedstructures::IntVector> v;
+} sharedstructures_IntVector;
+
+
 
 
 
@@ -317,6 +332,7 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
 
   if (!self->return_keys && !self->return_values) {
     PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
+    Py_DECREF(self);
     return NULL;
   }
 
@@ -980,6 +996,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
 
   if (!self->return_keys && !self->return_values) {
     PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
+    Py_DECREF(self);
     return NULL;
   }
 
@@ -1791,6 +1808,409 @@ static PyTypeObject sharedstructures_PrefixTreeType = {
 
 
 
+
+// IntVector object method definitions
+
+static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
+    PyObject* args, PyObject* kwargs) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)PyType_GenericNew(
+      type, args, kwargs);
+  if (!self) {
+    return NULL;
+  }
+
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"pool_name", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
+  const char* pool_name;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwarg_names_arg,
+      &pool_name)) {
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  // try to construct the pool before filling in the python object
+  try {
+    shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
+    new (&self->v) shared_ptr<sharedstructures::IntVector>(
+        new sharedstructures::IntVector(pool));
+
+  } catch (const exception& e) {
+    PyErr_Format(PyExc_RuntimeError, "failed to initialize int vector: %s", e.what());
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  return (PyObject*)self;
+}
+
+static void sharedstructures_IntVector_Dealloc(PyObject* obj) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)obj;
+  self->v.~shared_ptr();
+  Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* sharedstructures_IntVector_Repr(PyObject* py_self) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.IntVector on %s>",
+      self->v->get_pool()->get_name().c_str());
+#else
+  return PyBytes_FromFormat(
+      "<sharedstructures.IntVector on %s>",
+      self->v->get_pool()->get_name().c_str());
+#endif
+}
+
+static Py_ssize_t sharedstructures_IntVector_Len(PyObject* py_self) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+  return self->v->size();
+}
+
+static const char* sharedstructures_IntVector_expand_doc =
+"Expands the vector's length.\n\
+\n\
+IntVector.expand(new_size) -> None\n\
+\n\
+The newly-allocated integers will have values of 0.\n\
+\n\
+The length of an IntVector cannot be decreased. If new_size is less than the\n\
+current size, no operation is performed.";
+
+static PyObject* sharedstructures_IntVector_expand(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  Py_ssize_t new_size;
+  if (!PyArg_ParseTuple(args, "n", &new_size)) {
+    return NULL;
+  }
+  if (new_size < 0) {
+    PyErr_SetString(PyExc_ValueError, "new size must be >= 0");
+    return NULL;
+  }
+
+  self->v->expand(new_size);
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+static const char* sharedstructures_IntVector_load_doc =
+"Gets a value from the vector.\n\
+\n\
+IntVector.load(index) -> int";
+
+static PyObject* sharedstructures_IntVector_load(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  Py_ssize_t index;
+  if (!PyArg_ParseTuple(args, "n", &index)) {
+    return NULL;
+  }
+
+  try {
+    return PyLong_FromLongLong(self->v->load(index));
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_TypeError, "IntVector index out of range");
+    return NULL;
+  }
+}
+
+static const char* sharedstructures_IntVector_store_doc =
+"Sets a value in the vector.\n\
+\n\
+IntVector.store(index, value) -> None";
+
+static PyObject* sharedstructures_IntVector_store(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  Py_ssize_t index;
+  int64_t value;
+  if (!PyArg_ParseTuple(args, "nL", &index, &value)) {
+    return NULL;
+  }
+
+  try {
+    self->v->store(index, value);
+    Py_INCREF(Py_None);
+    return Py_None;
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_TypeError, "IntVector index out of range");
+    return NULL;
+  }
+}
+
+static const char* sharedstructures_IntVector_exchange_doc =
+"Atomically sets a value in the array and returns the overwritten value.\n\
+\n\
+IntVector.exchange(index, new_value) -> int";
+
+static PyObject* sharedstructures_IntVector_exchange(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, old_value, new_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &new_value)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->exchange(index, new_value);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_compare_exchange_doc =
+"Atomically compares the stored value in the array and overwrites it if equal.\n\
+\n\
+IntVector.compare_exchange(index, expected_value, new_value) -> int\n\
+\n\
+Returns the value that was stored in the array before the operation. If the\n\
+returned value is equal to expected_value, the exchange was performed.";
+
+static PyObject* sharedstructures_IntVector_compare_exchange(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, expected_value, new_value, old_value;
+  if (!PyArg_ParseTuple(args, "LLL", &index, &expected_value, &new_value)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->compare_exchange(index, expected_value, new_value);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_add_doc =
+"Atomically adds to a value in the array. Returns the original value.\n\
+\n\
+IntVector.add(index, delta) -> int";
+
+static PyObject* sharedstructures_IntVector_add(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, delta, old_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &delta)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->fetch_add(index, delta);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_subtract_doc =
+"Atomically subtracts from a value in the array. Returns the original value.\n\
+\n\
+IntVector.subtract(index, delta) -> int";
+
+static PyObject* sharedstructures_IntVector_subtract(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, delta, old_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &delta)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->fetch_sub(index, delta);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_bitwise_and_doc =
+"Atomically ands a value with a value in the array. Returns the original value.\n\
+\n\
+IntVector.bitwise_and(index, mask) -> int";
+
+static PyObject* sharedstructures_IntVector_bitwise_and(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, mask, old_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &mask)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->fetch_and(index, mask);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_bitwise_or_doc =
+"Atomically ors a value with a value in the array. Returns the original value.\n\
+\n\
+IntVector.bitwise_or(index, mask) -> int";
+
+static PyObject* sharedstructures_IntVector_bitwise_or(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, mask, old_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &mask)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->fetch_or(index, mask);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_bitwise_xor_doc =
+"Atomically xors a value with a value in the array. Returns the original value.\n\
+\n\
+IntVector.bitwise_xor(index, mask) -> int";
+
+static PyObject* sharedstructures_IntVector_bitwise_xor(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index, mask, old_value;
+  if (!PyArg_ParseTuple(args, "LL", &index, &mask)) {
+    return NULL;
+  }
+
+  try {
+    old_value = self->v->fetch_xor(index, mask);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return NULL;
+  }
+
+  return PyLong_FromLongLong(old_value);
+}
+
+static const char* sharedstructures_IntVector_pool_bytes_doc =
+"Returns the size of the underlying shared memory pool.";
+
+static PyObject* sharedstructures_IntVector_pool_bytes(PyObject* py_self) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+#ifdef IS_PY3K
+  return PyLong_FromSize_t(self->v->get_pool()->size());
+#else
+  return PyInt_FromSize_t(self->v->get_pool()->size());
+#endif
+}
+
+static PyMethodDef sharedstructures_IntVector_methods[] = {
+  {"pool_bytes", (PyCFunction)sharedstructures_IntVector_pool_bytes, METH_NOARGS,
+      sharedstructures_IntVector_pool_bytes_doc},
+  {"expand", (PyCFunction)sharedstructures_IntVector_expand, METH_VARARGS,
+      sharedstructures_IntVector_expand_doc},
+  {"load", (PyCFunction)sharedstructures_IntVector_load, METH_VARARGS,
+      sharedstructures_IntVector_load_doc},
+  {"store", (PyCFunction)sharedstructures_IntVector_store, METH_VARARGS,
+      sharedstructures_IntVector_store_doc},
+  {"exchange", (PyCFunction)sharedstructures_IntVector_exchange, METH_VARARGS,
+      sharedstructures_IntVector_exchange_doc},
+  {"compare_exchange", (PyCFunction)sharedstructures_IntVector_compare_exchange, METH_VARARGS,
+      sharedstructures_IntVector_compare_exchange_doc},
+  {"add", (PyCFunction)sharedstructures_IntVector_add, METH_VARARGS,
+      sharedstructures_IntVector_add_doc},
+  {"subtract", (PyCFunction)sharedstructures_IntVector_subtract, METH_VARARGS,
+      sharedstructures_IntVector_subtract_doc},
+  {"bitwise_and", (PyCFunction)sharedstructures_IntVector_bitwise_and, METH_VARARGS,
+      sharedstructures_IntVector_bitwise_and_doc},
+  {"bitwise_or", (PyCFunction)sharedstructures_IntVector_bitwise_or, METH_VARARGS,
+      sharedstructures_IntVector_bitwise_or_doc},
+  {"bitwise_xor", (PyCFunction)sharedstructures_IntVector_bitwise_xor, METH_VARARGS,
+      sharedstructures_IntVector_bitwise_xor_doc},
+  {NULL},
+};
+
+static PySequenceMethods sharedstructures_IntVector_sequencemethods = {
+  sharedstructures_IntVector_Len, // sq_length
+  0, // sq_concat
+  0, // sq_repeat
+  0, // sq_item
+  0, // sq_slice
+  0, // sq_ass_item
+  0, // sq_ass_slice
+  0, // sq_contains
+  0, // sq_inplace_concat
+  0, // sq_inplace_repeat
+};
+
+static PyTypeObject sharedstructures_IntVectorType = {
+   PyVarObject_HEAD_INIT(NULL, 0)
+   "sharedstructures.IntVector",                    // tp_name
+   sizeof(sharedstructures_IntVector),              // tp_basicsize
+   0,                                               // tp_itemsize
+   (destructor)sharedstructures_IntVector_Dealloc,  // tp_dealloc
+   0,                                               // tp_print
+   0,                                               // tp_getattr
+   0,                                               // tp_setattr
+   0,                                               // tp_compare
+   sharedstructures_IntVector_Repr,                 // tp_repr
+   0,                                               // tp_as_number
+   &sharedstructures_IntVector_sequencemethods,     // tp_as_sequence
+   0,                                               // tp_as_mapping
+   0,                                               // tp_hash
+   0,                                               // tp_call
+   0,                                               // tp_str
+   0,                                               // tp_getattro
+   0,                                               // tp_setattro
+   0,                                               // tp_as_buffer
+   Py_TPFLAGS_DEFAULT,                              // tp_flag
+   sharedstructures_IntVector_doc,                  // tp_doc
+   0,                                               // tp_traverse
+   0,                                               // tp_clear
+   0,                                               // tp_richcompare
+   0,                                               // tp_weaklistoffset
+   0,                                               // tp_iter
+   0,                                               // tp_iternext
+   sharedstructures_IntVector_methods,              // tp_methods
+   0,                                               // tp_members
+   0,                                               // tp_getset
+   0,                                               // tp_base
+   0,                                               // tp_dict
+   0,                                               // tp_descr_get
+   0,                                               // tp_descr_set
+   0,                                               // tp_dictoffset
+   0,                                               // tp_init
+   0,                                               // tp_alloc
+   sharedstructures_IntVector_New,                  // tp_new
+};
+
+
+
+
+
 // module-level names
 
 static PyObject* sharedstructures_delete_pool(PyObject* self, PyObject* args) {
@@ -1850,6 +2270,9 @@ static PyObject* sharedstructures_module_init() {
   if (PyType_Ready(&sharedstructures_PrefixTreeIteratorType) < 0) {
     return NULL;
   }
+  if (PyType_Ready(&sharedstructures_IntVectorType) < 0) {
+    return NULL;
+  }
 
 #if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&sharedstructures_module_def);
@@ -1866,6 +2289,8 @@ static PyObject* sharedstructures_module_init() {
   PyModule_AddObject(m, "PrefixTree", (PyObject*)&sharedstructures_PrefixTreeType);
   Py_INCREF(&sharedstructures_PrefixTreeIteratorType);
   PyModule_AddObject(m, "PrefixTreeIterator", (PyObject*)&sharedstructures_PrefixTreeIteratorType);
+  Py_INCREF(&sharedstructures_IntVectorType);
+  PyModule_AddObject(m, "IntVector", (PyObject*)&sharedstructures_IntVectorType);
 
   return m;
 }

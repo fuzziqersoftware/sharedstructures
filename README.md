@@ -12,6 +12,8 @@ If it doesn't work on your system, let me know. I've built and tested it on Mac 
 
 ## Basic usage
 
+### Hash tables and prefix trees
+
 The following C++ code opens a prefix tree object, creating it if it doesn't exist:
 
     #include <memory>
@@ -31,7 +33,7 @@ The following C++ code opens a prefix tree object, creating it if it doesn't exi
     bool was_erased = tree->erase(k3);  // delete a value
     bool key_exists = tree->exists(k4);  // check if a key exists
 
-See PrefixTree.hh for more details on how to use the tree object.
+See PrefixTree.hh for more details on how to use the tree object. The HashTable interface is similar.
 
 Python usage is a bit more intuitive - sharedstructures objects behave mostly like dicts (but read the "Python wrapper" section below):
 
@@ -44,11 +46,50 @@ Python usage is a bit more intuitive - sharedstructures objects behave mostly li
     del tree[k3]    # delete a value
     if k4 in tree:  # check if a key exists
 
+### Atomic integer vectors
+
+The following C++ code opens an atomic integer vector object, creating it if it doesn't exist:
+
+    #include <memory>
+    #include <sharedstructures/Pool.hh>
+    #include <sharedstructures/IntVector.hh>
+
+    using namespace sharedstructures;
+
+    std::shared_ptr<Pool> pool(new Pool(filename));
+    std::shared_ptr<IntVector> v(new IntVector(pool));
+
+    int64_t value = v.load(index);  // retrieve a value
+    v.store(index, value);  // overwrite a value
+    int64_t old_value = v.exchange(index, new_value);  // swap a value
+    int64_t old_value = v.compare_exchange(index, expected_value, new_value);  // compare and swap a value
+    int64_t old_value = v.fetch_add(index, delta);  // add to a value
+    int64_t old_value = v.fetch_sub(index, delta);  // subtract from a value
+    int64_t old_value = v.fetch_and(index, mask);  // bitwise-and a value
+    int64_t old_value = v.fetch_or(index, mask);  // bitwise-or a value
+    int64_t old_value = v.fetch_xor(index, mask);  // bitwise-xor a value
+
+The Python interface for IntVector is similar to the C++ interface:
+
+    import sharedstructures
+
+    v = sharedstructures.IntVector(filename)
+
+    value = v.load(index);  # retrieve a value
+    v.store(index, value);  # overwrite a value
+    old_value = v.exchange(index, new_value);  # swap a value
+    old_value = v.compare_exchange(index, expected_value, new_value);  # compare and swap a value
+    old_value = v.add(index, delta);  # add to a value
+    old_value = v.subtract(index, delta);  # subtract from a value
+    old_value = v.bitwise_and(index, mask);  # bitwise-and a value
+    old_value = v.bitwise_or(index, mask);  # bitwise-or a value
+    old_value = v.bitwise_xor(index, mask);  # bitwise-xor a value
+
 ## Interfaces and objects
 
 The Pool object (Pool.hh) implements a raw expandable memory pool. Unlike standard memory semantics, it deals with relative pointers ("offsets") since the pool base address can move in the process' address space. Offsets can be converted to usable pointers with the `Pool::PoolPointer` member class, which handles the offset logic internally and behaves like a normal pointer externally. Performance-sensitive callers can use `Pool::at<T>` instead, but its return values can be invalidated by pool expansion.
 
-Generally you'll want to use some kind of allocator on top of the Pool object. The Allocator object manages pool expansion and assignment of regions for the application's needs. There are currently two allocators implemented:
+In most cases you'll want to use some kind of allocator on top of the Pool object. The Allocator object manages pool expansion and assignment of regions for the application's needs. There are currently two allocators implemented:
 - SimpleAllocator achieves high space efficiency and constant-time frees, but allocations take up to linear time in the number of existing blocks.
 - LogarithmicAllocator compromises space efficiency for speed; it wastes more memory, but both allocations and frees take logarithmic time in the size of the pool.
 
@@ -56,11 +97,11 @@ The allocator type of a pool can't be changed after creating it. Choose the allo
 
 ## Data structures
 
-Data structure objects can be used on top of an Allocator object. Currently there are two data structures.
+Data structure objects can be used on top of an Allocator or Pool object. Currently there are three data structures.
 
-HashTable implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
+**HashTable** implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
 
-PrefixTree implements a binary-safe map of strings to values of any of the following types:
+**PrefixTree** implements a binary-safe map of strings to values of any of the following types:
 - Strings
 - Integers
 - Floating-point numbers
@@ -69,7 +110,9 @@ PrefixTree implements a binary-safe map of strings to values of any of the follo
 
 Both structures support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. All of these operations are supported in both C++ and Python, except atomic increments on HashTables (these are supported only in C++).
 
-The header files (HashTable.hh and PrefixTree.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc and PrefixTreeTest.cc) for usage examples.
+**IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
+
+The header files (HashTable.hh, PrefixTree.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, and IntVectorTest.cc) for usage examples.
 
 ### Iteration semantics
 
@@ -81,9 +124,11 @@ Iterating a PrefixTree produces items in lexicographic order. Concurrent changes
 
 For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
 
+IntVectors are not iterable.
+
 ## Python wrapper
 
-HashTable and PrefixTree can also be used from Python with the included module. Keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key.
+HashTable, PrefixTree, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the IntVector object instead.
 
 The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
@@ -91,7 +136,7 @@ There are a few things to watch out for:
 - Modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - Strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
 - `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
-- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
+- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above. Similarly, IntVector isn't a subclass of list, but unlike the others, there's no easy way to convert an IntVector to a non-shared list.
 
 ## Thread safety
 
