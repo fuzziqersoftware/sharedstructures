@@ -1,6 +1,11 @@
 # sharedstructures
 
-sharedstructures is a C++ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way. Currently hash tables and prefix trees are implemented, though only prefix trees are currently recommended for production use.
+sharedstructures is a C++ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way.
+
+This library currently supports these data structures:
+- Hash tables with binary string keys and values
+- Prefix trees with binary string keys and typed values (supported types are null, bool, int, float, and binary string)
+- Atomic 64-bit integer arrays
 
 ## Building
 
@@ -12,7 +17,9 @@ If it doesn't work on your system, let me know. I've built and tested it on Mac 
 
 ## Basic usage
 
-### Hash tables and prefix trees
+### Mapping types
+
+Hash tables have a number of unimplemented convenience features; for example, the bucket count cannot be changed without rebuilding the entire table manually. For sharing mappings/dictionaries, use a prefix tree instead.
 
 The following C++ code opens a prefix tree object, creating it if it doesn't exist:
 
@@ -35,7 +42,7 @@ The following C++ code opens a prefix tree object, creating it if it doesn't exi
 
 See PrefixTree.hh for more details on how to use the tree object. The HashTable interface is similar.
 
-Python usage is a bit more intuitive - sharedstructures objects behave mostly like dicts (but read the "Python wrapper" section below):
+Python usage is a bit more intuitive - `sharedstructures.PrefixTree` objects behave mostly like dicts (but read the "Python wrapper" section below):
 
     import sharedstructures
 
@@ -47,6 +54,8 @@ Python usage is a bit more intuitive - sharedstructures objects behave mostly li
     if k4 in tree:  # check if a key exists
 
 ### Atomic integer vectors
+
+Unlike the other data structures, atomic integer vectors do not use an underlying allocator; instead, they manage memory in the pool internally. This means that an AtomicIntegerVector cannot share a pool with any other data structures.
 
 The following C++ code opens an atomic integer vector object, creating it if it doesn't exist:
 
@@ -89,11 +98,11 @@ The Python interface for IntVector is similar to the C++ interface:
 
 The Pool object (Pool.hh) implements a raw expandable memory pool. Unlike standard memory semantics, it deals with relative pointers ("offsets") since the pool base address can move in the process' address space. Offsets can be converted to usable pointers with the `Pool::PoolPointer` member class, which handles the offset logic internally and behaves like a normal pointer externally. Performance-sensitive callers can use `Pool::at<T>` instead, but its return values can be invalidated by pool expansion.
 
-In most cases you'll want to use some kind of allocator on top of the Pool object. The Allocator object manages pool expansion and assignment of regions for the application's needs. There are currently two allocators implemented:
+You'll usually want to use some kind of allocator on top of the Pool object. The Allocator object manages pool expansion and assignment of regions for the application's needs. There are currently two allocators implemented:
 - SimpleAllocator achieves high space efficiency and constant-time frees, but allocations take up to linear time in the number of existing blocks.
 - LogarithmicAllocator compromises space efficiency for speed; it wastes more memory, but both allocations and frees take logarithmic time in the size of the pool.
 
-The allocator type of a pool can't be changed after creating it. Choose the allocator type based on what the access patterns will be - use SimpleAllocator if you have memory size concerns, use LogarithmicAllocator if you have speed concerns.
+The allocator type of a pool can't be changed after creating it, so choose the allocator type based on what the access patterns will be. Use SimpleAllocator if you need high space efficiency or are sharing read-only data (at the cost of slow writes), or use LogarithmicAllocator if you need both reads and writes to be fast and can sacrifice some space for speed.
 
 ## Data structures
 
@@ -108,15 +117,15 @@ Data structure objects can be used on top of an Allocator or Pool object. Curren
 - Boolean values
 - Null (this is not the same as the key not existing - a key can exist and have a Null value)
 
-Both structures support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. All of these operations are supported in both C++ and Python, except atomic increments on HashTables (these are supported only in C++).
+Both structures support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations are supported in both languages.
 
 **IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
 
 The header files (HashTable.hh, PrefixTree.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, and IntVectorTest.cc) for usage examples.
 
-### Iteration semantics
+### Mapping iteration semantics
 
-Iteration over either of these structures only locks the structure while advancing the iterator, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
+Iteration over either of the mapping structures only locks the structure while advancing the iterator, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
 
 Iterating a HashTable produces items in pseudorandom order. If an item exists in the table for the duration of the iteration, then it will be returned; if it's created or deleted during the iteration, then it may or may not be returned. Similarly, if a key's value is changed during the iteration, then either its new or old value may be returned.
 
@@ -126,13 +135,13 @@ For both structures, the iterator objects cache one or more results on the itera
 
 IntVectors are not iterable.
 
-## Python wrapper
+## Python wrapper semantics
 
 HashTable, PrefixTree, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the IntVector object instead.
 
 The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
-There are a few things to watch out for:
+There are a few quirks to watch out for when using HashTable and PrefixTree:
 - Modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - Strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
 - `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
@@ -159,6 +168,8 @@ The allocators are not thread-safe by default, but they include a global read-wr
 
 HashTable and PrefixTree use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
 
+sharedstructures objects are not necessarily thread-safe within a process because one thread may remap the view of the shared memory segment while another thread attempts to access it. It's recommended for each thread that needs access to a Pool to have its own Pool object for this reason.
+
 ## Reliability
 
 Operations on shared data structures use a global lock over the entire structure. Since operations generally involve only a few memory accesses, the critical sections should be quite short. However, processes can still crash or be killed during these critical sections, which leads to the lock being "held" by a dead process.
@@ -180,7 +191,4 @@ There's a lot to do here.
 - Return immutable objects for complex types in Python to make in-place modification not fail silently.
 - Add more data structures to the library.
 - Make pool creation race-free. Currently processes can get weird errors if they both attempt to create the same pool at the same time.
-
-## Companies using sharedstructures in production
-
-- [Quora](http://www.quora.com/)
+- Make sharedstructures objects thread-safe within a process.
