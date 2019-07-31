@@ -18,6 +18,7 @@
 #include "HashTable.hh"
 #include "PrefixTree.hh"
 #include "IntVector.hh"
+#include "Queue.hh"
 
 using namespace std;
 
@@ -32,7 +33,7 @@ using LookupResult = sharedstructures::PrefixTree::LookupResult;
 static const char* sharedstructures_doc =
 "Dynamically-sized shared-memory data structure module.\n\
 \n\
-This module provides the HashTable, PrefixTree, and IntVector classes.";
+This module provides the HashTable, PrefixTree, Queue, and IntVector classes.";
 
 
 
@@ -270,6 +271,24 @@ typedef struct {
   bool return_keys;
   bool return_values;
 } sharedstructures_PrefixTreeIterator;
+
+static const char* sharedstructures_Queue_doc =
+"Shared-memory doubly-linked list (queue) object.\n\
+\n\
+sharedstructures.Queue(pool_name[, allocator_type[, base_offset]])\n\
+\n\
+Arguments:\n\
+- pool_name: the name of the shared-memory pool to operate on.\n\
+- allocator_type: 'simple' (default) or 'logarithmic' (see README.md).\n\
+- base_offset: if given, opens a Queue at this offset within the pool. If not\n\
+  given, opens a Queue at the pool's base offset. If the pool's base offset is\n\
+  0, creates a new Queue and sets the pool's base offset to the new Queue's\n\
+  offset.";
+
+typedef struct {
+  PyObject_HEAD
+  shared_ptr<sharedstructures::Queue> q;
+} sharedstructures_Queue;
 
 static const char* sharedstructures_IntVector_doc =
 "Shared-memory atomic integer array object.\n\
@@ -1809,6 +1828,239 @@ static PyTypeObject sharedstructures_PrefixTreeType = {
 
 
 
+// Queue object method definitions
+
+static PyObject* sharedstructures_Queue_New(PyTypeObject* type,
+    PyObject* args, PyObject* kwargs) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)PyType_GenericNew(
+      type, args, kwargs);
+  if (!self) {
+    return NULL;
+  }
+
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
+  const char* pool_name;
+  Py_ssize_t base_offset = 0;
+  const char* allocator_type = NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
+      &pool_name, &allocator_type, &base_offset)) {
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  try {
+    auto allocator = sharedstructures_internal_get_allocator(pool_name,
+        allocator_type);
+    new (&self->q) shared_ptr<sharedstructures::Queue>(
+        new sharedstructures::Queue(allocator, base_offset));
+
+  } catch (const exception& e) {
+    PyErr_Format(PyExc_RuntimeError, "failed to initialize queue: %s", e.what());
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  return (PyObject*)self;
+}
+
+static void sharedstructures_Queue_Dealloc(PyObject* obj) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)obj;
+  self->q.~shared_ptr();
+  Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* sharedstructures_Queue_Repr(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.Queue on %s:%p at %p>",
+      self->q->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->q->base(), py_self);
+#else
+  return PyBytes_FromFormat(
+      "<sharedstructures.Queue on %s:%p at %p>",
+      self->q->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->q->base(), py_self);
+#endif
+}
+
+static Py_ssize_t sharedstructures_Queue_Len(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  return self->q->size();
+}
+
+static const char* sharedstructures_Queue_pop_front_doc =
+"Removes and returns the item at the front of the queue.\n\
+\n\
+Queue.pop_front() -> bytes";
+
+static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  try {
+    string item = self->q->pop_front();
+    return PyBytes_FromStringAndSize(item.data(), item.size());
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "queue is empty");
+    return NULL;
+  }
+}
+
+static const char* sharedstructures_Queue_pop_back_doc =
+"Removes and returns the item at the back of the queue.\n\
+\n\
+Queue.pop_back() -> bytes";
+
+static PyObject* sharedstructures_Queue_pop_back(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  try {
+    string item = self->q->pop_back();
+    return PyBytes_FromStringAndSize(item.data(), item.size());
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "queue is empty");
+    return NULL;
+  }
+}
+
+static const char* sharedstructures_Queue_push_front_doc =
+"Appends the given item to the front of the queue.\n\
+\n\
+Queue.push_front(item) -> None";
+
+static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+
+  const char* data;
+  Py_ssize_t size;
+  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+    return NULL;
+  }
+
+  self->q->push_front(data, size);
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+static const char* sharedstructures_Queue_push_back_doc =
+"Appends the given item to the back of the queue.\n\
+\n\
+Queue.push_back(item) -> None";
+
+static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+
+  const char* data;
+  Py_ssize_t size;
+  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+    return NULL;
+  }
+
+  self->q->push_back(data, size);
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+static const char* sharedstructures_Queue_bytes_doc =
+"Returns the number of bytes used by objects in the queue.\n\
+\n\
+Does not include bytes used by allocator or structure overhead.\n\
+\n\
+Queue.bytes() -> int";
+
+static PyObject* sharedstructures_Queue_bytes(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  return PyLong_FromLongLong(self->q->bytes());
+}
+
+static const char* sharedstructures_Queue_pool_bytes_doc =
+"Returns the size of the underlying shared memory pool.";
+
+static PyObject* sharedstructures_Queue_pool_bytes(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+#ifdef IS_PY3K
+  return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
+#else
+  return PyInt_FromSize_t(self->q->get_allocator()->get_pool()->size());
+#endif
+}
+
+static PyMethodDef sharedstructures_Queue_methods[] = {
+  {"pool_bytes", (PyCFunction)sharedstructures_Queue_pool_bytes, METH_NOARGS,
+      sharedstructures_Queue_pool_bytes_doc},
+  {"bytes", (PyCFunction)sharedstructures_Queue_bytes, METH_NOARGS,
+      sharedstructures_Queue_bytes_doc},
+  {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_NOARGS,
+      sharedstructures_Queue_pop_front_doc},
+  {"pop_back", (PyCFunction)sharedstructures_Queue_pop_back, METH_NOARGS,
+      sharedstructures_Queue_pop_back_doc},
+  {"push_front", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS,
+      sharedstructures_Queue_push_front_doc},
+  {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS,
+      sharedstructures_Queue_push_back_doc},
+  {NULL},
+};
+
+static PySequenceMethods sharedstructures_Queue_sequencemethods = {
+  sharedstructures_Queue_Len, // sq_length
+  0, // sq_concat
+  0, // sq_repeat
+  0, // sq_item
+  0, // sq_slice
+  0, // sq_ass_item
+  0, // sq_ass_slice
+  0, // sq_contains
+  0, // sq_inplace_concat
+  0, // sq_inplace_repeat
+};
+
+static PyTypeObject sharedstructures_QueueType = {
+   PyVarObject_HEAD_INIT(NULL, 0)
+   "sharedstructures.Queue",                        // tp_name
+   sizeof(sharedstructures_Queue),                  // tp_basicsize
+   0,                                               // tp_itemsize
+   (destructor)sharedstructures_Queue_Dealloc,      // tp_dealloc
+   0,                                               // tp_print
+   0,                                               // tp_getattr
+   0,                                               // tp_setattr
+   0,                                               // tp_compare
+   sharedstructures_Queue_Repr,                     // tp_repr
+   0,                                               // tp_as_number
+   &sharedstructures_Queue_sequencemethods,         // tp_as_sequence
+   0,                                               // tp_as_mapping
+   0,                                               // tp_hash
+   0,                                               // tp_call
+   0,                                               // tp_str
+   0,                                               // tp_getattro
+   0,                                               // tp_setattro
+   0,                                               // tp_as_buffer
+   Py_TPFLAGS_DEFAULT,                              // tp_flag
+   sharedstructures_Queue_doc,                      // tp_doc
+   0,                                               // tp_traverse
+   0,                                               // tp_clear
+   0,                                               // tp_richcompare
+   0,                                               // tp_weaklistoffset
+   0,                                               // tp_iter
+   0,                                               // tp_iternext
+   sharedstructures_Queue_methods,                  // tp_methods
+   0,                                               // tp_members
+   0,                                               // tp_getset
+   0,                                               // tp_base
+   0,                                               // tp_dict
+   0,                                               // tp_descr_get
+   0,                                               // tp_descr_set
+   0,                                               // tp_dictoffset
+   0,                                               // tp_init
+   0,                                               // tp_alloc
+   sharedstructures_Queue_New,                      // tp_new
+};
+
+
+
+
+
 // IntVector object method definitions
 
 static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
@@ -1854,12 +2106,12 @@ static PyObject* sharedstructures_IntVector_Repr(PyObject* py_self) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
 #ifdef IS_PY3K
   return PyUnicode_FromFormat(
-      "<sharedstructures.IntVector on %s>",
-      self->v->get_pool()->get_name().c_str());
+      "<sharedstructures.IntVector on %s at %p>",
+      self->v->get_pool()->get_name().c_str(), py_self);
 #else
   return PyBytes_FromFormat(
-      "<sharedstructures.IntVector on %s>",
-      self->v->get_pool()->get_name().c_str());
+      "<sharedstructures.IntVector on %s at %p>",
+      self->v->get_pool()->get_name().c_str(), py_self);
 #endif
 }
 
@@ -2273,6 +2525,9 @@ static PyObject* sharedstructures_module_init() {
   if (PyType_Ready(&sharedstructures_IntVectorType) < 0) {
     return NULL;
   }
+  if (PyType_Ready(&sharedstructures_QueueType) < 0) {
+    return NULL;
+  }
 
 #if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&sharedstructures_module_def);
@@ -2291,6 +2546,8 @@ static PyObject* sharedstructures_module_init() {
   PyModule_AddObject(m, "PrefixTreeIterator", (PyObject*)&sharedstructures_PrefixTreeIteratorType);
   Py_INCREF(&sharedstructures_IntVectorType);
   PyModule_AddObject(m, "IntVector", (PyObject*)&sharedstructures_IntVectorType);
+  Py_INCREF(&sharedstructures_QueueType);
+  PyModule_AddObject(m, "Queue", (PyObject*)&sharedstructures_QueueType);
 
   return m;
 }

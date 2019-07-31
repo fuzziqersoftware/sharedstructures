@@ -5,6 +5,7 @@ sharedstructures is a C++ and Python 2/3 library for storing data structures in 
 This library currently supports these data structures:
 - Hash tables with binary string keys and values
 - Prefix trees with binary string keys and typed values (supported types are null, bool, int, float, and binary string)
+- Queues (doubly-linked lists) with binary string values
 - Atomic 64-bit integer arrays
 
 ## Building
@@ -14,6 +15,27 @@ This library currently supports these data structures:
 - Run `sudo make install`.
 
 If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 14.04 and 16.04.
+
+## Data structures
+
+Data structure objects can be used on top of an Allocator or Pool object. (See examples below for usage information.) Currently there are three data structures.
+
+**HashTable** implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
+
+**PrefixTree** implements a binary-safe map of strings to values of any of the following types:
+- Strings
+- Integers
+- Floating-point numbers
+- Boolean values
+- Null (this is not the same as the key not existing - a key can exist and have a Null value)
+
+Both HashTable and PrefixTree support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations are supported in both languages.
+
+**Queue** implements a doubly-linked list of binary strings. Items may only be accessed at the ends of the list, not at arbitrary positions within the list.
+
+**IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
+
+The header files (HashTable.hh, PrefixTree.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, and IntVectorTest.cc) for usage examples.
 
 ## Basic usage
 
@@ -39,6 +61,7 @@ The following C++ code opens a prefix tree object, creating it if it doesn't exi
     PrefixTree::LookupResult v2 = tree->at(k2);  // retrieve a value
     bool was_erased = tree->erase(k3);  // delete a value
     bool key_exists = tree->exists(k4);  // check if a key exists
+    size_t count = tree->size();  // get the number of key-value pairs
 
 See PrefixTree.hh for more details on how to use the tree object. The HashTable interface is similar.
 
@@ -52,6 +75,53 @@ Python usage is a bit more intuitive - `sharedstructures.PrefixTree` objects beh
     v2 = tree[k2]   # retrieve a value
     del tree[k3]    # delete a value
     if k4 in tree:  # check if a key exists
+
+### Queues
+
+Queue usage is pretty straightforward.
+
+In C++, you can add std::string objects and pointer/size pairs to the queue, but it only returns std::string objects. Usage:
+
+    #include <memory>
+    #include <sharedstructures/Pool.hh>
+    #include <sharedstructures/LogarithmicAllocator.hh>
+    #include <sharedstructures/Queue.hh>
+
+    using namespace sharedstructures;
+
+    std::shared_ptr<Pool> pool(new Pool(filename));
+    std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
+    std::shared_ptr<Queue> q(new Queue(alloc, 0));
+
+    // add items to the queue
+    q->push_back(item1);
+    q->push_back(item1_data, item1_size);
+    q->push_front(item2);
+    q->push_front(item2_data, item2_size);
+
+    // remove items from the queue (throws std::out_of_range if empty)
+    item3 = q->pop_back();
+    item4 = q->pop_front();
+
+    // get the number of items in the queue
+    size_t count = q->size();
+
+In Python, all queue items are bytes objects. Usage:
+
+    import sharedstructures
+
+    q = sharedstructures.Queue(filename, 'logarithmic', 0)
+
+    # add items to the queue
+    q.push_back(item1)
+    q.push_front(item2)
+
+    # remove items from the queue (raises IndexError if empty)
+    item3 = q.pop_back()
+    item4 = q.pop_front()
+
+    # check the queue size
+    num_items = len(q)
 
 ### Atomic integer vectors
 
@@ -104,25 +174,6 @@ You'll usually want to use some kind of allocator on top of the Pool object. The
 
 The allocator type of a pool can't be changed after creating it, so choose the allocator type based on what the access patterns will be. Use SimpleAllocator if you need high space efficiency or are sharing read-only data (at the cost of slow writes), or use LogarithmicAllocator if you need both reads and writes to be fast and can sacrifice some space for speed.
 
-## Data structures
-
-Data structure objects can be used on top of an Allocator or Pool object. Currently there are three data structures.
-
-**HashTable** implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
-
-**PrefixTree** implements a binary-safe map of strings to values of any of the following types:
-- Strings
-- Integers
-- Floating-point numbers
-- Boolean values
-- Null (this is not the same as the key not existing - a key can exist and have a Null value)
-
-Both structures support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations are supported in both languages.
-
-**IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
-
-The header files (HashTable.hh, PrefixTree.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, and IntVectorTest.cc) for usage examples.
-
 ### Mapping iteration semantics
 
 Iteration over either of the mapping structures only locks the structure while advancing the iterator, so it's possible for an iteration to see an inconsistent view of the data structure due to concurrent modifications by other processes.
@@ -133,7 +184,7 @@ Iterating a PrefixTree produces items in lexicographic order. Concurrent changes
 
 For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
 
-IntVectors are not iterable.
+Queues and IntVectors are not iterable.
 
 ## Python wrapper semantics
 
@@ -166,7 +217,7 @@ The allocators are not thread-safe by default, but they include a global read-wr
     }
     // now it's no longer safe to read from or write to the pool
 
-HashTable and PrefixTree use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
+HashTable, PrefixTree, and Queue use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
 
 sharedstructures objects are not necessarily thread-safe within a process because one thread may remap the view of the shared memory segment while another thread attempts to access it. It's recommended for each thread that needs access to a Pool to have its own Pool object for this reason.
 
@@ -178,7 +229,7 @@ Currently, the lock wait algorithm will check periodically if the process holdin
 
 HashTable is not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable if a process crashed while operating on it.
 
-PrefixTree is always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked, and there may be some extra (empty) nodes left over. These nodes won't be visible to gets or iterations, and will be deleted or reused when a write operation next touches them.
+PrefixTree and Queue are always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked if a process crashes while operating on the structure, and there may be some extra (empty) nodes left over. These nodes won't be visible to reads, and in the case of PrefixTree, the empty nodes will be deleted or reused when a write operation next touches them.
 
 ## Future work
 
