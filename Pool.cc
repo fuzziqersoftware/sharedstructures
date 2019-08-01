@@ -126,7 +126,10 @@ void Pool::check_size_and_remap() const {
     this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (this->data == MAP_FAILED) {
-      throw runtime_error("mmap failed: " + string_for_error(errno));
+      auto err_s = string_for_error(errno);
+      int fd = this->fd;
+      throw runtime_error(string_printf("mmap(size=0x%zX, fd=%d) failed: %s",
+          this->pool_size, fd, err_s.c_str()));
     }
   }
 }

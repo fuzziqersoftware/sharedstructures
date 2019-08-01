@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -9,6 +10,7 @@
 
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
+#include <phosg/Process.hh>
 #include <string>
 
 #include "Pool.hh"
@@ -315,6 +317,13 @@ void run_incr_test(const string& allocator_type) {
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
+  // make sure everything is initialized before starting child processes
+  {
+    shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
+    shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
+    HashTable table(alloc, 0, 4);
+  }
+
   unordered_set<pid_t> child_pids;
   while ((child_pids.size() < 8) && !child_pids.count(0)) {
     pid_t pid = fork();
@@ -338,12 +347,19 @@ void run_concurrent_readers_test(const string& allocator_type) {
       try {
         auto res = table.at("key1", 4);
         if (res == value_str) {
+          fprintf(stderr, "-- [%s]   child %d saw value %" PRId64 "\n",
+              allocator_type.c_str(), getpid_cached(), value);
           value++;
           value_str = to_string(value);
         }
       } catch (const out_of_range& e) { }
       usleep(1); // yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
+
+    if (now() >= (start_time + 1000000)) {
+      fprintf(stderr, "-- [%s]   child %d timed out\n", allocator_type.c_str(),
+          getpid_cached());
+    }
 
     // we succeeded if we saw all the values from 100 to 110
     _exit(value != 110);
@@ -364,12 +380,16 @@ void run_concurrent_readers_test(const string& allocator_type) {
     pid_t exited_pid;
     while ((exited_pid = wait(&exit_status)) != -1) {
       child_pids.erase(exited_pid);
-      if (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == 0)) {
+      bool exited = WIFEXITED(exit_status);
+      bool signaled = WIFSIGNALED(exit_status);
+      int status = WEXITSTATUS(exit_status);
+      int signal = WTERMSIG(exit_status);
+      if (exited && (exit_status == 0)) {
         printf("-- [%s]   child %d terminated successfully\n",
             allocator_type.c_str(), exited_pid);
       } else {
-        printf("-- [%s]   child %d failed (%d)\n", allocator_type.c_str(),
-            exited_pid, exit_status);
+        printf("-- [%s]   child %d failed (%d; exited=%d signaled=%d status=%d signal=%d)\n",
+            allocator_type.c_str(), exited_pid, exit_status, exited, signaled, status, signal);
         num_failures++;
       }
     }

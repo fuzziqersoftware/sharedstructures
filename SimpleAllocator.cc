@@ -1,5 +1,6 @@
 #include "SimpleAllocator.hh"
 
+#include <inttypes.h>
 #include <stddef.h>
 
 using namespace std;

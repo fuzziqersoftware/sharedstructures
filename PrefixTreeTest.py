@@ -505,7 +505,11 @@ def run_concurrent_readers_test(allocator_type):
         pass
       else:
         if res == value:
+          print('-- [%s]   child %d saw value %d' % (allocator_type, os.getpid(), value))
           value += 1
+
+    if int(time.time() * 1000000) >= (start_time + 1000000):
+      print('-- [%s]   child %d timed out' % (allocator_type, os.getpid()))
 
     os._exit(int(value != 110))
 
