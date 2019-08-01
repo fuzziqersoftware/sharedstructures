@@ -42,23 +42,26 @@ def run_basic_test(allocator_type):
 
     q_push(q, reverse, b"v1");
     assert 1 == len(q)
-    assert 2 == q.bytes()
-    q_push(q, reverse, b"val2");
+    q_push(q, reverse, "val2");
     assert 2 == len(q)
-    assert 6 == q.bytes()
-    q_push(q, reverse, b"value-3");
+    q_push(q, reverse, 47);
     assert 3 == len(q)
-    assert 13 == q.bytes()
+    q_push(q, reverse, None);
+    assert 4 == len(q)
+    q_push(q, reverse, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}));
+    assert 5 == len(q)
 
     assert b"v1" == q_pop(q, not reverse)
+    assert 4 == len(q)
+    assert "val2" == q_pop(q, not reverse)
+    assert 3 == len(q)
+    assert 47 == q_pop(q, not reverse)
     assert 2 == len(q)
-    assert 11 == q.bytes()
-    assert b"val2" ==q_pop(q, not reverse)
+    assert None == q_pop(q, not reverse)
     assert 1 == len(q)
-    assert 7 == q.bytes()
-    assert b"value-3" == q_pop(q, not reverse)
+    assert (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}) == q_pop(q, not reverse)
     assert 0 == len(q)
-    assert 0 == q.bytes()
+    assert q.bytes() == 0
     try:
       q_pop(q, not reverse)
       assert False
@@ -71,25 +74,28 @@ def run_basic_test(allocator_type):
   def test_stack(q, front):
     print("-- [%s]   %s stack operation" % (allocator_type, "front" if front else "back"))
 
-    q_push(q, front, b"v1")
+    q_push(q, front, b"v1");
     assert 1 == len(q)
-    assert 2 == q.bytes()
-    q_push(q, front, b"val2");
+    q_push(q, front, "val2");
     assert 2 == len(q)
-    assert 6 == q.bytes()
-    q_push(q, front, b"value-3");
+    q_push(q, front, 47);
     assert 3 == len(q)
-    assert 13 == q.bytes()
+    q_push(q, front, None);
+    assert 4 == len(q)
+    q_push(q, front, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}));
+    assert 5 == len(q)
 
-    assert b"value-3" == q_pop(q, front)
+    assert (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}) == q_pop(q, front)
+    assert 4 == len(q)
+    assert None == q_pop(q, front)
+    assert 3 == len(q)
+    assert 47 == q_pop(q, front)
     assert 2 == len(q)
-    assert 6 == q.bytes()
-    assert b"val2" == q_pop(q, front)
+    assert "val2" == q_pop(q, front)
     assert 1 == len(q)
-    assert 2 == q.bytes()
     assert b"v1" == q_pop(q, front)
     assert 0 == len(q)
-    assert 0 == q.bytes()
+    assert q.bytes() == 0
     try:
       q_pop(q, front);
       assert False

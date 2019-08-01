@@ -106,7 +106,7 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     // get the number of items in the queue
     size_t count = q->size();
 
-In Python, all queue items are bytes objects. Usage:
+Python usage is similar:
 
     import sharedstructures
 
@@ -190,7 +190,7 @@ Queues and IntVectors are not iterable.
 
 HashTable, PrefixTree, Queue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For Queue and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
 
-For mapping types, the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
+For all types except IntVector, the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables, PrefixTrees, and Queues, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
 There are a few quirks to watch out for:
 - With HashTable and PrefixTree, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.

@@ -1900,7 +1900,8 @@ static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
   try {
     string item = self->q->pop_front();
-    return PyBytes_FromStringAndSize(item.data(), item.size());
+    return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
+        item.size());
   } catch (const out_of_range&) {
     PyErr_SetString(PyExc_IndexError, "queue is empty");
     return NULL;
@@ -1916,7 +1917,8 @@ static PyObject* sharedstructures_Queue_pop_back(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
   try {
     string item = self->q->pop_back();
-    return PyBytes_FromStringAndSize(item.data(), item.size());
+    return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
+        item.size());
   } catch (const out_of_range&) {
     PyErr_SetString(PyExc_IndexError, "queue is empty");
     return NULL;
@@ -1932,13 +1934,28 @@ static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
     PyObject* args) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
 
-  const char* data;
+  PyObject* item;
+  if (!PyArg_ParseTuple(args, "O", &item)) {
+    return NULL;
+  }
+
+  PyObject* marshalled_obj = PyMarshal_WriteObjectToString(item,
+      Py_MARSHAL_VERSION);
+  if (!marshalled_obj) {
+    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+    // here we assume it does
+    return NULL;
+  }
+
+  char* data;
   Py_ssize_t size;
-  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+  if (PyBytes_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
+    Py_DECREF(marshalled_obj);
     return NULL;
   }
 
   self->q->push_front(data, size);
+  Py_DECREF(marshalled_obj);
   Py_INCREF(Py_None);
   return Py_None;
 }
@@ -1952,9 +1969,23 @@ static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
     PyObject* args) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
 
-  const char* data;
+  PyObject* item;
+  if (!PyArg_ParseTuple(args, "O", &item)) {
+    return NULL;
+  }
+
+  PyObject* marshalled_obj = PyMarshal_WriteObjectToString(item,
+      Py_MARSHAL_VERSION);
+  if (!marshalled_obj) {
+    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+    // here we assume it does
+    return NULL;
+  }
+
+  char* data;
   Py_ssize_t size;
-  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+  if (PyBytes_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
+    Py_DECREF(marshalled_obj);
     return NULL;
   }
 
