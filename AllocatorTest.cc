@@ -19,6 +19,8 @@
 using namespace std;
 using namespace sharedstructures;
 
+const string pool_name_prefix = "AllocatorTest-cc-pool-";
+
 
 class TestClass {
 public:
@@ -73,7 +75,7 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
   auto g = alloc->lock(true);
 
@@ -118,7 +120,7 @@ void run_basic_test(const string& allocator_type) {
 void run_smart_pointer_test(const string& allocator_type) {
   printf("-- [%s] smart pointer\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
   auto g = alloc->lock(true);
 
@@ -156,7 +158,7 @@ void run_expansion_boundary_test_with_size(shared_ptr<Allocator>& alloc,
 void run_expansion_boundary_test(const string& allocator_type) {
   printf("-- [%s] expansion boundaries\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
   auto g = alloc->lock(true);
 
@@ -170,7 +172,7 @@ void run_expansion_boundary_test(const string& allocator_type) {
 void run_lock_test(const string& allocator_type) {
   printf("-- [%s] lock\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
 
   uint64_t start_time = now();
@@ -206,7 +208,7 @@ void run_crash_test(const string& allocator_type) {
   uint64_t bytes_free;
   unordered_map<uint64_t, string> offset_to_data;
   {
-    shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+    shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
     auto alloc = create_allocator(pool, allocator_type);
 
     while (offset_to_data.size() < 100) {
@@ -231,7 +233,7 @@ void run_crash_test(const string& allocator_type) {
   // child: open a pool, lock it, and be killed with SIGKILL
   pid_t pid = fork();
   if (!pid) {
-    shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+    shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
     auto alloc = create_allocator(pool, allocator_type);
 
     auto g = alloc->lock(true);
@@ -246,7 +248,7 @@ void run_crash_test(const string& allocator_type) {
 
   // parent: wait a bit, kill the child with SIGKILL, make sure the pool is
   // still consistent (and not locked)
-  shared_ptr<Pool> pool(new Pool("test-pool", 1024 * 1024));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
   try {
     usleep(500000);
@@ -289,7 +291,7 @@ int main(int argc, char* argv[]) {
 
   try {
     for (const auto& allocator_type : allocator_types) {
-      Pool::delete_pool("test-pool");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_basic_test(allocator_type);
       run_smart_pointer_test(allocator_type);
       run_expansion_boundary_test(allocator_type);
@@ -300,7 +302,9 @@ int main(int argc, char* argv[]) {
 
     // only delete the pool if the tests pass; if they don't, we might want to
     // examine its contents
-    Pool::delete_pool("test-pool");
+    for (const auto& allocator_type : allocator_types) {
+      Pool::delete_pool(pool_name_prefix + allocator_type);
+    }
 
   } catch (const exception& e) {
     printf("failure: %s\n", e.what());

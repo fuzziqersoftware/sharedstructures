@@ -8,6 +8,9 @@ import time
 
 import sharedstructures
 
+POOL_NAME_PREFIX = "HashTableTest-py-pool-"
+ALLOCATOR_TYPES = ('simple', 'logarithmic')
+
 
 def get_current_process_lsof():
   return subprocess.check_output(['lsof', '-p', str(os.getpid())])
@@ -39,7 +42,7 @@ def run_basic_test(allocator_type):
   print("-- [%s] basic" % allocator_type)
   before_lsof_count = len(get_current_process_lsof().splitlines())
 
-  table = sharedstructures.HashTable("test-table", allocator_type)
+  table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -77,7 +80,7 @@ def run_basic_test(allocator_type):
   assert {} == expected
 
   del table  # this should unmap the shared memory pool and close the fd
-  sharedstructures.delete_pool('test-table')
+  sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
   # this will fail if the test prints anything after before_lsof is taken since
   # the stdout/stderr offsets will be different
@@ -87,7 +90,7 @@ def run_basic_test(allocator_type):
 def run_conditional_writes_test(allocator_type):
   print("-- [%s] conditional writes" % allocator_type)
 
-  table = sharedstructures.HashTable("test-table", allocator_type)
+  table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -178,7 +181,7 @@ def run_conditional_writes_test(allocator_type):
 def run_collision_test(allocator_type):
   print("-- [%s] collision" % allocator_type)
 
-  table = sharedstructures.HashTable("test-table", allocator_type, 0, 2)
+  table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type, 0, 2)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -208,7 +211,7 @@ def run_collision_test(allocator_type):
 
 def run_incr_test(allocator_type):
   print('-- [%s] incr' % allocator_type)
-  table = sharedstructures.HashTable('test-table', allocator_type, 0, 6)
+  table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type, 0, 6)
   expected = {}
 
   def insert_both(k, v):
@@ -302,7 +305,7 @@ def run_incr_test(allocator_type):
 def run_concurrent_readers_test(allocator_type):
   print('-- [%s] concurrent readers' % allocator_type)
 
-  table = sharedstructures.HashTable('test-table', allocator_type)
+  table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
   del table
 
   child_pids = set()
@@ -311,7 +314,7 @@ def run_concurrent_readers_test(allocator_type):
 
   if 0 in child_pids:
     # child process: try up to a second to get the key
-    table = sharedstructures.HashTable('test-table', allocator_type)
+    table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     value = 100
     start_time = int(time.time() * 1000000)
@@ -324,13 +327,17 @@ def run_concurrent_readers_test(allocator_type):
         pass
       else:
         if res == value:
+          print('-- [%s]   child %d saw value %d' % (allocator_type, os.getpid(), value))
           value += 1
+
+    if int(time.time() * 1000000) >= (start_time + 1000000):
+      print('-- [%s]   child %d timed out' % (allocator_type, os.getpid()))
 
     os._exit(int(value != 110))
 
   else:
     # parent process: write the key, then wait for children to terminate
-    table = sharedstructures.HashTable('test-table', allocator_type)
+    table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     for value in range(100, 110):
       time.sleep(0.05)
@@ -354,23 +361,24 @@ def run_concurrent_readers_test(allocator_type):
 
 def main():
   try:
-    for allocator_type in ('simple', 'logarithmic'):
-      sharedstructures.delete_pool('test-table')
+    for allocator_type in ALLOCATOR_TYPES:
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_basic_test(allocator_type)
-      sharedstructures.delete_pool('test-table')
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_conditional_writes_test(allocator_type)
-      sharedstructures.delete_pool('test-table')
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_collision_test(allocator_type)
       # TODO: enable this test again when the python module supports incr
-      # sharedstructures.delete_pool('test-table')
+      # sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       # run_incr_test(allocator_type)
-      sharedstructures.delete_pool('test-table')
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_concurrent_readers_test(allocator_type)
     print('all tests passed')
     return 0
 
   finally:
-    sharedstructures.delete_pool('test-table')
+    for allocator_type in ALLOCATOR_TYPES:
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
 
 if __name__ == '__main__':

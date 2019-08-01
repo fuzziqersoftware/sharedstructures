@@ -22,9 +22,11 @@ using namespace sharedstructures;
 
 using Behavior = ProcessReadWriteLockGuard::Behavior;
 
+const string pool_name = "ProcessLockTest-pool";
+
 
 shared_ptr<Pool> create_pool() {
-  return shared_ptr<Pool>(new Pool("test-pool", 1024 * 1024));
+  return shared_ptr<Pool>(new Pool(pool_name, 1024 * 1024));
 }
 
 
@@ -365,7 +367,7 @@ void run_read_crash_test() {
 int main(int argc, char* argv[]) {
   int retcode = 0;
   try {
-    Pool::delete_pool("test-pool");
+    Pool::delete_pool(pool_name);
     {
       create_pool();
     }
@@ -379,7 +381,7 @@ int main(int argc, char* argv[]) {
 
     // only delete the pool if the tests pass; if they don't, we might want to
     // examine its contents
-    Pool::delete_pool("test-pool");
+    Pool::delete_pool(pool_name);
 
   } catch (const exception& e) {
     printf("failure: %s\n", e.what());

@@ -22,6 +22,8 @@ using namespace std;
 using namespace sharedstructures;
 using LookupResult = PrefixTree::LookupResult;
 
+const string pool_name_prefix = "PrefixTreeTest-cc-pool-";
+
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -100,7 +102,7 @@ void verify_state(
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
   expect_eq(0, table->size());
@@ -207,7 +209,7 @@ static bool insert_vector(shared_ptr<PrefixTree> table, const string& key,
 void run_iovec_insert_test(const string& allocator_type) {
   printf("-- [%s] vector inserts\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
   expect_eq(0, table->size());
@@ -244,7 +246,7 @@ void run_iovec_insert_test(const string& allocator_type) {
 void run_conditional_writes_test(const string& allocator_type) {
   printf("-- [%s] conditional writes\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
   expect_eq(0, table->size());
@@ -398,7 +400,7 @@ void run_conditional_writes_test(const string& allocator_type) {
 void run_reorganization_test(const string& allocator_type) {
   printf("-- [%s] reorganization\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -602,7 +604,7 @@ void run_types_test(const string& allocator_type) {
   //string ls = l.str(), rs = r.str();
   //fprintf(stderr, "%s vs %s\n", ls.c_str(), rs.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -732,7 +734,7 @@ void run_types_test(const string& allocator_type) {
 void run_incr_test(const string& allocator_type) {
   printf("-- [%s] incr\n", allocator_type.c_str());
 
-  auto table = get_or_create_tree("test-table", allocator_type);
+  auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
@@ -892,7 +894,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
 
   if (child_pids.count(0)) {
     // child process: try up to 3 seconds to get the key
-    auto table = get_or_create_tree("test-table", allocator_type);
+    auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     int64_t value = 100;
     uint64_t start_time = now();
@@ -911,7 +913,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
 
   } else {
     // parent process: write the key, then wait for children to terminate
-    auto table = get_or_create_tree("test-table", allocator_type);
+    auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     for (int64_t value = 100; value < 110; value++) {
       usleep(50000);
@@ -954,7 +956,7 @@ void run_concurrent_writers_test(const string& allocator_type) {
 
   if (child_pids.count(0)) {
     // child process: try up to 3 seconds to get the key
-    auto table = get_or_create_tree("test-table", allocator_type);
+    auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     uint64_t start_time = now();
     do {
@@ -968,7 +970,7 @@ void run_concurrent_writers_test(const string& allocator_type) {
 
   } else {
     // parent process: wait for children to terminate
-    auto table = get_or_create_tree("test-table", allocator_type);
+    auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     int num_failures = 0;
     int exit_status;
@@ -999,7 +1001,7 @@ int main(int argc, char* argv[]) {
   vector<string> allocator_types({"simple", "logarithmic"});
   try {
     for (const auto& allocator_type : allocator_types) {
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_basic_test(allocator_type);
       run_iovec_insert_test(allocator_type);
       run_conditional_writes_test(allocator_type);
@@ -1015,7 +1017,9 @@ int main(int argc, char* argv[]) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  Pool::delete_pool("test-table");
+  for (const auto& allocator_type : allocator_types) {
+    Pool::delete_pool(pool_name_prefix + allocator_type);
+  }
 
   return retcode;
 }

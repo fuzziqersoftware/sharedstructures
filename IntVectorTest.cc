@@ -18,9 +18,11 @@
 using namespace std;
 using namespace sharedstructures;
 
+const string pool_name = "IntVectorTest-cc-pool";
 
-shared_ptr<IntVector> get_or_create_vector(const string& name) {
-  shared_ptr<Pool> pool(new Pool(name));
+
+shared_ptr<IntVector> get_or_create_vector() {
+  shared_ptr<Pool> pool(new Pool(pool_name));
   return shared_ptr<IntVector>(new IntVector(pool));
 }
 
@@ -38,7 +40,7 @@ void print_vector(shared_ptr<IntVector> v) {
 void run_basic_test() {
   printf("-- basic\n");
 
-  auto v = get_or_create_vector("test-vector");
+  auto v = get_or_create_vector();
 
   const size_t limit = 1024;
 
@@ -150,7 +152,7 @@ void run_concurrent_readers_test() {
 
   if (child_pids.count(0)) {
     // child process: try up to 3 seconds for value to go from 100 to 110
-    auto v = get_or_create_vector("test-vector");
+    auto v = get_or_create_vector();
 
     int64_t value = 100;
     uint64_t start_time = now();
@@ -166,7 +168,7 @@ void run_concurrent_readers_test() {
 
   } else {
     // parent process: increment the value from 100 to 110
-    auto v = get_or_create_vector("test-vector");
+    auto v = get_or_create_vector();
 
     for (int64_t value = 100; value < 110; value++) {
       usleep(100000);
@@ -196,7 +198,7 @@ int main(int argc, char* argv[]) {
   int retcode = 0;
 
   try {
-    Pool::delete_pool("test-vector");
+    Pool::delete_pool(pool_name);
     run_basic_test();
     run_concurrent_readers_test();
     printf("all tests passed\n");
@@ -205,7 +207,7 @@ int main(int argc, char* argv[]) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  Pool::delete_pool("test-vector");
+  Pool::delete_pool(pool_name);
 
   return retcode;
 }

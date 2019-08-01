@@ -19,6 +19,8 @@
 using namespace std;
 using namespace sharedstructures;
 
+const string pool_name_prefix = "HashTableTest-cc-pool-";
+
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -63,7 +65,7 @@ void verify_state(
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 6);
 
@@ -108,7 +110,7 @@ void run_collision_test(const string& allocator_type) {
 
   // writing 5 keys to a 4-slot hashtable forces a collision
 
-  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 2);
 
@@ -144,7 +146,7 @@ void run_collision_test(const string& allocator_type) {
 void run_conditional_writes_test(const string& allocator_type) {
   printf("-- [%s] conditional writes\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 6);
 
@@ -234,7 +236,7 @@ static T at_typed(HashTable& table, const char* key) {
 void run_incr_test(const string& allocator_type) {
   printf("-- [%s] incr\n", allocator_type.c_str());
 
-  shared_ptr<Pool> pool(new Pool("test-table"));
+  shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   HashTable table(alloc, 0, 6);
 
@@ -325,7 +327,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
 
   if (child_pids.count(0)) {
     // child process: try up to a second to get the key
-    shared_ptr<Pool> pool(new Pool("test-table"));
+    shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
     shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);
 
@@ -348,7 +350,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
 
   } else {
     // parent process: write the key, then wait for children to terminate
-    shared_ptr<Pool> pool(new Pool("test-table"));
+    shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
     shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);
 
@@ -385,15 +387,15 @@ int main(int argc, char* argv[]) {
   vector<string> allocator_types({"simple", "logarithmic"});
   try {
     for (const string& allocator_type : allocator_types) {
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_basic_test(allocator_type);
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_conditional_writes_test(allocator_type);
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_collision_test(allocator_type);
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_incr_test(allocator_type);
-      Pool::delete_pool("test-table");
+      Pool::delete_pool(pool_name_prefix + allocator_type);
       run_concurrent_readers_test(allocator_type);
     }
     printf("all tests passed\n");
@@ -402,7 +404,9 @@ int main(int argc, char* argv[]) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  //Pool::delete_pool("test-table");
+  for (const auto& allocator_type : allocator_types) {
+    Pool::delete_pool(pool_name_prefix + allocator_type);
+  }
 
   return retcode;
 }

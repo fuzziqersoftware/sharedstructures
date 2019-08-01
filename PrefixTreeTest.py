@@ -7,6 +7,9 @@ import time
 
 import sharedstructures
 
+POOL_NAME_PREFIX = "PrefixTreeTest-py-pool-"
+ALLOCATOR_TYPES = ('simple', 'logarithmic')
+
 
 def get_current_process_lsof():
   return subprocess.check_output(['lsof', '-p', str(os.getpid())])
@@ -38,7 +41,7 @@ def run_basic_test(allocator_type):
   print('-- [%s] basic' % allocator_type)
   before_lsof_count = len(get_current_process_lsof().splitlines())
 
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -85,7 +88,7 @@ def run_basic_test(allocator_type):
   assert {} == expected
 
   del table  # this should unmap the shared memory pool and close the fd
-  sharedstructures.delete_pool('test-table')
+  sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
   # make sure we didn't leak an fd
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
@@ -94,7 +97,7 @@ def run_basic_test(allocator_type):
 def run_conditional_writes_test(allocator_type):
   print("-- [%s] conditional writes" % allocator_type)
 
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(e, t, k, v):
@@ -234,7 +237,7 @@ def run_conditional_writes_test(allocator_type):
 
 def run_reorganization_test(allocator_type):
   print('-- [%s] reorganization' % allocator_type)
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(k):
@@ -284,7 +287,7 @@ def run_reorganization_test(allocator_type):
 
 def run_types_test(allocator_type):
   print('-- [%s] types' % allocator_type)
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(k, v):
@@ -332,7 +335,7 @@ def run_types_test(allocator_type):
 
 def run_complex_types_test(allocator_type):
   print('-- [%s] complex types' % allocator_type)
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(k, v):
@@ -368,7 +371,7 @@ def run_complex_types_test(allocator_type):
 
 def run_incr_test(allocator_type):
   print('-- [%s] incr' % allocator_type)
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   expected = {}
 
   def insert_both(k, v):
@@ -480,7 +483,7 @@ def run_incr_test(allocator_type):
 def run_concurrent_readers_test(allocator_type):
   print('-- [%s] concurrent readers' % allocator_type)
 
-  table = sharedstructures.PrefixTree('test-table', allocator_type)
+  table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
   del table
 
   child_pids = set()
@@ -489,7 +492,7 @@ def run_concurrent_readers_test(allocator_type):
 
   if 0 in child_pids:
     # child process: try up to a second to get the key
-    table = sharedstructures.PrefixTree('test-table', allocator_type)
+    table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     value = 100
     start_time = int(time.time() * 1000000)
@@ -508,7 +511,7 @@ def run_concurrent_readers_test(allocator_type):
 
   else:
     # parent process: write the key, then wait for children to terminate
-    table = sharedstructures.PrefixTree('test-table', allocator_type)
+    table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     for value in range(100, 110):
       time.sleep(0.05)
@@ -532,8 +535,8 @@ def run_concurrent_readers_test(allocator_type):
 
 def main():
   try:
-    for allocator_type in ('simple', 'logarithmic'):
-      sharedstructures.delete_pool('test-table')
+    for allocator_type in ALLOCATOR_TYPES:
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_basic_test(allocator_type)
       run_conditional_writes_test(allocator_type)
       run_reorganization_test(allocator_type)
@@ -545,7 +548,8 @@ def main():
     return 0
 
   finally:
-    sharedstructures.delete_pool('test-table')
+    for allocator_type in ALLOCATOR_TYPES:
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
 
 if __name__ == '__main__':

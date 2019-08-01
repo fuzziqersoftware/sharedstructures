@@ -7,6 +7,8 @@ import time
 
 import sharedstructures
 
+POOL_NAME = "IntVectorTest-py-pool"
+
 
 def get_current_process_lsof():
   return subprocess.check_output(['lsof', '-p', str(os.getpid())])
@@ -16,7 +18,7 @@ def run_basic_test():
   print('-- basic')
   before_lsof_count = len(get_current_process_lsof().splitlines())
 
-  v = sharedstructures.IntVector('test-vector')
+  v = sharedstructures.IntVector(POOL_NAME)
 
   limit = 1024
 
@@ -88,7 +90,7 @@ def run_basic_test():
     assert v.load(x) == x
 
   del v  # this should unmap the shared memory pool and close the fd
-  sharedstructures.delete_pool('test-vector')
+  sharedstructures.delete_pool(POOL_NAME)
 
   # make sure we didn't leak an fd
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
@@ -96,13 +98,13 @@ def run_basic_test():
 
 def main():
   try:
-    sharedstructures.delete_pool('test-vector')
+    sharedstructures.delete_pool(POOL_NAME)
     run_basic_test()
     print('all tests passed')
     return 0
 
   finally:
-    sharedstructures.delete_pool('test-vector')
+    sharedstructures.delete_pool(POOL_NAME)
 
 
 if __name__ == '__main__':
