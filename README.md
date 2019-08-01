@@ -35,7 +35,7 @@ Both HashTable and PrefixTree support getting and setting individual keys, itera
 
 **IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
 
-The header files (HashTable.hh, PrefixTree.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, and IntVectorTest.cc) for usage examples.
+The header files (HashTable.hh, PrefixTree.hh, Queue.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, QueueTest.cc, and IntVectorTest.cc) for usage examples.
 
 ## Basic usage
 
@@ -94,14 +94,14 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     std::shared_ptr<Queue> q(new Queue(alloc, 0));
 
     // add items to the queue
-    q->push_back(item1);
-    q->push_back(item1_data, item1_size);
-    q->push_front(item2);
-    q->push_front(item2_data, item2_size);
+    q->push_back(item1);  // std::string
+    q->push_back(item1_data, item1_size);  // (void*, size_t)
+    q->push_front(item2);  // std::string
+    q->push_front(item2_data, item2_size);  // (void*, size_t)
 
     // remove items from the queue (throws std::out_of_range if empty)
-    item3 = q->pop_back();
-    item4 = q->pop_front();
+    std::string item3 = q->pop_back();
+    std::string item4 = q->pop_front();
 
     // get the number of items in the queue
     size_t count = q->size();
@@ -120,7 +120,7 @@ In Python, all queue items are bytes objects. Usage:
     item3 = q.pop_back()
     item4 = q.pop_front()
 
-    # check the queue size
+    # get the number of items in the queue
     num_items = len(q)
 
 ### Atomic integer vectors
@@ -188,15 +188,16 @@ Queues and IntVectors are not iterable.
 
 ## Python wrapper semantics
 
-HashTable, PrefixTree, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the IntVector object instead.
+HashTable, PrefixTree, Queue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For Queue and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
 
-The Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
+For mapping types, the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables and PrefixTrees, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
-There are a few quirks to watch out for when using HashTable and PrefixTree:
-- Modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
-- Strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
-- `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
-- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above. Similarly, IntVector isn't a subclass of list, but unlike the others, there's no easy way to convert an IntVector to a non-shared list.
+There are a few quirks to watch out for:
+- With HashTable and PrefixTree, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
+- With HashTable and PrefixTree, strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
+- With HashTable and PrefixTree, `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
+- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
+- Queue and IntVector aren't subclasses of list. Unlike the others, there's no easy way to convert them to non-shared lists.
 
 ## Thread safety
 
