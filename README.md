@@ -113,12 +113,12 @@ Python usage is similar:
     q = sharedstructures.Queue(filename, 'logarithmic', 0)
 
     # add items to the queue
-    q.push_back(item1)
-    q.push_front(item2)
+    q.push_back(item1)  # or q.append(item1)
+    q.push_front(item2)  # or q.appendleft(item2)
 
     # remove items from the queue (raises IndexError if empty)
-    item3 = q.pop_back()
-    item4 = q.pop_front()
+    item3 = q.pop_back()  # or q.pop()
+    item4 = q.pop_front()  # or q.popleft()
 
     # get the number of items in the queue
     num_items = len(q)

@@ -2031,6 +2031,14 @@ static PyMethodDef sharedstructures_Queue_methods[] = {
       sharedstructures_Queue_push_front_doc},
   {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS,
       sharedstructures_Queue_push_back_doc},
+  {"popleft", (PyCFunction)sharedstructures_Queue_pop_front, METH_NOARGS,
+      sharedstructures_Queue_pop_front_doc},
+  {"pop", (PyCFunction)sharedstructures_Queue_pop_back, METH_NOARGS,
+      sharedstructures_Queue_pop_back_doc},
+  {"appendleft", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS,
+      sharedstructures_Queue_push_front_doc},
+  {"append", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS,
+      sharedstructures_Queue_push_back_doc},
   {NULL},
 };
 
