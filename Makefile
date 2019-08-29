@@ -1,6 +1,6 @@
 OBJECTS=Pool.o ProcessLock.o \
 	Allocator.o SimpleAllocator.o LogarithmicAllocator.o \
-	HashTable.o PrefixTree.o IntVector.o Queue.o
+	HashTable.o PrefixTree.o IntVector.o Queue.o PriorityQueue.o
 CXX=g++ -fPIC
 CXXFLAGS=-std=c++14 -g -Wall -Werror
 LDFLAGS=-std=c++14 -lphosg -g
@@ -47,13 +47,14 @@ libsharedstructures.a: $(OBJECTS)
 	ar rcs libsharedstructures.a $(OBJECTS)
 
 
-cpp_test: AllocatorTest HashTableTest PrefixTreeTest IntVectorTest QueueTest ProcessLockTest AllocatorBenchmark PrefixTreeBenchmark
+cpp_test: AllocatorTest HashTableTest PrefixTreeTest IntVectorTest QueueTest PriorityQueueTest ProcessLockTest AllocatorBenchmark PrefixTreeBenchmark
 	./ProcessLockTest
 	./AllocatorTest
 	./PrefixTreeTest
 	./HashTableTest
 	./IntVectorTest
 	./QueueTest
+	./PriorityQueueTest
 
 %Test: %Test.o $(OBJECTS)
 	$(CXX) $^ $(LDFLAGS) -o $@
@@ -83,12 +84,14 @@ py_test: sharedstructures.so
 	python PrefixTreeTest.py
 	python IntVectorTest.py
 	python QueueTest.py
+	python PriorityQueueTest.py
 
 py3_test: sharedstructures.abi3.so
 	python3 HashTableTest.py
 	python3 PrefixTreeTest.py
 	python3 IntVectorTest.py
 	python3 QueueTest.py
+	python3 PriorityQueueTest.py
 
 
 clean:

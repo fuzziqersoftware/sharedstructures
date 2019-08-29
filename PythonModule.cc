@@ -19,6 +19,7 @@
 #include "PrefixTree.hh"
 #include "IntVector.hh"
 #include "Queue.hh"
+#include "PriorityQueue.hh"
 
 using namespace std;
 
@@ -33,7 +34,7 @@ using LookupResult = sharedstructures::PrefixTree::LookupResult;
 static const char* sharedstructures_doc =
 "Dynamically-sized shared-memory data structure module.\n\
 \n\
-This module provides the HashTable, PrefixTree, Queue, and IntVector classes.";
+This module provides the HashTable, PrefixTree, Queue, PriorityQueue, and IntVector classes.";
 
 
 
@@ -289,6 +290,24 @@ typedef struct {
   PyObject_HEAD
   shared_ptr<sharedstructures::Queue> q;
 } sharedstructures_Queue;
+
+static const char* sharedstructures_PriorityQueue_doc =
+"Shared-memory heap (priority queue) object.\n\
+\n\
+sharedstructures.PriorityQueue(pool_name[, allocator_type[, base_offset]])\n\
+\n\
+Arguments:\n\
+- pool_name: the name of the shared-memory pool to operate on.\n\
+- allocator_type: 'simple' (default) or 'logarithmic' (see README.md).\n\
+- base_offset: if given, opens a PriorityQueue at this offset within the pool.\n\
+  If not given, opens a PriorityQueue at the pool's base offset. If the pool's\n\
+  base offset is 0, creates a new PriorityQueue and sets the pool's base offset\n\
+  to the new PriorityQueue's offset.";
+
+typedef struct {
+  PyObject_HEAD
+  shared_ptr<sharedstructures::PriorityQueue> q;
+} sharedstructures_PriorityQueue;
 
 static const char* sharedstructures_IntVector_doc =
 "Shared-memory atomic integer array object.\n\
@@ -2100,6 +2119,186 @@ static PyTypeObject sharedstructures_QueueType = {
 
 
 
+// PriorityQueue object method definitions
+
+static PyObject* sharedstructures_PriorityQueue_New(PyTypeObject* type,
+    PyObject* args, PyObject* kwargs) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)PyType_GenericNew(
+      type, args, kwargs);
+  if (!self) {
+    return NULL;
+  }
+
+  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
+  const char* pool_name;
+  Py_ssize_t base_offset = 0;
+  const char* allocator_type = NULL;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
+      &pool_name, &allocator_type, &base_offset)) {
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  try {
+    auto allocator = sharedstructures_internal_get_allocator(pool_name,
+        allocator_type);
+    new (&self->q) shared_ptr<sharedstructures::PriorityQueue>(
+        new sharedstructures::PriorityQueue(allocator, base_offset));
+
+  } catch (const exception& e) {
+    PyErr_Format(PyExc_RuntimeError, "failed to initialize queue: %s", e.what());
+    Py_DECREF(self);
+    return NULL;
+  }
+
+  return (PyObject*)self;
+}
+
+static void sharedstructures_PriorityQueue_Dealloc(PyObject* obj) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)obj;
+  self->q.~shared_ptr();
+  Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* sharedstructures_PriorityQueue_Repr(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+#ifdef IS_PY3K
+  return PyUnicode_FromFormat(
+      "<sharedstructures.PriorityQueue on %s:%p at %p>",
+      self->q->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->q->base(), py_self);
+#else
+  return PyBytes_FromFormat(
+      "<sharedstructures.PriorityQueue on %s:%p at %p>",
+      self->q->get_allocator()->get_pool()->get_name().c_str(),
+      (const void*)self->q->base(), py_self);
+#endif
+}
+
+static Py_ssize_t sharedstructures_PriorityQueue_Len(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+  return self->q->size();
+}
+
+static const char* sharedstructures_PriorityQueue_pop_doc =
+"Removes and returns the minimum item in the queue.\n\
+\n\
+PriorityQueue.pop_front() -> bytes";
+
+static PyObject* sharedstructures_PriorityQueue_pop(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+  try {
+    string item = self->q->pop();
+    return PyBytes_FromStringAndSize(const_cast<char*>(item.data()),
+        item.size());
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "queue is empty");
+    return NULL;
+  }
+}
+
+static const char* sharedstructures_PriorityQueue_push_doc =
+"Adds the given item to the queue.\n\
+\n\
+PriorityQueue.push(item) -> None";
+
+static PyObject* sharedstructures_PriorityQueue_push(PyObject* py_self,
+    PyObject* args) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+
+  char* data;
+  Py_ssize_t size;
+  if (!PyArg_ParseTuple(args, "s#", &data, &size)) {
+    return NULL;
+  }
+
+  self->q->push(data, size);
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+static const char* sharedstructures_PriorityQueue_pool_bytes_doc =
+"Returns the size of the underlying shared memory pool.";
+
+static PyObject* sharedstructures_PriorityQueue_pool_bytes(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+#ifdef IS_PY3K
+  return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
+#else
+  return PyInt_FromSize_t(self->q->get_allocator()->get_pool()->size());
+#endif
+}
+
+static PyMethodDef sharedstructures_PriorityQueue_methods[] = {
+  {"pool_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_bytes, METH_NOARGS,
+      sharedstructures_PriorityQueue_pool_bytes_doc},
+  {"pop", (PyCFunction)sharedstructures_PriorityQueue_pop, METH_NOARGS,
+      sharedstructures_PriorityQueue_pop_doc},
+  {"push", (PyCFunction)sharedstructures_PriorityQueue_push, METH_VARARGS,
+      sharedstructures_PriorityQueue_push_doc},
+  {NULL},
+};
+
+static PySequenceMethods sharedstructures_PriorityQueue_sequencemethods = {
+  sharedstructures_PriorityQueue_Len, // sq_length
+  0, // sq_concat
+  0, // sq_repeat
+  0, // sq_item
+  0, // sq_slice
+  0, // sq_ass_item
+  0, // sq_ass_slice
+  0, // sq_contains
+  0, // sq_inplace_concat
+  0, // sq_inplace_repeat
+};
+
+static PyTypeObject sharedstructures_PriorityQueueType = {
+   PyVarObject_HEAD_INIT(NULL, 0)
+   "sharedstructures.PriorityQueue",                   // tp_name
+   sizeof(sharedstructures_PriorityQueue),             // tp_basicsize
+   0,                                                  // tp_itemsize
+   (destructor)sharedstructures_PriorityQueue_Dealloc, // tp_dealloc
+   0,                                                  // tp_print
+   0,                                                  // tp_getattr
+   0,                                                  // tp_setattr
+   0,                                                  // tp_compare
+   sharedstructures_PriorityQueue_Repr,                // tp_repr
+   0,                                                  // tp_as_number
+   &sharedstructures_PriorityQueue_sequencemethods,    // tp_as_sequence
+   0,                                                  // tp_as_mapping
+   0,                                                  // tp_hash
+   0,                                                  // tp_call
+   0,                                                  // tp_str
+   0,                                                  // tp_getattro
+   0,                                                  // tp_setattro
+   0,                                                  // tp_as_buffer
+   Py_TPFLAGS_DEFAULT,                                 // tp_flag
+   sharedstructures_PriorityQueue_doc,                 // tp_doc
+   0,                                                  // tp_traverse
+   0,                                                  // tp_clear
+   0,                                                  // tp_richcompare
+   0,                                                  // tp_weaklistoffset
+   0,                                                  // tp_iter
+   0,                                                  // tp_iternext
+   sharedstructures_PriorityQueue_methods,             // tp_methods
+   0,                                                  // tp_members
+   0,                                                  // tp_getset
+   0,                                                  // tp_base
+   0,                                                  // tp_dict
+   0,                                                  // tp_descr_get
+   0,                                                  // tp_descr_set
+   0,                                                  // tp_dictoffset
+   0,                                                  // tp_init
+   0,                                                  // tp_alloc
+   sharedstructures_PriorityQueue_New,                 // tp_new
+};
+
+
+
+
+
 // IntVector object method definitions
 
 static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
@@ -2567,6 +2766,9 @@ static PyObject* sharedstructures_module_init() {
   if (PyType_Ready(&sharedstructures_QueueType) < 0) {
     return NULL;
   }
+  if (PyType_Ready(&sharedstructures_PriorityQueueType) < 0) {
+    return NULL;
+  }
 
 #if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&sharedstructures_module_def);
@@ -2587,6 +2789,8 @@ static PyObject* sharedstructures_module_init() {
   PyModule_AddObject(m, "IntVector", (PyObject*)&sharedstructures_IntVectorType);
   Py_INCREF(&sharedstructures_QueueType);
   PyModule_AddObject(m, "Queue", (PyObject*)&sharedstructures_QueueType);
+  Py_INCREF(&sharedstructures_PriorityQueueType);
+  PyModule_AddObject(m, "PriorityQueue", (PyObject*)&sharedstructures_PriorityQueueType);
 
   return m;
 }

@@ -6,6 +6,7 @@ This library currently supports these data structures:
 - Hash tables with binary string keys and values
 - Prefix trees with binary string keys and typed values (supported types are null, bool, int, float, and binary string)
 - Queues (doubly-linked lists) with binary string values
+- Priority queues (heaps) with binary string values
 - Atomic 64-bit integer arrays
 
 ## Building
@@ -33,9 +34,11 @@ Both HashTable and PrefixTree support getting and setting individual keys, itera
 
 **Queue** implements a doubly-linked list of binary strings. Items may only be accessed at the ends of the list, not at arbitrary positions within the list.
 
+**PriorityQueue** implements a heap of binary strings. Supports adding arbitrary strings to the heap and removing the minimum item (lexicographically earliest string).
+
 **IntVector** implements an array of 64-bit signed integers, supporting various atomic operations on them. Unlike the other data structures, IntVector operates directly on top of a Pool object and does not have an Allocator. This is necessary because it implements only lock-free operations, and Allocators require using locks. This also means that a Pool containing an IntVector may not contain any other data structures.
 
-The header files (HashTable.hh, PrefixTree.hh, Queue.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, QueueTest.cc, and IntVectorTest.cc) for usage examples.
+The header files (HashTable.hh, PrefixTree.hh, Queue.hh, PriorityQueue.hh, and IntVector.hh) document how to use these objects. Take a look at the test source (HashTableTest.cc, PrefixTreeTest.cc, QueueTest.cc, PriorityQueueTest.cc, and IntVectorTest.cc) for usage examples.
 
 ## Basic usage
 
@@ -123,6 +126,49 @@ Python usage is similar:
     # get the number of items in the queue
     num_items = len(q)
 
+### Priority queues
+
+PriorityQueue usage is also pretty straightforward.
+
+In C++, you can add std::string objects and pointer/size pairs to the queue, but it only returns std::string objects. Usage:
+
+    #include <memory>
+    #include <sharedstructures/Pool.hh>
+    #include <sharedstructures/LogarithmicAllocator.hh>
+    #include <sharedstructures/PriorityQueue.hh>
+
+    using namespace sharedstructures;
+
+    std::shared_ptr<Pool> pool(new Pool(filename));
+    std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
+    std::shared_ptr<PriorityQueue> q(new PriorityQueue(alloc, 0));
+
+    // add items to the queue
+    q->push(item1);  // std::string
+    q->push(item1_data, item1_size);  // (void*, size_t)
+
+    // pop the minimum item from the queue (throws std::out_of_range if empty)
+    std::string item3 = q->pop();
+
+    // get the number of items in the queue
+    size_t count = q->size();
+
+Python usage is similar:
+
+    import sharedstructures
+
+    q = sharedstructures.PriorityQueue(filename, 'logarithmic', 0)
+
+    # add items to the queue (items must be bytes objects)
+    q.push(item1)
+    q.push(item2)
+
+    # remove items from the queue (raises IndexError if empty)
+    item3 = q.pop()
+
+    # get the number of items in the queue
+    num_items = len(q)
+
 ### Atomic integer vectors
 
 Unlike the other data structures, atomic integer vectors do not use an underlying allocator; instead, they manage memory in the pool internally. This means that an AtomicIntegerVector cannot share a pool with any other data structures.
@@ -184,13 +230,13 @@ Iterating a PrefixTree produces items in lexicographic order. Concurrent changes
 
 For both structures, the iterator objects cache one or more results on the iterator object itself, so values can't be modified through the iterator object.
 
-Queues and IntVectors are not iterable.
+Queues, PriorityQueues, and IntVectors are not iterable.
 
 ## Python wrapper semantics
 
-HashTable, PrefixTree, Queue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For Queue and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
+HashTable, PrefixTree, Queue, PriorityQueue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For Queue, PriorityQueue, and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
 
-For all types except IntVector, the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables, PrefixTrees, and Queues, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
+For HashTables, PrefixTrees, and Queues (but not PriorityQueues), the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables, PrefixTrees, and Queues, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
 There are a few quirks to watch out for:
 - With HashTable and PrefixTree, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
@@ -218,7 +264,7 @@ The allocators are not thread-safe by default, but they include a global read-wr
     }
     // now it's no longer safe to read from or write to the pool
 
-HashTable, PrefixTree, and Queue use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
+HashTable, PrefixTree, Queue, and PriorityQueue use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
 
 sharedstructures objects are not necessarily thread-safe within a process because one thread may remap the view of the shared memory segment while another thread attempts to access it. It's recommended for each thread that needs access to a Pool to have its own Pool object for this reason.
 
@@ -228,7 +274,7 @@ Operations on shared data structures use a global lock over the entire structure
 
 Currently, the lock wait algorithm will check periodically if the process holding the lock is still alive. If the holding process has died, the waiting process will "steal" the lock from that process and repair the allocator's internal data structures. This may be slow for large data structures, since it involves walking the entire list of allocated regions.
 
-HashTable is not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable if a process crashed while operating on it.
+HashTable and PriorityQueue are not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable or PriorityQueue if a process crashed while operating on it.
 
 PrefixTree and Queue are always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked if a process crashes while operating on the structure, and there may be some extra (empty) nodes left over. These nodes won't be visible to reads, and in the case of PrefixTree, the empty nodes will be deleted or reused when a write operation next touches them.
 
@@ -236,10 +282,11 @@ PrefixTree and Queue are always consistent and doesn't need any extra repairs af
 
 There's a lot to do here.
 - Use a more efficient locking strategy. Currently we use spinlocks.
-- Make hash tables always consistent for crash recovery.
+- Make hash tables and priority queues always consistent for crash recovery.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).
 - Make hash tables support atomic increments in Python.
+- Support shrinking the priority queue heap array.
 - Return immutable objects for complex types in Python to make in-place modification not fail silently.
 - Add more data structures to the library.
 - Make pool creation race-free. Currently processes can get weird errors if they both attempt to create the same pool at the same time.
