@@ -7,10 +7,8 @@ LDFLAGS=-std=c++14 -lphosg -g
 
 INSTALL_DIR=/usr/local
 
-PYTHON_INCLUDES=$(shell python-config --includes)
-PYTHON3_INCLUDES=$(shell python3-config --includes)
-PYTHON_LIBS=$(shell python-config --libs)
-PYTHON3_LIBS=$(shell python3-config --libs)
+PYTHON_INCLUDES=$(shell python3-config --includes)
+PYTHON_LIBS=$(shell python3-config --libs)
 
 
 UNAME = $(shell uname -s)
@@ -27,9 +25,9 @@ ifeq ($(UNAME),Linux)
 	PYTHON_MODULE_LDFLAGS = -shared
 endif
 
-all: cpp_only py_only py3_only
+all: cpp_only py_only
 
-test: cpp_test py_test py3_test
+test: cpp_test py_test
 
 install: libsharedstructures.a
 	mkdir -p $(INSTALL_DIR)/include/sharedstructures
@@ -38,9 +36,7 @@ install: libsharedstructures.a
 
 cpp_only: libsharedstructures.a
 
-py_only: sharedstructures.so
-
-py3_only: sharedstructures.abi3.so
+py_only: sharedstructures.abi3.so
 
 libsharedstructures.a: $(OBJECTS)
 	rm -f libsharedstructures.a
@@ -66,27 +62,14 @@ PrefixTreeBenchmark: PrefixTreeBenchmark.o $(OBJECTS)
 	$(CXX) $^ $(LDFLAGS) -o $@
 
 
-sharedstructures.so: $(OBJECTS) PythonModule.o
-	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
-
-sharedstructures.abi3.so: $(OBJECTS) PythonModule3.o
+sharedstructures.abi3.so: $(OBJECTS) PythonModule.o
 	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
 
 PythonModule.o: PythonModule.cc
 	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o
 
-PythonModule3.o: PythonModule.cc
-	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON3_INCLUDES) -c PythonModule.cc -o PythonModule3.o
 
-
-py_test: sharedstructures.so
-	python HashTableTest.py
-	python PrefixTreeTest.py
-	python IntVectorTest.py
-	python QueueTest.py
-	python PriorityQueueTest.py
-
-py3_test: sharedstructures.abi3.so
+py_test: sharedstructures.abi3.so
 	python3 HashTableTest.py
 	python3 PrefixTreeTest.py
 	python3 IntVectorTest.py
@@ -95,6 +78,6 @@ py3_test: sharedstructures.abi3.so
 
 
 clean:
-	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.so sharedstructures.abi3.so *Test AllocatorBenchmark PrefixTreeBenchmark
+	rm -rf *.dSYM *.o gmon.out libsharedstructures.a sharedstructures.abi3.so *Test AllocatorBenchmark PrefixTreeBenchmark
 
-.PHONY: all cpp_only py_only clean cpp_test py_test py3_test
+.PHONY: all cpp_only py_only clean cpp_test py_test

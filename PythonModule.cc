@@ -2,8 +2,8 @@
 #include <Python.h>
 #include <marshal.h>
 
-#if PY_MAJOR_VERSION >= 3
-#define IS_PY3K
+#if PY_MAJOR_VERSION < 3
+#error "sharedstructures no longer supports Python 2"
 #endif
 
 #define __STDC_FORMAT_MACROS
@@ -100,15 +100,7 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
       }
 
     case ResultValueType::Int:
-#ifdef IS_PY3K
       return PyLong_FromLongLong(res.as_int);
-#else
-      if (res.as_int > PyInt_GetMax()) {
-        return PyLong_FromLongLong(res.as_int);
-      } else {
-        return PyInt_FromLong(res.as_int);
-      }
-#endif
 
     case ResultValueType::Double:
       return PyFloat_FromDouble(res.as_double);
@@ -146,15 +138,6 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
     }
     return LookupResult(v);
 
-#ifndef IS_PY3K
-  } else if (PyInt_Check(o)) {
-    int64_t v = PyInt_AsLong(o);
-    if (v == -1 && PyErr_Occurred()) {
-      throw runtime_error("failed to convert python object to LookupResult");
-    }
-    return LookupResult(v);
-#endif
-
   } else if (PyLong_Check(o)) {
     int64_t v = PyLong_AsLongLong(o);
     if (v == -1 && PyErr_Occurred()) {
@@ -174,11 +157,7 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
 
   } else if (PyUnicode_Check(o)) {
     LookupResult res("\x01", 1);
-#ifdef IS_PY3K
     Py_ssize_t count = PyUnicode_GetLength(o);
-#else
-    Py_ssize_t count = PyUnicode_GetSize(o);
-#endif
     const Py_UNICODE* data = PyUnicode_AsUnicode(o);
     if (!data) {
       throw runtime_error("failed to convert python object to LookupResult");
@@ -442,13 +421,8 @@ static PyObject* sharedstructures_HashTableIterator_Next(PyObject* py_self) {
 }
 
 static PyObject* sharedstructures_HashTableIterator_Repr(PyObject* py_self) {
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.HashTable.iterator at %p>", py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.HashTable.iterator at %p>", py_self);
-#endif
 }
 
 static PyTypeObject sharedstructures_HashTableIteratorType = {
@@ -637,17 +611,10 @@ static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
   // PyBytes_FromFormat doesn't support e.g. PRIx64 so we pretend base_offset is
   // a pointer instead
 
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.HashTable on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->table->base(), py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.HashTable on %s:%p at %p>",
-      self->table->get_allocator()->get_pool()->get_name().c_str(),
-      (const void*)self->table->base(), py_self);
-#endif
 }
 
 static const char* sharedstructures_HashTable_clear_doc =
@@ -852,11 +819,7 @@ static const char* sharedstructures_HashTable_bits_doc =
 
 static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromLong(self->table->bits());
-#else
-  return PyInt_FromLong(self->table->bits());
-#endif
 }
 
 static const char* sharedstructures_HashTable_pool_bytes_doc =
@@ -864,11 +827,7 @@ static const char* sharedstructures_HashTable_pool_bytes_doc =
 
 static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->get_pool()->size());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
-#endif
 }
 
 static const char* sharedstructures_HashTable_pool_free_bytes_doc =
@@ -876,11 +835,7 @@ static const char* sharedstructures_HashTable_pool_free_bytes_doc =
 
 static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->bytes_free());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
-#endif
 }
 
 static const char* sharedstructures_HashTable_pool_allocated_bytes_doc =
@@ -888,11 +843,7 @@ static const char* sharedstructures_HashTable_pool_allocated_bytes_doc =
 
 static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->bytes_allocated());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->bytes_allocated());
-#endif
 }
 
 static PyMethodDef sharedstructures_HashTable_methods[] = {
@@ -1112,13 +1063,8 @@ static PyObject* sharedstructures_PrefixTreeIterator_Next(PyObject* py_self) {
 }
 
 static PyObject* sharedstructures_PrefixTreeIterator_Repr(PyObject* py_self) {
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.PrefixTree.iterator at %p>", py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.PrefixTree.iterator at %p>", py_self);
-#endif
 }
 
 static PyTypeObject sharedstructures_PrefixTreeIteratorType = {
@@ -1289,17 +1235,6 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     return 0;
   }
 
-#ifndef IS_PY3K
-  if (PyInt_Check(value)) {
-    int64_t raw_value = PyInt_AsLong(value);
-    if ((raw_value == -1) && PyErr_Occurred()) {
-      return -1;
-    }
-    self->table->insert(k.first, k.second, raw_value);
-    return 0;
-  }
-#endif
-
   if (PyLong_Check(value)) {
     int64_t raw_value = PyLong_AsLongLong(value);
     if ((raw_value == -1) && PyErr_Occurred()) {
@@ -1320,11 +1255,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   }
 
   if (PyUnicode_Check(value)) {
-#ifdef IS_PY3K
     Py_ssize_t size = PyUnicode_GetLength(value);
-#else
-    Py_ssize_t size = PyUnicode_GetSize(value);
-#endif
     if (size < 0) {
       return -1;
     }
@@ -1383,18 +1314,10 @@ static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
   // PyBytes_FromFormat doesn't support e.g. PRIx64 so we pretend base_offset is
   // a pointer instead
-
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.PrefixTree on %s:%p at %p>",
       self->table->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->table->base(), py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.PrefixTree on %s:%p at %p>",
-      self->table->get_allocator()->get_pool()->get_name().c_str(),
-      (const void*)self->table->base(), py_self);
-#endif
 }
 
 static const char* sharedstructures_PrefixTree_clear_doc =
@@ -1443,38 +1366,8 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
       return NULL;
     }
 
-#ifdef IS_PY3K
     return PyLong_FromLongLong(ret);
-#else
-    if (ret > PyInt_GetMax()) {
-      return PyLong_FromLongLong(ret);
-    } else {
-      return PyInt_FromLong(ret);
-    }
-#endif
   }
-
-#ifndef IS_PY3K
-  if (PyInt_Check(delta_obj)) {
-    int64_t delta = PyInt_AsLong(delta_obj);
-    if ((delta == -1) && PyErr_Occurred()) {
-      return NULL;
-    }
-    int64_t ret;
-    try {
-      ret = self->table->incr(k, k_size, delta);
-    } catch (const out_of_range& e) {
-      PyErr_SetString(PyExc_ValueError, "incr (int) against key of different type");
-      return NULL;
-    }
-
-    if (ret > PyInt_GetMax()) {
-      return PyLong_FromLongLong(ret);
-    } else {
-      return PyInt_FromLong(ret);
-    }
-  }
-#endif
 
   if (PyFloat_Check(delta_obj)) {
     double delta = PyFloat_AsDouble(delta_obj);
@@ -1678,11 +1571,7 @@ static PyObject* sharedstructures_PrefixTree_bytes_for_prefix(
     return NULL;
   }
 
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->bytes_for_prefix(p, p_size));
-#else
-  return PyInt_FromSize_t(self->table->bytes_for_prefix(p, p_size));
-#endif
 }
 
 static const char* sharedstructures_PrefixTree_nodes_for_prefix_doc =
@@ -1698,11 +1587,7 @@ static PyObject* sharedstructures_PrefixTree_nodes_for_prefix(
     return NULL;
   }
 
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->nodes_for_prefix(p, p_size));
-#else
-  return PyInt_FromSize_t(self->table->nodes_for_prefix(p, p_size));
-#endif
 }
 
 static const char* sharedstructures_PrefixTree_pool_bytes_doc =
@@ -1710,11 +1595,7 @@ static const char* sharedstructures_PrefixTree_pool_bytes_doc =
 
 static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->get_pool()->size());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->get_pool()->size());
-#endif
 }
 
 static const char* sharedstructures_PrefixTree_pool_free_bytes_doc =
@@ -1722,11 +1603,7 @@ static const char* sharedstructures_PrefixTree_pool_free_bytes_doc =
 
 static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->bytes_free());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->bytes_free());
-#endif
 }
 
 static const char* sharedstructures_PrefixTree_pool_allocated_bytes_doc =
@@ -1734,11 +1611,7 @@ static const char* sharedstructures_PrefixTree_pool_allocated_bytes_doc =
 
 static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->table->get_allocator()->bytes_allocated());
-#else
-  return PyInt_FromSize_t(self->table->get_allocator()->bytes_allocated());
-#endif
 }
 
 static PyMethodDef sharedstructures_PrefixTree_methods[] = {
@@ -1892,17 +1765,10 @@ static void sharedstructures_Queue_Dealloc(PyObject* obj) {
 
 static PyObject* sharedstructures_Queue_Repr(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.Queue on %s:%p at %p>",
       self->q->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->q->base(), py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.Queue on %s:%p at %p>",
-      self->q->get_allocator()->get_pool()->get_name().c_str(),
-      (const void*)self->q->base(), py_self);
-#endif
 }
 
 static Py_ssize_t sharedstructures_Queue_Len(PyObject* py_self) {
@@ -2030,11 +1896,7 @@ static const char* sharedstructures_Queue_pool_bytes_doc =
 
 static PyObject* sharedstructures_Queue_pool_bytes(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
-#else
-  return PyInt_FromSize_t(self->q->get_allocator()->get_pool()->size());
-#endif
 }
 
 static PyMethodDef sharedstructures_Queue_methods[] = {
@@ -2164,17 +2026,10 @@ static void sharedstructures_PriorityQueue_Dealloc(PyObject* obj) {
 
 static PyObject* sharedstructures_PriorityQueue_Repr(PyObject* py_self) {
   sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.PriorityQueue on %s:%p at %p>",
       self->q->get_allocator()->get_pool()->get_name().c_str(),
       (const void*)self->q->base(), py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.PriorityQueue on %s:%p at %p>",
-      self->q->get_allocator()->get_pool()->get_name().c_str(),
-      (const void*)self->q->base(), py_self);
-#endif
 }
 
 static Py_ssize_t sharedstructures_PriorityQueue_Len(PyObject* py_self) {
@@ -2224,11 +2079,7 @@ static const char* sharedstructures_PriorityQueue_pool_bytes_doc =
 
 static PyObject* sharedstructures_PriorityQueue_pool_bytes(PyObject* py_self) {
   sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
-#else
-  return PyInt_FromSize_t(self->q->get_allocator()->get_pool()->size());
-#endif
 }
 
 static PyMethodDef sharedstructures_PriorityQueue_methods[] = {
@@ -2342,15 +2193,9 @@ static void sharedstructures_IntVector_Dealloc(PyObject* obj) {
 
 static PyObject* sharedstructures_IntVector_Repr(PyObject* py_self) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
-#ifdef IS_PY3K
   return PyUnicode_FromFormat(
       "<sharedstructures.IntVector on %s at %p>",
       self->v->get_pool()->get_name().c_str(), py_self);
-#else
-  return PyBytes_FromFormat(
-      "<sharedstructures.IntVector on %s at %p>",
-      self->v->get_pool()->get_name().c_str(), py_self);
-#endif
 }
 
 static Py_ssize_t sharedstructures_IntVector_Len(PyObject* py_self) {
@@ -2610,11 +2455,7 @@ static const char* sharedstructures_IntVector_pool_bytes_doc =
 
 static PyObject* sharedstructures_IntVector_pool_bytes(PyObject* py_self) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
-#ifdef IS_PY3K
   return PyLong_FromSize_t(self->v->get_pool()->size());
-#else
-  return PyInt_FromSize_t(self->v->get_pool()->size());
-#endif
 }
 
 static PyMethodDef sharedstructures_IntVector_methods[] = {
@@ -2733,7 +2574,6 @@ static PyMethodDef sharedstructures_methods[] = {
 
 // initialization
 
-#ifdef IS_PY3K
 static struct PyModuleDef sharedstructures_module_def = {
   PyModuleDef_HEAD_INIT,
   "sharedstructures",       // m_name
@@ -2745,7 +2585,6 @@ static struct PyModuleDef sharedstructures_module_def = {
   NULL,                     // m_clear
   NULL,                     // m_free
 };
-#endif
 
 static PyObject* sharedstructures_module_init() {
   if (PyType_Ready(&sharedstructures_HashTableType) < 0) {
@@ -2770,12 +2609,7 @@ static PyObject* sharedstructures_module_init() {
     return NULL;
   }
 
-#if PY_MAJOR_VERSION >= 3
   PyObject* m = PyModule_Create(&sharedstructures_module_def);
-#else
-  PyObject* m = Py_InitModule3("sharedstructures", sharedstructures_methods,
-      sharedstructures_doc);
-#endif
 
   Py_INCREF(&sharedstructures_HashTableType);
   PyModule_AddObject(m, "HashTable", (PyObject*)&sharedstructures_HashTableType);
@@ -2795,20 +2629,6 @@ static PyObject* sharedstructures_module_init() {
   return m;
 }
 
-#ifdef IS_PY3K
-
 PyMODINIT_FUNC PyInit_sharedstructures(void) {
   return sharedstructures_module_init();
 }
-
-#else
-
-#ifndef PyMODINIT_FUNC
-#define PyMODINIT_FUNC void
-#endif
-
-PyMODINIT_FUNC initsharedstructures() {
-  sharedstructures_module_init();
-}
-
-#endif
