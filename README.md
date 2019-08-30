@@ -1,6 +1,6 @@
 # sharedstructures
 
-sharedstructures is a C++ and Python 2/3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way.
+sharedstructures is a C++ and Python 3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way.
 
 This library currently supports these data structures:
 - Hash tables with binary string keys and values
@@ -12,7 +12,7 @@ This library currently supports these data structures:
 ## Building
 
 - Build and install phosg (https://github.com/fuzziqersoftware/phosg)
-- Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only`, `make py_only`, or `make py3_only`.
+- Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only` or `make py_only`.
 - Run `sudo make install`.
 
 If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 14.04 and 16.04.
@@ -234,14 +234,13 @@ Queues, PriorityQueues, and IntVectors are not iterable.
 
 ## Python wrapper semantics
 
-HashTable, PrefixTree, Queue, PriorityQueue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be strings (bytes in Python 3); TypeError is raised if some other type is given for a key. For Queue, PriorityQueue, and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
+HashTable, PrefixTree, Queue, PriorityQueue, and IntVector can also be used from Python with the included module. For HashTable and PrefixTree, keys can be accessed directly with the subscript operator (`t[k] = value`; `value = t[k]`; `del t[k]`). Keys must be bytes objects; TypeError is raised if some other type is given for a key. For Queue, PriorityQueue, and IntVector, items cannot be accessed using the subscript operator; you have to call the appropriate functions on the object instead.
 
 For HashTables, PrefixTrees, and Queues (but not PriorityQueues), the Python wrapper transparently marshals objects that aren't basic types - which means you can store tuples, dicts, lists, etc. in HashTables, PrefixTrees, and Queues, though this will be inefficient for large objects. Storing numeric values and True/False/None in a PrefixTree will use the tree's corresponding native types, so they can be easily accessed from non-Python programs.
 
 There are a few quirks to watch out for:
 - With HashTable and PrefixTree, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - With HashTable and PrefixTree, strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
-- With HashTable and PrefixTree, `t.items` is an alias for `t.iteritems` (and similarly for `.keys` -> `.iterkeys` and `.values` -> `.itervalues`). For example, in both Python 2 and 3, `t.items()` returns an iterator instead of a list.
 - HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.iteritems())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
 - Queue and IntVector aren't subclasses of list. Unlike the others, there's no easy way to convert them to non-shared lists.
 
