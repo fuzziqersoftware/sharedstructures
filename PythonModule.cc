@@ -1762,21 +1762,45 @@ static Py_ssize_t sharedstructures_Queue_Len(PyObject* py_self) {
   return self->q->size();
 }
 
+static PyObject* sharedstructures_Queue_pop(bool front, PyObject* py_self,
+    PyObject* args, PyObject* kwargs) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+
+  static const char* kwarg_names[] = {"raw", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
+  bool raw = false;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "|b", kwarg_names_arg, &raw)) {
+    return NULL;
+  }
+
+  try {
+    string item;
+    if (front) {
+      item = self->q->pop_front();
+    } else {
+      item = self->q->pop_back();
+    }
+    if (raw) {
+      return PyBytes_FromStringAndSize(const_cast<char*>(item.data()),
+        item.size());
+    } else {
+      return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
+          item.size());
+    }
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "queue is empty");
+    return NULL;
+  }
+}
+
 static const char* sharedstructures_Queue_pop_front_doc =
 "Removes and returns the item at the front of the queue.\n\
 \n\
 Queue.pop_front() -> bytes";
 
-static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self) {
-  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-  try {
-    string item = self->q->pop_front();
-    return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
-        item.size());
-  } catch (const out_of_range&) {
-    PyErr_SetString(PyExc_IndexError, "queue is empty");
-    return NULL;
-  }
+static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self,
+    PyObject* args, PyObject* kwargs) {
+  return sharedstructures_Queue_pop(true, py_self, args, kwargs);
 }
 
 static const char* sharedstructures_Queue_pop_back_doc =
@@ -1784,85 +1808,86 @@ static const char* sharedstructures_Queue_pop_back_doc =
 \n\
 Queue.pop_back() -> bytes";
 
-static PyObject* sharedstructures_Queue_pop_back(PyObject* py_self) {
+static PyObject* sharedstructures_Queue_pop_back(PyObject* py_self,
+    PyObject* args, PyObject* kwargs) {
+  return sharedstructures_Queue_pop(false, py_self, args, kwargs);
+}
+
+static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
+    PyObject* args, PyObject* kwargs) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-  try {
-    string item = self->q->pop_back();
-    return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
-        item.size());
-  } catch (const out_of_range&) {
-    PyErr_SetString(PyExc_IndexError, "queue is empty");
+
+  static const char* kwarg_names[] = {"data", "raw", NULL};
+  static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
+  PyObject* item;
+  bool raw = false;
+  if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|b", kwarg_names_arg, &item,
+      &raw)) {
     return NULL;
   }
+
+  PyObject* obj_to_write = item;
+  if (!raw) {
+    obj_to_write = PyMarshal_WriteObjectToString(item, Py_MARSHAL_VERSION);
+    if (!obj_to_write) {
+      // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
+      // here we assume it does
+      return NULL;
+    }
+  } else {
+    if (!PyBytes_Check(obj_to_write)) {
+      PyErr_SetString(PyExc_TypeError, "item must be bytes");
+      return NULL;
+    }
+  }
+
+  char* data;
+  Py_ssize_t size;
+  int string_extract_ret = PyBytes_AsStringAndSize(obj_to_write, &data, &size);
+  if (string_extract_ret != -1) {
+    if (front) {
+      self->q->push_front(data, size);
+    } else {
+      self->q->push_back(data, size);
+    }
+  }
+
+  // of obj_to_write isn't item, then it's a temporary object we created
+  if (obj_to_write != item) {
+    Py_DECREF(obj_to_write);
+  }
+
+  if (string_extract_ret == -1) {
+    return NULL;
+  }
+  Py_INCREF(Py_None);
+  return Py_None;
 }
 
 static const char* sharedstructures_Queue_push_front_doc =
 "Appends the given item to the front of the queue.\n\
 \n\
-Queue.push_front(item) -> None";
+If raw=True is given, only bytes objects are accepted, and no serialization is\n\
+performed. This is usually necessary for interoperating with other languages.\n\
+\n\
+Queue.push_front(item, raw=False) -> None";
 
 static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
-    PyObject* args) {
-  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-
-  PyObject* item;
-  if (!PyArg_ParseTuple(args, "O", &item)) {
-    return NULL;
-  }
-
-  PyObject* marshalled_obj = PyMarshal_WriteObjectToString(item,
-      Py_MARSHAL_VERSION);
-  if (!marshalled_obj) {
-    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-    // here we assume it does
-    return NULL;
-  }
-
-  char* data;
-  Py_ssize_t size;
-  if (PyBytes_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
-    Py_DECREF(marshalled_obj);
-    return NULL;
-  }
-
-  self->q->push_front(data, size);
-  Py_DECREF(marshalled_obj);
-  Py_INCREF(Py_None);
-  return Py_None;
+    PyObject* args, PyObject* kwargs) {
+  return sharedstructures_Queue_push(true, py_self, args, kwargs);
 }
 
 static const char* sharedstructures_Queue_push_back_doc =
 "Appends the given item to the back of the queue.\n\
 \n\
-Queue.push_back(item) -> None";
+If raw=True is given, only bytes objects are accepted, and no serialization is\n\
+performed. This is usually necessary for interoperating with other languages.\n\
+\n\
+Queue.push_back(item, raw=False) -> None";
 
 static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
-    PyObject* args) {
-  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
-
-  PyObject* item;
-  if (!PyArg_ParseTuple(args, "O", &item)) {
-    return NULL;
-  }
-
-  PyObject* marshalled_obj = PyMarshal_WriteObjectToString(item,
-      Py_MARSHAL_VERSION);
-  if (!marshalled_obj) {
-    // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-    // here we assume it does
-    return NULL;
-  }
-
-  char* data;
-  Py_ssize_t size;
-  if (PyBytes_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
-    Py_DECREF(marshalled_obj);
-    return NULL;
-  }
-
-  self->q->push_back(data, size);
-  Py_INCREF(Py_None);
-  return Py_None;
+    PyObject* args, PyObject* kwargs) {
+  return sharedstructures_Queue_push(false, py_self, args, kwargs);
 }
 
 static const char* sharedstructures_Queue_bytes_doc =
@@ -1890,21 +1915,21 @@ static PyMethodDef sharedstructures_Queue_methods[] = {
       sharedstructures_Queue_pool_bytes_doc},
   {"bytes", (PyCFunction)sharedstructures_Queue_bytes, METH_NOARGS,
       sharedstructures_Queue_bytes_doc},
-  {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_NOARGS,
+  {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_pop_front_doc},
-  {"pop_back", (PyCFunction)sharedstructures_Queue_pop_back, METH_NOARGS,
+  {"pop_back", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_pop_back_doc},
-  {"push_front", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS,
+  {"push_front", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_push_front_doc},
-  {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS,
+  {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_push_back_doc},
-  {"popleft", (PyCFunction)sharedstructures_Queue_pop_front, METH_NOARGS,
+  {"popleft", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_pop_front_doc},
-  {"pop", (PyCFunction)sharedstructures_Queue_pop_back, METH_NOARGS,
+  {"pop", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_pop_back_doc},
-  {"appendleft", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS,
+  {"appendleft", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_push_front_doc},
-  {"append", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS,
+  {"append", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS,
       sharedstructures_Queue_push_back_doc},
   {NULL},
 };

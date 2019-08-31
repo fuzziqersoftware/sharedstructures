@@ -15,18 +15,18 @@ def get_current_process_lsof():
   return subprocess.check_output(['lsof', '-p', str(os.getpid())])
 
 
-def q_push(q, front, item):
+def q_push(q, front, item, raw=False):
   if front:
-    q.push_front(item)
+    q.push_front(item, raw=raw)
   else:
-    q.push_back(item)
+    q.push_back(item, raw=raw)
 
 
-def q_pop(q, front):
+def q_pop(q, front, raw=False):
   if front:
-    return q.pop_front()
+    return q.pop_front(raw=raw)
   else:
-    return q.pop_back()
+    return q.pop_back(raw=raw)
 
 
 def run_basic_test(allocator_type):
@@ -40,15 +40,15 @@ def run_basic_test(allocator_type):
   def test_queue(q, reverse):
     print('-- [%s]   %s queue operation' % (allocator_type, "reverse" if reverse else "forward"))
 
-    q_push(q, reverse, b"v1");
+    q_push(q, reverse, b"v1")
     assert 1 == len(q)
-    q_push(q, reverse, "val2");
+    q_push(q, reverse, "val2")
     assert 2 == len(q)
-    q_push(q, reverse, 47);
+    q_push(q, reverse, 47)
     assert 3 == len(q)
-    q_push(q, reverse, None);
+    q_push(q, reverse, None)
     assert 4 == len(q)
-    q_push(q, reverse, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}));
+    q_push(q, reverse, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}))
     assert 5 == len(q)
 
     assert b"v1" == q_pop(q, not reverse)
@@ -68,21 +68,21 @@ def run_basic_test(allocator_type):
     except IndexError:
       pass
 
-  test_queue(q, False);
-  test_queue(q, True);
+  test_queue(q, False)
+  test_queue(q, True)
 
   def test_stack(q, front):
     print("-- [%s]   %s stack operation" % (allocator_type, "front" if front else "back"))
 
-    q_push(q, front, b"v1");
+    q_push(q, front, b"v1")
     assert 1 == len(q)
-    q_push(q, front, "val2");
+    q_push(q, front, "val2")
     assert 2 == len(q)
-    q_push(q, front, 47);
+    q_push(q, front, 47)
     assert 3 == len(q)
-    q_push(q, front, None);
+    q_push(q, front, None)
     assert 4 == len(q)
-    q_push(q, front, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}));
+    q_push(q, front, (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}))
     assert 5 == len(q)
 
     assert (None, False, True, 37, 2.0, ['lol', 'hax'], {1: 2}) == q_pop(q, front)
@@ -97,13 +97,94 @@ def run_basic_test(allocator_type):
     assert 0 == len(q)
     assert q.bytes() == 0
     try:
-      q_pop(q, front);
+      q_pop(q, front)
       assert False
     except IndexError:
       pass
 
-  test_stack(q, False);
-  test_stack(q, True);
+  test_stack(q, False)
+  test_stack(q, True)
+
+  del q  # this should unmap the shared memory pool and close the fd
+  sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
+
+  # make sure we didn't leak an fd
+  assert before_lsof_count == len(get_current_process_lsof().splitlines())
+
+
+def run_raw_test(allocator_type):
+  print('-- [%s] basic' % allocator_type)
+  before_lsof_count = len(get_current_process_lsof().splitlines())
+
+  q = sharedstructures.Queue(POOL_NAME_PREFIX + allocator_type, allocator_type)
+  assert len(q) == 0
+  assert q.bytes() == 0
+
+  def test_queue(q, reverse):
+    print('-- [%s]   %s queue operation' % (allocator_type, "reverse" if reverse else "forward"))
+
+    try:
+      q_push(q, reverse, None, raw=True)
+      assert False
+    except TypeError:
+      pass
+    assert 0 == len(q)
+
+    q_push(q, reverse, b"v1", raw=True)
+    assert 1 == len(q)
+    q_push(q, reverse, b"v2", raw=True)
+    assert 2 == len(q)
+    q_push(q, reverse, b"v3", raw=True)
+    assert 3 == len(q)
+
+    assert b"v1" == q_pop(q, not reverse, raw=True)
+    assert 2 == len(q)
+    assert b"v2" == q_pop(q, not reverse, raw=True)
+    assert 1 == len(q)
+    assert b"v3" == q_pop(q, not reverse, raw=True)
+    assert 0 == len(q)
+    assert q.bytes() == 0
+    try:
+      q_pop(q, not reverse, raw=True)
+      assert False
+    except IndexError:
+      pass
+
+  test_queue(q, False)
+  test_queue(q, True)
+
+  def test_stack(q, front):
+    print("-- [%s]   %s stack operation" % (allocator_type, "front" if front else "back"))
+
+    try:
+      q_push(q, front, None, raw=True)
+      assert False
+    except TypeError:
+      pass
+    assert 0 == len(q)
+
+    q_push(q, front, b"v1", raw=True)
+    assert 1 == len(q)
+    q_push(q, front, b"v2", raw=True)
+    assert 2 == len(q)
+    q_push(q, front, b"v3", raw=True)
+    assert 3 == len(q)
+
+    assert b"v3" == q_pop(q, front, raw=True)
+    assert 2 == len(q)
+    assert b"v2" == q_pop(q, front, raw=True)
+    assert 1 == len(q)
+    assert b"v1" == q_pop(q, front, raw=True)
+    assert 0 == len(q)
+    assert q.bytes() == 0
+    try:
+      q_pop(q, front, raw=True)
+      assert False
+    except IndexError:
+      pass
+
+  test_stack(q, False)
+  test_stack(q, True)
 
   del q  # this should unmap the shared memory pool and close the fd
   sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
@@ -224,6 +305,8 @@ def main():
     for allocator_type in ALLOCATOR_TYPES:
       sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_basic_test(allocator_type)
+      sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
+      run_raw_test(allocator_type)
       sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
       run_concurrent_producers_test(allocator_type)
       sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)

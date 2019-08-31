@@ -81,9 +81,7 @@ Python usage is a bit more intuitive - `sharedstructures.PrefixTree` objects beh
 
 ### Queues
 
-Queue usage is pretty straightforward.
-
-In C++, you can add std::string objects and pointer/size pairs to the queue, but it only returns std::string objects. Usage:
+In C++, you can add std::string objects and raw pointer/size pairs to the queue, but it only returns std::string objects. Use it like this:
 
     #include <memory>
     #include <sharedstructures/Pool.hh>
@@ -97,10 +95,10 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     std::shared_ptr<Queue> q(new Queue(alloc, 0));
 
     // add items to the queue
-    q->push_back(item1);  // std::string
-    q->push_back(item1_data, item1_size);  // (void*, size_t)
-    q->push_front(item2);  // std::string
-    q->push_front(item2_data, item2_size);  // (void*, size_t)
+    q->push_back(item1);  // (std::string)
+    q->push_back(item1_data, item1_size);  // (const void*, size_t)
+    q->push_front(item2);  // (std::string)
+    q->push_front(item2_data, item2_size);  // (const void*, size_t)
 
     // remove items from the queue (throws std::out_of_range if empty)
     std::string item3 = q->pop_back();
@@ -109,19 +107,19 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     // get the number of items in the queue
     size_t count = q->size();
 
-Python usage is similar:
+In Python, the wrapper will transparently marshal and unmarshal values passed to and from Queues. However, this means that you can't easily pass values to and from programs written in other languages. To bypass the serialize/deserialize steps (and therefore only be allowed to pass/return bytes objects in Python), use raw=True. Python usage looks like this:
 
     import sharedstructures
 
     q = sharedstructures.Queue(filename, 'logarithmic', 0)
 
     # add items to the queue
-    q.push_back(item1)  # or q.append(item1)
-    q.push_front(item2)  # or q.appendleft(item2)
+    q.push_back(item1)  # or q.append(item1); use raw=True to skip serialization
+    q.push_front(item2)  # or q.appendleft(item2); use raw=True to skip serialization
 
     # remove items from the queue (raises IndexError if empty)
-    item3 = q.pop_back()  # or q.pop()
-    item4 = q.pop_front()  # or q.popleft()
+    item3 = q.pop_back()  # or q.pop(); use raw=True to skip deserialization
+    item4 = q.pop_front()  # or q.popleft(); use raw=True to skip deserialization
 
     # get the number of items in the queue
     num_items = len(q)
@@ -153,7 +151,7 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     // get the number of items in the queue
     size_t count = q->size();
 
-Python usage is similar:
+Unlike `Queue`, you can't add arbitrary Python objects to a `PriorityQueue` - the Python module only accepts and returns bytes objects. Use it like this:
 
     import sharedstructures
 
