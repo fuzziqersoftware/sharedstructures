@@ -285,10 +285,10 @@ PrefixTree and Queue are always consistent and doesn't need any extra repairs af
 
 Since most data structures call the allocator during mutations, the allocator's performance affects the structure's overall performance. The allocators currently have the following time complexities:
 
-    SimpleAllocator::allocate: O(# allocated blocks)
-    SimpleAllocator::free: O(1)
-    LogarithmicAllocator::allocate: O(log(memory size))
-    LogarithmicAllocator::free: O(log(memory size))
+    SimpleAllocator::allocate:       O(# allocated blocks)
+    SimpleAllocator::free:           O(1)
+    LogarithmicAllocator::allocate:  O(log(memory size))
+    LogarithmicAllocator::free:      O(log(memory size))
 
 The performance of the structures' operations can then be expressed in reference to the above (use the appropriate figures depending on your choice of allocator).
 
@@ -322,7 +322,7 @@ Prefix tree performance is dominated by the key length. Keep the key length as s
     PrefixTree::bytes_for_prefix:  O(prefix length) + O(nodes in subtree)
     PrefixTree::nodes_for_prefix:  O(prefix length) + O(nodes in subtree)
 
-Queue performance is mostly affected by the cost of copying the key and value into and out of the shared memory pool.
+Queue performance is mostly affected by the cost of copying the value into and out of the shared memory pool.
 
     Queue::push_back:   1 allocation + O(value length)
     Queue::push_front:  1 allocation + O(value length)
@@ -335,9 +335,9 @@ Queue performance is mostly affected by the cost of copying the key and value in
 
 Priority queues are binary heaps, which have logarithmic complexity for most operations. For Queue::push, the array is reallocated when it expands beyond a power of two, but is never shrunk. When an expand occurs, the array must be copied into a new memory location, incurring a linear time penalty.
 
-    PriorityQueue::push (no expand):  O(log(queue length)) + 1 allocation
-    PriorityQueue::push (expand):     O(queue length) + 2 allocations + 1 free
-    PriorityQueue::pop:               O(log(queue length)) + 1 free
+    PriorityQueue::push (no expand):  O(log(queue length)) + 1 allocation + O(value length)
+    PriorityQueue::push (expand):     O(queue length) + 2 allocations + 1 free + O(value length)
+    PriorityQueue::pop:               O(log(queue length)) + 1 free + O(value length)
     PriorityQueue::clear:             O(queue length) + (queue length) frees
     PriorityQueue::size:              O(1)
 
