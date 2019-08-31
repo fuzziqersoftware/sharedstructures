@@ -325,7 +325,6 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
   PyObject* return_values_obj;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO", kwarg_names_arg,
       &self->table_obj, &return_keys_obj, &return_values_obj)) {
-    Py_DECREF(self);
     return NULL;
   }
   if (return_keys_obj == Py_True) {
@@ -334,7 +333,6 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
     self->return_keys = false;
   } else {
     PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_keys");
-    Py_DECREF(self);
     return NULL;
   }
   if (return_values_obj == Py_True) {
@@ -343,13 +341,11 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
     self->return_values = false;
   } else {
     PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_values");
-    Py_DECREF(self);
     return NULL;
   }
 
   if (!self->return_keys && !self->return_values) {
     PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -490,7 +486,6 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
   const char* allocator_type = NULL;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|snb", kwarg_names_arg,
       &pool_name, &allocator_type, &base_offset, &bits)) {
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -503,7 +498,6 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize hash table: %s", e.what());
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -961,7 +955,6 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
   PyObject* prefix_obj = NULL;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OOO", kwarg_names_arg,
       &self->tree_obj, &return_keys_obj, &return_values_obj, &prefix_obj)) {
-    Py_DECREF(self);
     return NULL;
   }
   if (return_keys_obj == Py_True) {
@@ -970,7 +963,6 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
     self->return_keys = false;
   } else {
     PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_keys");
-    Py_DECREF(self);
     return NULL;
   }
   if (return_values_obj == Py_True) {
@@ -979,13 +971,11 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
     self->return_values = false;
   } else {
     PyErr_SetString(PyExc_NotImplementedError, "iter() got non-bool return_values");
-    Py_DECREF(self);
     return NULL;
   }
 
   if (!self->return_keys && !self->return_values) {
     PyErr_SetString(PyExc_NotImplementedError, "iterators must return keys or values or both, not neither");
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -1129,7 +1119,6 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
   const char* allocator_type = NULL;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
       &pool_name, &allocator_type, &base_offset)) {
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -1141,7 +1130,6 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize prefix tree: %s", e.what());
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -1738,7 +1726,6 @@ static PyObject* sharedstructures_Queue_New(PyTypeObject* type,
   const char* allocator_type = NULL;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
       &pool_name, &allocator_type, &base_offset)) {
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -1750,7 +1737,6 @@ static PyObject* sharedstructures_Queue_New(PyTypeObject* type,
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize queue: %s", e.what());
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -1999,7 +1985,6 @@ static PyObject* sharedstructures_PriorityQueue_New(PyTypeObject* type,
   const char* allocator_type = NULL;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
       &pool_name, &allocator_type, &base_offset)) {
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -2011,7 +1996,6 @@ static PyObject* sharedstructures_PriorityQueue_New(PyTypeObject* type,
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize queue: %s", e.what());
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -2166,7 +2150,6 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
   const char* pool_name;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwarg_names_arg,
       &pool_name)) {
-    Py_DECREF(self);
     return NULL;
   }
 
@@ -2178,7 +2161,6 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize int vector: %s", e.what());
-    Py_DECREF(self);
     return NULL;
   }
 
