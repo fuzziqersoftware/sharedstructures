@@ -127,6 +127,19 @@ string PriorityQueue::pop() {
   return ret;
 }
 
+void PriorityQueue::clear() {
+  auto g = this->allocator->lock(true);
+  auto p = this->allocator->get_pool();
+  auto base = this->queue_base();
+  uint64_t* array = this->array(base);
+
+  uint64_t count = base->count;
+  base->count = 0;
+  for (; count > 0; count--) {
+    this->allocator->free(array[count - 1]);
+  }
+}
+
 size_t PriorityQueue::size() const {
   auto g = this->allocator->lock(false);
   return this->queue_base()->count;
