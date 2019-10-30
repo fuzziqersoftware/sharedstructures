@@ -19,7 +19,9 @@ If it doesn't work on your system, let me know. I've built and tested it on Mac 
 
 ## Data structures
 
-Data structure objects can be used on top of an Allocator or Pool object. (See examples below for usage information.) Currently there are three data structures.
+Data structure objects can be used on top of an Allocator or Pool object. See examples below for usage information.
+
+### Mapping types
 
 **HashTable** implements a binary-safe map of strings to strings. HashTables have a fixed bucket count at creation time and cannot be resized dynamically. This issue will be fixed in the future.
 
@@ -31,6 +33,8 @@ Data structure objects can be used on top of an Allocator or Pool object. (See e
 - Null (this is not the same as the key not existing - a key can exist and have a Null value)
 
 Both HashTable and PrefixTree support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations are supported in both languages.
+
+### Array/list types
 
 **Queue** implements a doubly-linked list of binary strings. Items may only be accessed at the ends of the list, not at arbitrary positions within the list.
 
