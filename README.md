@@ -11,11 +11,12 @@ This library currently supports these data structures:
 
 ## Building
 
-- Build and install phosg (https://github.com/fuzziqersoftware/phosg)
-- Build the C++ and Python libraries and test them by running `make`. You can build specific libraries by running `make cpp_only` or `make py_only`.
-- Run `sudo make install`.
+- Build and install phosg (https://github.com/fuzziqersoftware/phosg).
+- Run `cmake . && make`. This builds the C++ library, and builds the Python library if you have Python development files installed. (CMake will print a warning if it can't find Python.)
+- Run `make test` to make sure everything works. There are occasionally spurious failures in one or two of the tests due to races that happen in the test code (not in sharedstructures itself) - I'll fix this at some point.
+- Run `sudo make install` if you want to.
 
-If it doesn't work on your system, let me know. I've built and tested it on Mac OS X 10.12 and Ubuntu 14.04 and 16.04.
+If it doesn't work on your system, let me know. I've built and tested it on macOS 12.3.1 and Ubuntu 20.04.
 
 ## Data structures
 
@@ -372,3 +373,4 @@ There's a lot to do here.
 - Add more data structures to the library.
 - Make pool creation race-free. Currently processes can get weird errors if they both attempt to create the same pool at the same time.
 - Make sharedstructures objects thread-safe within a process.
+- Fix spurious failures in QueueTest.
