@@ -64,7 +64,7 @@ HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size,
     const std::string& value) :
     CheckRequest(key, key_size, value.data(), value.size()) { }
 HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size) :
-    CheckRequest(key, key_size, NULL, 0) { }
+    CheckRequest(key, key_size, nullptr, 0) { }
 HashTable::CheckRequest::CheckRequest(const std::string& key, const void* value,
     size_t value_size) :
     CheckRequest(key.data(), key.size(), value, value_size) { }
@@ -72,7 +72,7 @@ HashTable::CheckRequest::CheckRequest(const std::string& key,
     const std::string& value) :
     CheckRequest(key.data(), key.size(), value.data(), value.size()) { }
 HashTable::CheckRequest::CheckRequest(const std::string& key) :
-    CheckRequest(key.data(), key.size(), NULL, 0) { }
+    CheckRequest(key.data(), key.size(), nullptr, 0) { }
 
 
 bool HashTable::insert(const void* k, size_t k_size, const void* v,
@@ -794,7 +794,7 @@ bool HashTable::execute_check(const CheckRequest& check) const {
     return !memcmp(data, check.value, check.value_size);
 
   } else {
-    return (check.value == NULL);
+    return (check.value == nullptr);
   }
 }
 

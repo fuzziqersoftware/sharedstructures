@@ -42,7 +42,7 @@ void run_basic_test() {
 
   auto v = get_or_create_vector();
 
-  const size_t limit = 1024;
+  const ssize_t limit = 1024;
 
   expect_eq(0, v->size());
   v->expand(10);
@@ -53,83 +53,83 @@ void run_basic_test() {
   expect_eq(limit, v->size());
 
   // load, store
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(0, v->load(x));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     v->store(x, x);
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->load(x));
   }
 
   // exchange
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->exchange(x, x + 10));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x + 10, v->load(x));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x + 10, v->exchange(x, x));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->load(x));
   }
 
   // compare_exchange
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->compare_exchange(x, 10, 15));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq((x == 10) ? 15 : x, v->load(x));
   }
   v->store(10, 10);
 
   // fetch_add, fetch_sub
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->fetch_add(x, 30));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x + 30, v->load(x));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x + 30, v->fetch_sub(x, 30));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->load(x));
   }
 
   // fetch_and, fetch_or
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x, v->fetch_or(x, 0x7F));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x | 0x7F, v->load(x));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x | 0x7F, v->fetch_and(x, ~0x7F));
   }
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     expect_eq(x & ~0x7F, v->load(x));
   }
 
   // reset for xor test
-  for (size_t x = 0; x < limit; x++) {
+  for (ssize_t x = 0; x < limit; x++) {
     v->store(x, x);
   }
 
   // fetch_xor
-  for (size_t x = 0; x < 15; x++) {
+  for (ssize_t x = 0; x < 15; x++) {
     expect_eq(x, v->fetch_xor(x, 0x7F));
   }
-  for (size_t x = 0; x < 15; x++) {
+  for (ssize_t x = 0; x < 15; x++) {
     expect_eq(x ^ 0x7F, v->load(x));
   }
-  for (size_t x = 0; x < 15; x++) {
+  for (ssize_t x = 0; x < 15; x++) {
     expect_eq(x ^ 0x7F, v->fetch_xor(x, 0x7F));
   }
-  for (size_t x = 0; x < 15; x++) {
+  for (ssize_t x = 0; x < 15; x++) {
     expect_eq(x, v->load(x));
   }
 
@@ -194,7 +194,7 @@ void run_concurrent_readers_test() {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int, char**) {
   int retcode = 0;
 
   try {

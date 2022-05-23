@@ -59,13 +59,13 @@ public:
 
   // inserts/overwrites a key with a string value.
   bool insert(const void* k, size_t k_size, const void* v, size_t v_size,
-      const CheckRequest* check = NULL);
+      const CheckRequest* check = nullptr);
   bool insert(const void* k, size_t k_size, const std::string& v,
-      const CheckRequest* check = NULL);
+      const CheckRequest* check = nullptr);
   bool insert(const std::string& k, const void* v, size_t v_size,
-      const CheckRequest* check = NULL);
+      const CheckRequest* check = nullptr);
   bool insert(const std::string& k, const std::string& v,
-      const CheckRequest* check = NULL);
+      const CheckRequest* check = nullptr);
 
   // atomically increments the value of a numeric key, returning the new value.
   // if the key is missing, creates it with the given value, as either a 64-bit
@@ -80,8 +80,8 @@ public:
   double incr(const std::string& k, double delta);
 
   // deletes a key.
-  bool erase(const void* k, size_t k_size, const CheckRequest* check = NULL);
-  bool erase(const std::string& k, const CheckRequest* check = NULL);
+  bool erase(const void* k, size_t k_size, const CheckRequest* check = nullptr);
+  bool erase(const std::string& k, const CheckRequest* check = nullptr);
 
   // deletes all the keys in the hash table.
   void clear();

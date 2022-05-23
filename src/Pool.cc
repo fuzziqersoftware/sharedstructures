@@ -54,7 +54,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     }
 
     // map it all into memory
-    this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
+    this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (this->data == MAP_FAILED) {
       throw bad_alloc();
@@ -71,7 +71,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
           string_for_error(errno));
     }
 
-    this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
+    this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (this->data == MAP_FAILED) {
       unlink_segment(this->name.c_str(), file);
@@ -123,7 +123,7 @@ void Pool::check_size_and_remap() const {
 
     // remap the pool with the new size
     this->pool_size = new_pool_size;
-    this->data = (Data*)mmap(NULL, this->pool_size, PROT_READ | PROT_WRITE,
+    this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (this->data == MAP_FAILED) {
       auto err_s = string_for_error(errno);
@@ -145,7 +145,7 @@ void Pool::map_and_call(uint64_t offset, size_t size,
 
   // map two pages if it spans a page boundary
   uint8_t page_count = 1 + ((offset_within_page + size) > PAGE_SIZE);
-  void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
+  void* data = mmap(nullptr, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
       MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
   if (data == MAP_FAILED) {
     throw bad_alloc();

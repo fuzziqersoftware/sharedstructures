@@ -510,16 +510,16 @@ void LogarithmicAllocator::verify() const {
       const FreeBlock* fb = reinterpret_cast<const FreeBlock*>(block);
       if ((fb->order() < data->minimum_order) || (fb->order() > data->maximum_order)) {
         throw runtime_error(string_printf(
-            "free block at %llX has incorrect order (%hhd not in range [%hhd,%hhd])",
+            "free block at %" PRIX64 " has incorrect order (%hhd not in range [%hhd,%hhd])",
             offset, fb->order(), data->minimum_order, data->maximum_order));
       }
       if (next_order_boundary(fb->prev(), fb->order()) != fb->prev()) {
         throw runtime_error(string_printf(
-            "free block at %llX has misaligned prev link (%llX)", offset, fb->prev()));
+            "free block at %" PRIX64 " has misaligned prev link (%" PRIX64 ")", offset, fb->prev()));
       }
       if (next_order_boundary(fb->next, fb->order()) != fb->next) {
         throw runtime_error(string_printf(
-            "free block at %llX has misaligned next link (%llX)", offset, fb->next));
+            "free block at %" PRIX64 " has misaligned next link (%" PRIX64 ")", offset, fb->next));
       }
 
       next_offset = offset + size_for_order(fb->order());
@@ -527,7 +527,7 @@ void LogarithmicAllocator::verify() const {
 
     if (next_offset <= offset) {
       throw runtime_error(string_printf(
-          "%s block at %llX has incorrect size (next block at %llX)",
+          "%s block at %" PRIX64 " has incorrect size (next block at %" PRIX64 ")",
           block->allocated.allocated() ? "allocated" : "free", offset, next_offset));
     }
     offset = next_offset;
@@ -536,12 +536,12 @@ void LogarithmicAllocator::verify() const {
   // check allocated/committed bytes
   if (data->bytes_allocated != bytes_allocated) {
     throw runtime_error(string_printf(
-        "allocated byte count is incorrect (is %llX, should be %llX)",
+        "allocated byte count is incorrect (is %" PRIX64 ", should be %" PRIX64 ")",
         data->bytes_allocated.load(), bytes_allocated));
   }
   if (data->bytes_committed != bytes_committed) {
     throw runtime_error(string_printf(
-        "committed byte count is incorrect (is %llX, should be %llX)",
+        "committed byte count is incorrect (is %" PRIX64 ", should be %" PRIX64 ")",
         data->bytes_committed.load(), bytes_committed));
   }
 
@@ -554,16 +554,16 @@ void LogarithmicAllocator::verify() const {
       FreeBlock* block = this->pool->at<FreeBlock>(offset);
       if (block->order() != order) {
         throw runtime_error(string_printf(
-            "block at %llX has incorrect order (is %hhd, should be %hhd)",
+            "block at %" PRIX64 " has incorrect order (is %hhd, should be %hhd)",
             offset, block->order(), order));
       }
       if (block->allocated()) {
         throw runtime_error(string_printf(
-            "block at %llX is linked and allocated", offset));
+            "block at %" PRIX64 " is linked and allocated", offset));
       }
       if (block->prev() != prev_offset) {
         throw runtime_error(string_printf(
-            "block at %llX has incorrect prev link (is %llX, should be %llX)",
+            "block at %" PRIX64 " has incorrect prev link (is %" PRIX64 ", should be %" PRIX64 ")",
             offset, block->prev(), prev_offset));
       }
       prev_offset = offset;
@@ -571,7 +571,7 @@ void LogarithmicAllocator::verify() const {
     }
     if (data->free_tail[order - Data::minimum_order] != prev_offset) {
       throw runtime_error(string_printf(
-          "free list %hhd has incorrect tail link (is %llX, should be %llX)",
+          "free list %hhd has incorrect tail link (is %" PRIX64 ", should be %" PRIX64 ")",
           order, data->free_tail[order - Data::minimum_order].load(),
           prev_offset));
     }

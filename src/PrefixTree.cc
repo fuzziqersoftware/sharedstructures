@@ -106,7 +106,7 @@ string PrefixTree::LookupResult::str() const {
     case ResultValueType::String:
       return string_printf("<String:%s>", this->as_string.c_str());
     case ResultValueType::Int:
-      return string_printf("<Int:%lld>", this->as_int);
+      return string_printf("<Int:%" PRId64 ">", this->as_int);
     case ResultValueType::Double:
       return string_printf("<Double:%lf>", this->as_double);
     case ResultValueType::Bool:
@@ -119,7 +119,7 @@ string PrefixTree::LookupResult::str() const {
 }
 
 
-PrefixTree::CheckRequest::CheckRequest() : key(NULL), key_size(0),
+PrefixTree::CheckRequest::CheckRequest() : key(nullptr), key_size(0),
     value(ResultValueType::Missing) { }
 
 
@@ -716,7 +716,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value(
 }
 
 PrefixTreeIterator PrefixTree::begin() const {
-  return PrefixTreeIterator(this, NULL);
+  return PrefixTreeIterator(this, nullptr);
 }
 
 PrefixTreeIterator PrefixTree::end() const {
@@ -1194,7 +1194,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
   auto g = this->allocator->lock(false);
   auto p = this->allocator->get_pool();
 
-  // if current is NULL, then we're just starting the iteration - check the root
+  // if current is null, then we're just starting the iteration - check the root
   // node's value, then find the next nonempty slot if needed
   if (!current) {
     Node* node = p->at<Node>(node_offset);
@@ -1203,7 +1203,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
           this->lookup_result_for_contents(node->value) : LookupResult());
     }
 
-  // current is not NULL - we're continuing iteration, or starting with a prefix
+  // current is not null - we're continuing iteration, or starting with a prefix
   } else {
     uint8_t* k_data = (uint8_t*)current;
     uint8_t* k_end = k_data + size;
@@ -1453,7 +1453,7 @@ string PrefixTree::get_structure_for_contents(uint64_t contents) const {
         if (n->children[x] == 0) {
           continue;
         }
-        ret += string_printf(",%02hhX:", x + n->start);
+        ret += string_printf(",%02hhX:", static_cast<uint8_t>(x + n->start));
         ret += this->get_structure_for_contents(n->children[x]);
       }
 

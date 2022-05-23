@@ -6,7 +6,7 @@
 #include <sys/mman.h>
 
 // this mmap flag is required on OSX but doesn't exist on Linux
-#ifndef MACOSX
+#ifndef PHOSG_MACOS
 #define MAP_HASSEMAPHORE 0
 #endif
 
@@ -101,7 +101,7 @@ public:
 
     // map two pages if it spans a page boundary
     uint8_t page_count = 1 + ((offset_within_page + sizeof(T)) > PAGE_SIZE);
-    void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ,
+    void* data = mmap(nullptr, page_count * PAGE_SIZE, PROT_READ,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (data == MAP_FAILED) {
       throw std::bad_alloc();
@@ -118,7 +118,7 @@ public:
 
     // map two pages if it spans a page boundary
     uint8_t page_count = 1 + ((offset_within_page + sizeof(T)) > PAGE_SIZE);
-    void* data = mmap(NULL, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
+    void* data = mmap(nullptr, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (data == MAP_FAILED) {
       throw std::bad_alloc();

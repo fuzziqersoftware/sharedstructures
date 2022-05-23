@@ -15,13 +15,13 @@
 #include "Pool.hh"
 #include "SimpleAllocator.hh"
 #include "LogarithmicAllocator.hh"
-#include "Queue.hh"
+#include "PriorityQueue.hh"
 
 using namespace std;
 
 using namespace sharedstructures;
 
-const string pool_name_prefix = "QueueTest-cc-pool-";
+const string pool_name_prefix = "PriorityQueueTest-cc-pool-";
 
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
@@ -36,101 +36,70 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
 }
 
 
-shared_ptr<Queue> get_or_create_queue(const string& name,
+shared_ptr<PriorityQueue> get_or_create_queue(const string& name,
     const string& allocator_type) {
   shared_ptr<Pool> pool(new Pool(name));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
-  return shared_ptr<Queue>(new Queue(alloc, 0));
+  return shared_ptr<PriorityQueue>(new PriorityQueue(alloc, 0));
 }
 
 
-void run_basic_tests(const string& allocator_type) {
+void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
 
   auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
-  size_t initial_pool_allocated = q->get_allocator()->bytes_allocated();
+  q->push("v1");
+  expect_eq(1, q->size());
+  q->push("v3");
+  expect_eq(2, q->size());
+  q->push("v2");
+  expect_eq(3, q->size());
+  q->push("v20");
+  expect_eq(4, q->size());
+
+  expect_eq("v1", q->pop());
+  expect_eq(3, q->size());
+  expect_eq("v2", q->pop());
+  expect_eq(2, q->size());
+  expect_eq("v20", q->pop());
+  expect_eq(1, q->size());
+  expect_eq("v3", q->pop());
   expect_eq(0, q->size());
-  expect_eq(0, q->bytes());
+  try {
+    q->pop();
+    expect(false);
+  } catch (const out_of_range&) { }
 
-  auto test_queue = [&](bool reverse) {
-    printf("-- [%s]   %s queue operation\n", allocator_type.c_str(), reverse ? "reverse" : "forward");
+  // TODO: test that no item data blocks are leaked
+}
 
-    q->push(reverse, "v1");
-    q->verify();
-    expect_eq(1, q->size());
-    expect_eq(2, q->bytes());
-    q->push(reverse, "val2");
-    q->verify();
-    expect_eq(2, q->size());
-    expect_eq(6, q->bytes());
-    q->push(reverse, "value-3");
-    q->verify();
-    expect_eq(3, q->size());
-    expect_eq(13, q->bytes());
+void run_heapsort(const string& allocator_type) {
+  printf("-- [%s] heapsort\n", allocator_type.c_str());
 
-    expect_eq("v1", q->pop(!reverse));
-    q->verify();
-    expect_eq(2, q->size());
-    expect_eq(11, q->bytes());
-    expect_eq("val2", q->pop(!reverse));
-    q->verify();
-    expect_eq(1, q->size());
-    expect_eq(7, q->bytes());
-    expect_eq("value-3", q->pop(!reverse));
-    q->verify();
-    expect_eq(0, q->size());
-    expect_eq(0, q->bytes());
-    try {
-      q->pop(!reverse);
-      expect(false);
-    } catch (const out_of_range&) { }
-    q->verify();
-  };
+  auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
-  test_queue(false);
-  test_queue(true);
+  // put the numbers 1-1000 in the pq
+  for (size_t x = 1000; x > 0; x--) {
+    char buf[8];
+    int size = sprintf(buf, "%04zu", x);
+    q->push(buf, size);
+  }
 
-  auto test_stack = [&](bool front) {
-    printf("-- [%s]   %s stack operation\n", allocator_type.c_str(), front ? "front" : "back");
+  // we should get them back in increasing order
+  for (size_t x = 1; x <= 1000; x++) {
+    char buf[8];
+    sprintf(buf, "%04zu", x);
+    expect_eq(buf, q->pop());
+  }
 
-    q->push(front, "v1");
-    q->verify();
-    expect_eq(1, q->size());
-    expect_eq(2, q->bytes());
-    q->push(front, "val2");
-    q->verify();
-    expect_eq(2, q->size());
-    expect_eq(6, q->bytes());
-    q->push(front, "value-3");
-    q->verify();
-    expect_eq(3, q->size());
-    expect_eq(13, q->bytes());
+  expect_eq(0, q->size());
+  try {
+    q->pop();
+    expect(false);
+  } catch (const out_of_range&) { }
 
-    expect_eq("value-3", q->pop(front));
-    q->verify();
-    expect_eq(2, q->size());
-    expect_eq(6, q->bytes());
-    expect_eq("val2", q->pop(front));
-    q->verify();
-    expect_eq(1, q->size());
-    expect_eq(2, q->bytes());
-    expect_eq("v1", q->pop(front));
-    q->verify();
-    expect_eq(0, q->size());
-    expect_eq(0, q->bytes());
-    try {
-      q->pop(front);
-      expect(false);
-    } catch (const out_of_range&) { }
-    q->verify();
-  };
-
-  test_stack(false);
-  test_stack(true);
-
-  // the empty queue should not leak any allocated memory
-  expect_eq(initial_pool_allocated, q->get_allocator()->bytes_allocated());
+  // TODO: test that no item data blocks are leaked
 }
 
 void run_concurrent_producers_test(const string& allocator_type) {
@@ -155,9 +124,9 @@ void run_concurrent_producers_test(const string& allocator_type) {
 
     char buffer[32];
     pid_t pid = getpid();
-    for (size_t x = 0; x < 10; x++) {
-      size_t size = sprintf(buffer, "%d-%zu", pid, x);
-      q->push_back(buffer, size);
+    for (size_t x = 0; x < 100; x++) {
+      size_t size = sprintf(buffer, "%d-%04zu", pid, x);
+      q->push(buffer, size);
     }
 
     _exit(0);
@@ -175,7 +144,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
     size_t num_failures = 0;
     while (!child_pids.empty()) {
       try {
-        auto data = q->pop_front();
+        auto data = q->pop();
         auto tokens = split(data, '-');
         expect_eq(2, tokens.size());
 
@@ -205,6 +174,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
 
     expect(child_pids.empty());
     expect_eq(0, num_failures);
+    expect_eq(0, q->size());
   }
 }
 
@@ -233,11 +203,11 @@ void run_concurrent_consumers_test(const string& allocator_type) {
     ssize_t value = 0;
     for (;;) {
       try {
-        string item = q->pop_front();
-        value = stoi(item);
-        if (value == -1) {
+        string item = q->pop();
+        if (item == "END") {
           break;
         }
+        value = stoi(item);
       } catch (const out_of_range&) {
         usleep(1);
         continue;
@@ -258,12 +228,12 @@ void run_concurrent_consumers_test(const string& allocator_type) {
 
     for (int64_t v = 0; v < 1000; v++) {
       char buffer[32];
-      size_t len = sprintf(buffer, "%" PRId64, v);
-      q->push_back(buffer, len);
+      size_t len = sprintf(buffer, "%04" PRId64, v);
+      q->push(buffer, len);
     }
 
     for (size_t x = 0; x < child_pids.size(); x++) {
-      q->push_back("-1", 2);
+      q->push("END", 3);
     }
 
     size_t num_failures = 0;
@@ -289,18 +259,21 @@ void run_concurrent_consumers_test(const string& allocator_type) {
 
     expect(child_pids.empty());
     expect_eq(0, num_failures);
+    expect_eq(0, q->size());
   }
 }
 
 
-int main(int argc, char** argv) {
+int main(int, char**) {
   int retcode = 0;
 
   vector<string> allocator_types({"simple", "logarithmic"});
   try {
     for (const auto& allocator_type : allocator_types) {
       Pool::delete_pool(pool_name_prefix + allocator_type);
-      run_basic_tests(allocator_type);
+      run_basic_test(allocator_type);
+      Pool::delete_pool(pool_name_prefix + allocator_type);
+      run_heapsort(allocator_type);
       Pool::delete_pool(pool_name_prefix + allocator_type);
       run_concurrent_producers_test(allocator_type);
       Pool::delete_pool(pool_name_prefix + allocator_type);

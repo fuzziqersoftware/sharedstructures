@@ -2,7 +2,7 @@
 
 #include <inttypes.h>
 #include <limits.h>
-#ifdef LINUX
+#ifdef PHOSG_LINUX
 #include <linux/futex.h>
 #include <sys/syscall.h>
 #else
@@ -11,6 +11,7 @@
 
 #include <stdexcept>
 
+#include <phosg/Platform.hh>
 #include <phosg/Process.hh>
 #include <phosg/Strings.hh>
 
@@ -52,7 +53,7 @@ static const uint8_t START_TIME_BITS = 32 - PID_BITS;
 static const uint8_t SPIN_LIMIT = 10;
 
 static int32_t this_process_token() {
-#ifdef MACOSX
+#ifdef PHOSG_MACOS
   int32_t start_time = this_process_start_time();
   if (!start_time) {
     throw runtime_error("cannot get start time for this process");
@@ -63,7 +64,7 @@ static int32_t this_process_token() {
 #endif
 }
 
-#ifdef MACOSX
+#ifdef PHOSG_MACOS
 static int32_t start_time_for_token(int32_t token) {
   return (token & ~((1 << PID_BITS) - 1)) >> PID_BITS;
 }
@@ -79,7 +80,7 @@ static pid_t pid_for_token(int32_t token) {
 
 static bool process_for_token_is_running(int32_t token) {
   pid_t pid = pid_for_token(token);
-#ifdef MACOSX
+#ifdef PHOSG_MACOS
   uint64_t start_time_token = start_time_for_token(token);
   uint64_t start_time = start_time_for_pid(pid);
   return (start_time != 0) &&
@@ -94,7 +95,7 @@ static bool process_for_token_is_running(int32_t token) {
 
 
 
-#ifdef LINUX
+#ifdef PHOSG_LINUX
 
 static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
     const struct timespec* timeout) {
@@ -103,7 +104,7 @@ static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
   // if the syscall was interrupted or the timeout expired. neither of these
   // return values makes any guarantee about the futex's value, they just tell
   // what the most likely scenario is (is the value different or not?).
-  if (syscall(SYS_futex, lock, FUTEX_WAIT, expected_value, timeout, NULL, 0) == -1) {
+  if (syscall(SYS_futex, lock, FUTEX_WAIT, expected_value, timeout, nullptr, 0) == -1) {
     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
       return true; // value didn't match the input
     }
@@ -117,7 +118,7 @@ static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
 }
 
 static void futex_wake(atomic<int32_t>* lock, int32_t num_wakes) {
-  if (syscall(SYS_futex, lock, FUTEX_WAKE, num_wakes, NULL, NULL, 0) == -1) {
+  if (syscall(SYS_futex, lock, FUTEX_WAKE, num_wakes, nullptr, nullptr, 0) == -1) {
     throw runtime_error("futex_wake failed: " + string_for_error(errno));
   }
 }
@@ -139,7 +140,7 @@ static int32_t acquire_process_lock(atomic<int32_t>* lock, int32_t desired_value
       spin_count++;
     }
 
-#ifdef LINUX
+#ifdef PHOSG_LINUX
     // someone else is holding the lock; wait for them to be done.
     // expected_value now contains the other process' token (not zero). if the
     // futex value is likely to be different (because either futex_wake was
@@ -172,7 +173,7 @@ static void release_process_lock(atomic<int32_t>* lock, int32_t expected_token) 
   if (!lock->compare_exchange_strong(expected_token, 0)) {
     return;
   }
-#ifdef LINUX
+#ifdef PHOSG_LINUX
   // wake 'em all! last one to the lock is a rotten egg!
   futex_wake(lock, INT_MAX);
 #endif
@@ -185,7 +186,7 @@ static bool wait_for_reader_release(atomic<int32_t>* lock) {
       return false;
     }
 
-#ifdef LINUX
+#ifdef PHOSG_LINUX
     // existing_token now contains the other process' token (not zero). if the
     // futex value is likely to be different (because either futex_wake was
     // called or it's already different), don't bother checking if the other
@@ -247,7 +248,7 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
 ProcessLockGuard::ProcessLockGuard(ProcessLockGuard&& other) : pool(other.pool),
     offset(other.offset), lock_token(other.lock_token),
     stolen_lock_token(other.stolen_lock_token) {
-  other.pool = NULL;
+  other.pool = nullptr;
 }
 
 ProcessLockGuard::ProcessLockGuard(Pool* pool, uint64_t offset) : pool(pool),
@@ -285,7 +286,7 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(
     ProcessReadWriteLockGuard&& other) : pool(other.pool), offset(other.offset),
     reader_slot(other.reader_slot), lock_token(other.lock_token),
     stolen_lock_token(other.stolen_lock_token) {
-  other.pool = NULL;
+  other.pool = nullptr;
 }
 
 ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,

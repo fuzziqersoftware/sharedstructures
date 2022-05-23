@@ -126,14 +126,14 @@ void run_lock_test() {
   uint64_t start = now();
   uint64_t num_loops = 0;
   uint64_t num_after_loops = 0;
-  pid_t pid = getpid();
+  uint64_t pid = getpid();
   uint64_t* pool_pid = pool->at<uint64_t>(0x8);
   uint64_t* pool_last_pid = pool->at<uint64_t>(0x10);
   while (now() < start + 1000000) {
     {
       ProcessLockGuard g(pool.get(), 0x18);
       expect_eq(0, *pool_pid);
-      if (*pool_last_pid && ((pid_t)*pool_last_pid != pid)) {
+      if (*pool_last_pid && (*pool_last_pid != pid)) {
         num_after_loops++;
       }
       *pool_pid = pid;
@@ -314,7 +314,6 @@ static unordered_set<pid_t> fill_reader_slots(shared_ptr<Pool> pool) {
 
     if (child_pids.empty()) {
       printf("--   child taking reader slot %zu\n", x);
-      auto pool = create_pool();
       expect_eq(x, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
       expect_eq(0, g.stolen_token());
@@ -364,7 +363,7 @@ void run_read_crash_test() {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int, char**) {
   int retcode = 0;
   try {
     Pool::delete_pool(pool_name);

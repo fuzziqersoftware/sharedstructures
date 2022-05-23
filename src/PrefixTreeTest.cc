@@ -78,7 +78,7 @@ void verify_state(
     const unordered_map<string, LookupResult>& expected,
     const shared_ptr<PrefixTree> table,
     size_t expected_node_size,
-    const char* expected_structure = NULL) {
+    const char* expected_structure = nullptr) {
   expect_eq(expected.size(), table->size());
   expect_eq(expected_node_size, table->node_size());
   for (const auto& it : expected) {
@@ -856,7 +856,7 @@ void run_incr_test(const string& allocator_type) {
       "  73:S\"value-string\")"); // s
 
   // test converting integers between Int and LongInt
-  expect_eq(0xAAAAAAAAAAAAAAAA, table->incr("i", 1,
+  expect_eq((int64_t)0xAAAAAAAAAAAAAAAA, table->incr("i", 1,
       (int64_t)0xAAAAAAAAAAAAAAA0));
   expect_eq(8, table->size());
   expect_eq(3, table->incr("I", 1, (int64_t)-0x3333333333333330));
@@ -1016,7 +1016,7 @@ void run_concurrent_writers_test(const string& allocator_type) {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int, char**) {
   int retcode = 0;
 
   vector<string> allocator_types({"simple", "logarithmic"});

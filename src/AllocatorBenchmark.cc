@@ -15,7 +15,6 @@
 #include "Pool.hh"
 #include "LogarithmicAllocator.hh"
 #include "SimpleAllocator.hh"
-#include "PrefixTree.hh"
 
 using namespace std;
 
@@ -70,20 +69,6 @@ struct Stats<T> get_stats(const vector<T>& x) {
   return ret;
 }
 
-template <typename T>
-void print_stats(FILE* f, const char* title, struct Stats<T>& stats) {
-  fprintf(stdout, "%s: count=%zu avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
-      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%"
-      PRIu64 "\n", title, stats.count, stats.mean, stats.min, stats.p01,
-      stats.p10, stats.p50, stats.p90, stats.p99, stats.max);
-}
-
-void print_stats(FILE* f, const char* title, struct Stats<double>& stats) {
-  fprintf(stdout, "%s: count=%zu avg=%lg min=%lg p01=%lg p10=%lg p50=%lg "
-      "p90=%lg p99=%lg max=%lg\n", title, stats.count, stats.mean, stats.min,
-      stats.p01, stats.p10, stats.p50, stats.p90, stats.p99, stats.max);
-}
-
 
 void print_usage(const char* argv0) {
   fprintf(stderr,
@@ -100,6 +85,7 @@ void print_usage(const char* argv0) {
 int main(int argc, char** argv) {
 
   size_t max_size = 32 * 1024 * 1024;
+  size_t min_alloc_size = 1, max_alloc_size = 1024;
   uint64_t report_interval = 100;
   bool preallocate = false;
   string allocator_type;
@@ -107,7 +93,11 @@ int main(int argc, char** argv) {
   for (int x = 1; x < argc; x++) {
     if (argv[x][0] == '-') {
       if (argv[x][1] == 'l') {
-        max_size = strtoull(&argv[x][2], NULL, 0);
+        max_size = strtoull(&argv[x][2], nullptr, 0);
+      } else if (argv[x][1] == 's') {
+        min_alloc_size = strtoull(&argv[x][2], nullptr, 0);
+      } else if (argv[x][1] == 'S') {
+        max_alloc_size = strtoull(&argv[x][2], nullptr, 0);
       } else if (argv[x][1] == 'X') {
         allocator_type = &argv[x][2];
       } else if (argv[x][1] == 'P') {
@@ -131,7 +121,7 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  srand(time(NULL));
+  srand(time(nullptr));
 
   Pool::delete_pool(pool_name);
   shared_ptr<Pool> pool(new Pool(pool_name));
@@ -139,60 +129,79 @@ int main(int argc, char** argv) {
     pool->expand(max_size);
   }
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
-  PrefixTree t(alloc, 0);
 
   vector<double> efficiencies;
-  vector<uint64_t> insert_times;
-  char key_str[20];
+  vector<uint64_t> alloc_times;
+  unordered_set<uint64_t> allocated_regions;
+  size_t allocated_size = 0;
   while (pool->size() <= max_size) {
-
-    if (t.size() % report_interval == 0) {
+    if (allocated_regions.size() % report_interval == 0) {
       double efficiency = (float)alloc->bytes_allocated() /
           (pool->size() - alloc->bytes_free());
       efficiencies.emplace_back(efficiency);
-      fprintf(stderr, "insert #%zu: %zu bytes in pool, %g efficiency\n",
-          t.size(), pool->size(), efficiency);
+      fprintf(stderr, "allocation #%zu: %zu allocated, %zu free, %zu total, "
+          "%g efficiency\n", allocated_regions.size(), allocated_size,
+          alloc->bytes_free(), pool->size(), efficiency);
     }
 
-    size_t key_len = sprintf(key_str, "%zu", t.size());
+    size_t size = min_alloc_size + (rand() % (max_alloc_size - min_alloc_size));
+
     uint64_t start = now();
-    t.insert(key_str, key_len);
+    uint64_t offset = alloc->allocate(size);
     uint64_t end = now();
-    insert_times.emplace_back(end - start);
+    alloc_times.emplace_back(end - start);
+    allocated_regions.emplace(offset);
+    allocated_size += size;
+
+    expect_eq(allocated_size, alloc->bytes_allocated());
   }
 
-  vector<uint64_t> get_times;
-  for (size_t x = 0; x < t.size(); x++) {
-    if (x % report_interval == 0) {
-      fprintf(stderr, "get #%zu\n", x);
+  vector<uint64_t> free_times;
+  while (!allocated_regions.empty()) {
+    auto it = allocated_regions.begin();
+    uint64_t offset = *it;
+    uint64_t size = alloc->block_size(offset);
+    uint64_t start = now();
+    alloc->free(offset);
+    uint64_t end = now();
+    free_times.emplace_back(end - start);
+    allocated_regions.erase(it);
+
+    allocated_size -= size;
+    expect_eq(allocated_size, alloc->bytes_allocated());
+
+    if (allocated_regions.size() % report_interval == 0) {
+      double efficiency = (float)alloc->bytes_allocated() /
+          (pool->size() - alloc->bytes_free());
+      efficiencies.emplace_back(efficiency);
+      fprintf(stderr, "free #%zu: %zu allocated, %zu free, %zu total, "
+          "%g efficiency\n", allocated_regions.size(), allocated_size,
+          alloc->bytes_free(), pool->size(), efficiency);
     }
-
-    size_t key_len = sprintf(key_str, "%zu", x);
-    uint64_t start = now();
-    auto res = t.at(key_str, key_len);
-    uint64_t end = now();
-
-    expect_eq(res.type, PrefixTree::ResultValueType::Null);
-    get_times.emplace_back(end - start);
   }
 
-  if (!efficiencies.empty()) {
-    sort(efficiencies.begin(), efficiencies.end());
-    auto efficiency_stats = get_stats(efficiencies);
-    print_stats(stdout, "efficiency", efficiency_stats);
-  }
+  sort(efficiencies.begin(), efficiencies.end());
+  auto efficiency_stats = get_stats(efficiencies);
+  fprintf(stdout, "efficiency: avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg "
+      "p99=%lg max=%lg\n", efficiency_stats.mean, efficiency_stats.min,
+      efficiency_stats.p01, efficiency_stats.p10, efficiency_stats.p50,
+      efficiency_stats.p90, efficiency_stats.p99, efficiency_stats.max);
 
-  if (!insert_times.empty()) {
-    sort(insert_times.begin(), insert_times.end());
-    auto insert_times_stats = get_stats(insert_times);
-    print_stats(stdout, "insert usecs", insert_times_stats);
-  }
+  sort(alloc_times.begin(), alloc_times.end());
+  auto alloc_time_stats = get_stats(alloc_times);
+  fprintf(stdout, "alloc usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
+      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
+      " max=%" PRIu64 "\n", alloc_time_stats.mean, alloc_time_stats.min,
+      alloc_time_stats.p01, alloc_time_stats.p10, alloc_time_stats.p50,
+      alloc_time_stats.p90, alloc_time_stats.p99, alloc_time_stats.max);
 
-  if (!get_times.empty()) {
-    sort(get_times.begin(), get_times.end());
-    auto get_times_stats = get_stats(get_times);
-    print_stats(stdout, "get usecs", get_times_stats);
-  }
+  sort(free_times.begin(), free_times.end());
+  auto free_time_stats = get_stats(free_times);
+  fprintf(stdout, "free usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
+      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
+      " max=%" PRIu64 "\n", free_time_stats.mean, free_time_stats.min,
+      free_time_stats.p01, free_time_stats.p10, free_time_stats.p50,
+      free_time_stats.p90, free_time_stats.p99, free_time_stats.max);
 
   return 0;
 }

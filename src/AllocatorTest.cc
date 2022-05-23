@@ -281,7 +281,7 @@ void run_crash_test(const string& allocator_type) {
 }
 
 
-int main(int argc, char* argv[]) {
+int main(int, char**) {
   int retcode = 0;
 
   vector<string> allocator_types({
