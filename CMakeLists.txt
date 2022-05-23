@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.16)
 
 
 
@@ -31,7 +31,7 @@ endif()
 
 # Library dependencies
 
-find_package(Python3 COMPONENTS Interpreter Development.Module)
+find_package(Python3 COMPONENTS Interpreter Development)
 
 if(${Python3_FOUND})
 	message(STATUS "Building Python module")
