@@ -2,7 +2,7 @@
 
 #include "Pool.hh"
 
-// this must be an odd number so that the alignment will make sense below
+// This must be an odd number so that the alignment will make sense below
 #define NUM_READER_SLOTS 65
 
 namespace sharedstructures {
@@ -51,7 +51,7 @@ public:
     Read = 0,
     Write,
 
-    // if stolen, the returned lock is held for writing instead. the caller must
+    // If stolen, the returned lock is held for writing instead. The caller must
     // not forget to check for this case!
     ReadUnlessStolen,
   };

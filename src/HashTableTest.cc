@@ -102,7 +102,7 @@ void run_basic_test(const string& allocator_type) {
   expected.clear();
   verify_state(expected, table);
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
 
@@ -110,7 +110,7 @@ void run_basic_test(const string& allocator_type) {
 void run_collision_test(const string& allocator_type) {
   printf("-- [%s] collision\n", allocator_type.c_str());
 
-  // writing 5 keys to a 4-slot hashtable forces a collision
+  // Writing 5 keys to a 4-slot hashtable forces a collision
 
   shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
@@ -140,7 +140,7 @@ void run_collision_test(const string& allocator_type) {
     verify_state(expected, table);
   }
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
 
@@ -158,7 +158,7 @@ void run_conditional_writes_test(const string& allocator_type) {
   expect_eq(true, table.insert("key1", 4, "value1", 6));
   expect_eq(true, table.insert("key2", 4, "value2", 6));
 
-  // check that conditions on the same key work
+  // Check that conditions on the same key work
   {
     HashTable::CheckRequest check("key1", 4, "value2", 6);
     expect_eq(false, table.insert("key1", 4, "value1_1", 8, &check));
@@ -169,7 +169,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq("value1_1", table.at("key1", 4));
   }
 
-  // check that conditions on other keys work
+  // Check that conditions on other keys work
   {
     HashTable::CheckRequest check("key2", 4, "value1");
     expect_eq(false, table.insert("key1", 4, "value1", 6, &check));
@@ -180,7 +180,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq("value1", table.at("key1", 4));
   }
 
-  // check that missing conditions work
+  // Check that missing conditions work
   {
     HashTable::CheckRequest check("key2", 4);
     expect_eq(false, table.insert("key3", 4, "value3", 6, &check));
@@ -192,7 +192,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq("value3", table.at("key3", 4));
   }
 
-  // check that conditional deletes work
+  // Check that conditional deletes work
   {
     HashTable::CheckRequest check("key1", 4, "value2", 6);
     expect_eq(false, table.erase("key1", 4, &check));
@@ -215,7 +215,7 @@ void run_conditional_writes_test(const string& allocator_type) {
   }
   expect_eq(true, table.erase("key3", 4));
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(0, table.size());
   expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
 }
@@ -244,7 +244,7 @@ void run_incr_test(const string& allocator_type) {
 
   size_t initial_pool_allocated = table.get_allocator()->bytes_allocated();
 
-  // add some keys
+  // Add some keys
   expect_eq(0, table.size());
   expect_eq(true, insert_typed<int8_t>(table, "int8", 40));
   expect_eq(true, insert_typed<int16_t>(table, "int16", 4000));
@@ -264,7 +264,7 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(-15.5, table.incr("double-2", -15.5));
   expect_eq(13, table.size());
 
-  // all the keys should have the values we set, but the keys created by incr
+  // All the keys should have the values we set, but the keys created by incr
   // should all be 64 bits
   expect_eq(40, at_typed<int8_t>(table, "int8"));
   expect_eq(4000, at_typed<int16_t>(table, "int16"));
@@ -295,7 +295,7 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(-25.5, table.incr("double-2", -10.0));
   expect_eq(13, table.size());
 
-  // test incr() on keys of the wrong type
+  // Test incr() on keys of the wrong type
   try {
     table.incr("string", 6, (int64_t)14);
     expect(false);
@@ -305,11 +305,10 @@ void run_incr_test(const string& allocator_type) {
     expect(false);
   } catch (const out_of_range& e) { }
 
-  // we're done here
   table.clear();
   expect_eq(0, table.size());
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
 }
 
@@ -317,7 +316,7 @@ void run_incr_test(const string& allocator_type) {
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
-  // make sure everything is initialized before starting child processes
+  // Make sure everything is initialized before starting child processes
   {
     shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
     shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
@@ -335,7 +334,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
   }
 
   if (child_pids.count(0)) {
-    // child process: try up to a second to get the key
+    // Child process: try up to a second to get the key
     shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
     shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);
@@ -353,7 +352,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
           value_str = to_string(value);
         }
       } catch (const out_of_range& e) { }
-      usleep(1); // yield to other processes
+      usleep(1); // Yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
     if (now() >= (start_time + 1000000)) {
@@ -361,11 +360,11 @@ void run_concurrent_readers_test(const string& allocator_type) {
           getpid_cached());
     }
 
-    // we succeeded if we saw all the values from 100 to 110
+    // We succeeded if we saw all the values from 100 to 110
     _exit(value != 110);
 
   } else {
-    // parent process: write the key, then wait for children to terminate
+    // Parent process: write the key, then wait for children to terminate
     shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type));
     shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
     HashTable table(alloc, 0, 4);

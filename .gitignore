@@ -1,10 +1,18 @@
+# macOS stuff
 .DS_Store
+
+# Build products
 AllocatorBenchmark
 PrefixTreeBenchmark
 benchmark-pool
 *Test
-*.o
-*.pyc
-*.pyo
-*.a
-*.so
+src/*.pyc
+src/*.pyo
+
+# CMake files
+cmake_install.cmake
+CMakeCache.txt
+Testing
+install_manifest.txt
+CTestTestfile.cmake
+Makefile

@@ -57,7 +57,7 @@ void expect_key_missing(const shared_ptr<PrefixTree> table, const void* k,
 
 void verify_structure(const shared_ptr<PrefixTree> table,
     const char* expected_structure) {
-  // remove whitespace from expected_structure
+  // Remove whitespace from expected_structure
   string processed_expected_structure;
   for (const char* ch = expected_structure; *ch; ch++) {
     if (!isblank(*ch)) {
@@ -121,7 +121,7 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(3, table->nodes_for_prefix("k", 1));
   expect_eq(4, table->nodes_for_prefix("", 0));
   expect_eq(104, table->bytes_for_prefix("k", 1));
-  expect_eq(2160, table->bytes_for_prefix("", 0)); // the root node has 00-FF
+  expect_eq(2160, table->bytes_for_prefix("", 0)); // The root node has 00-FF
 
   LookupResult r;
   r.type = PrefixTree::ResultValueType::String;
@@ -191,7 +191,7 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(0, table->size());
   expect_eq(1, table->node_size());
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
@@ -240,7 +240,7 @@ void run_iovec_insert_test(const string& allocator_type) {
 
   table->clear();
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
@@ -256,7 +256,7 @@ void run_conditional_writes_test(const string& allocator_type) {
   expect_eq(true, table->insert("key2", 4, 10.0));
   expect_eq(true, table->insert("key3", 4, true));
 
-  // check that conditions on the same key work for various types
+  // Check that conditions on the same key work for various types
   {
     PrefixTree::CheckRequest check("key1", 4, "value2", 6);
     expect_eq(false, table->insert("key1", 4, "value1_1", 8, &check));
@@ -285,12 +285,12 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(LookupResult(false), table->at("key3", 4));
   }
 
-  // now:
+  // Now:
   // key1 = "value1_1"
   // key2 = 15.0
   // key3 = false
 
-  // check that conditions on other keys work
+  // Check that conditions on other keys work
   {
     PrefixTree::CheckRequest check("key3", 4, true);
     expect_eq(false, table->insert("key1", 4, "value1", 6, &check));
@@ -319,12 +319,12 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(LookupResult(true), table->at("key3", 4));
   }
 
-  // now:
+  // Now:
   // key1 = "value1"
   // key2 = 10.0
   // key3 = true
 
-  // check that Missing conditions work
+  // Check that Missing conditions work
   {
     PrefixTree::CheckRequest check("key4", 4);
     expect_eq(false, table->insert("key4", 4, &check));
@@ -343,13 +343,13 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(LookupResult(), table->at("key4", 4));
   }
 
-  // now:
+  // Now:
   // key1 = "value1"
   // key2 = 10.0
   // key3 = true
   // key4 = Null
 
-  // check that conditional deletes work
+  // Check that conditional deletes work
   {
     PrefixTree::CheckRequest check("key1", 4, "value2", 6);
     expect_eq(false, table->erase("key1", 4, &check));
@@ -378,7 +378,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->exists("key3", 4));
   }
   {
-    // it doesn't make sense to do a Missing check on the same key for an erase,
+    // It doesn't make sense to do a Missing check on the same key for an erase,
     // but w/e - it's convenient for the test and it should work anyway
     PrefixTree::CheckRequest check("key4", 4,
         PrefixTree::ResultValueType::Missing);
@@ -393,7 +393,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->exists("key4", 4));
   }
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(0, table->size());
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
@@ -405,7 +405,7 @@ void run_reorganization_test(const string& allocator_type) {
 
   size_t initial_pool_allocated = table->get_allocator()->bytes_allocated();
 
-  // initial state: empty
+  // Initial state: empty
   unordered_map<string, LookupResult> expected_state;
   verify_state(expected_state, table, 1, "([00,FF]@00+#)");
 
@@ -591,14 +591,14 @@ void run_reorganization_test(const string& allocator_type) {
   expected_state.clear();
   verify_state(expected_state, table, 1, "([00,FF]@00+#)");
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_types_test(const string& allocator_type) {
   printf("-- [%s] types\n", allocator_type.c_str());
 
-  // uncomment this to easily see the difference between result types
+  // Uncomment this to easily see the difference between result types
   // TODO: make this a helper function or something
   //LookupResult l(2.38);
   //auto r = table->at("key-double", 10);
@@ -612,7 +612,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(0, table->size());
   expect_eq(1, table->node_size());
 
-  // write a bunch of keys of different types
+  // Write a bunch of keys of different types
   expect_eq(true, table->insert("key-string", 10, "value-string", 12));
   expect_eq(true, table->insert("key-string-short", 16, "short", 5));
   expect_eq(true, table->insert("key-string-empty", 16, "", 0));
@@ -627,7 +627,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(9, table->size());
   expect_eq(42, table->node_size());
 
-  // get their values again
+  // Get their values again
   try {
     table->at("key-missing", 11);
     expect(false);
@@ -643,8 +643,8 @@ void run_types_test(const string& allocator_type) {
   expect_eq(LookupResult(false), table->at("key-false", 9));
   expect_eq(LookupResult(), table->at("key-null", 8));
 
-  // make sure type() returns the same types as at()
-  // note: type() doesn't throw for missing keys, but at() does
+  // Make sure type() returns the same types as at()
+  // Note: type() doesn't throw for missing keys, but at() does
   expect_eq(PrefixTree::ResultValueType::Missing,
       table->type("key-missing", 11));
   expect_eq(PrefixTree::ResultValueType::String, table->type("key-string", 10));
@@ -660,7 +660,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(PrefixTree::ResultValueType::Bool, table->type("key-false", 9));
   expect_eq(PrefixTree::ResultValueType::Null, table->type("key-null", 8));
 
-  // make sure exists() returns true for all the keys we expect
+  // Make sure exists() returns true for all the keys we expect
   expect_eq(false, table->exists("key-missing", 11));
   expect_eq(true, table->exists("key-string", 10));
   expect_eq(true, table->exists("key-string-short", 16));
@@ -672,7 +672,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(true, table->exists("key-false", 9));
   expect_eq(true, table->exists("key-null", 8));
 
-  // verify the tree's structure
+  // Verify the tree's structure
   verify_structure(table,
       "([00,FF]@00+#,"
       "  6B:([65,65]@6B+#," // k
@@ -728,7 +728,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(0, table->size());
   expect_eq(1, table->node_size());
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
@@ -756,7 +756,7 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(LookupResult(10.0), table->at("d2", 2));
   expect_eq(6, table->size());
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+I3689348814741910323," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -771,7 +771,7 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(LookupResult(0.0), table->at("d2", 2));
   expect_eq(6, table->size());
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+I3689348814741910323," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -783,7 +783,7 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(LookupResult(3.0), table->at("d2", 2));
   expect_eq(6, table->size());
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+I3689348814741910323," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -791,12 +791,12 @@ void run_incr_test(const string& allocator_type) {
       "  69:([32,32]@69+i10," // i
       "    32:i99))"); // i2
 
-  // test incr() on keys of the wrong type
+  // Test incr() on keys of the wrong type
   expect_eq(true, table->insert("n", 1));
   expect_eq(true, table->insert("s", 1, "value-string", 12));
   expect_eq(8, table->size());
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+I3689348814741910323," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -843,9 +843,9 @@ void run_incr_test(const string& allocator_type) {
     expect(false);
   } catch (const out_of_range& e) { }
 
-  // the structure should not have changed at all
+  // The structure should not have changed at all
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+I3689348814741910323," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -855,14 +855,14 @@ void run_incr_test(const string& allocator_type) {
       "  6E:null," // n
       "  73:S\"value-string\")"); // s
 
-  // test converting integers between Int and LongInt
+  // Test converting integers between Int and LongInt
   expect_eq((int64_t)0xAAAAAAAAAAAAAAAA, table->incr("i", 1,
       (int64_t)0xAAAAAAAAAAAAAAA0));
   expect_eq(8, table->size());
   expect_eq(3, table->incr("I", 1, (int64_t)-0x3333333333333330));
   expect_eq(8, table->size());
   verify_structure(table,
-      "([00,FF]@00+#," // root
+      "([00,FF]@00+#," // Root
       "  49:([32,32]@49+i3," // I
       "    32:I6148914691236517205)," // I2
       "  64:([32,32]@64+D1," // d
@@ -872,18 +872,17 @@ void run_incr_test(const string& allocator_type) {
       "  6E:null," // n
       "  73:S\"value-string\")"); // s
 
-  // we're done here
   table->clear();
   expect_eq(0, table->size());
 
-  // the empty table should not leak any allocated memory
+  // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("-- [%s] concurrent readers\n", allocator_type.c_str());
 
-  // make sure everything is initialized before starting child processes
+  // Make sure everything is initialized before starting child processes
   get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
   unordered_set<pid_t> child_pids;
@@ -897,7 +896,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
   }
 
   if (child_pids.count(0)) {
-    // child process: try up to 3 seconds to get the key
+    // Child process: try up to 3 seconds to get the key
     auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     int64_t value = 100;
@@ -911,7 +910,7 @@ void run_concurrent_readers_test(const string& allocator_type) {
           value++;
         }
       } catch (const out_of_range& e) { }
-      usleep(1); // yield to other processes
+      usleep(1); // Yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
     if (now() >= (start_time + 1000000)) {
@@ -919,11 +918,11 @@ void run_concurrent_readers_test(const string& allocator_type) {
           getpid_cached());
     }
 
-    // we succeeded if we saw all the values from 100 to 110
+    // We succeeded if we saw all the values from 100 to 110
     _exit(value != 110);
 
   } else {
-    // parent process: write the key, then wait for children to terminate
+    // Parent process: write the key, then wait for children to terminate
     auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     for (int64_t value = 100; value < 110; value++) {
@@ -972,7 +971,7 @@ void run_concurrent_writers_test(const string& allocator_type) {
   }
 
   if (child_pids.count(0)) {
-    // child process: try up to 3 seconds to get the key
+    // Child process: try up to 3 seconds to get the key
     auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     uint64_t start_time = now();
@@ -980,13 +979,13 @@ void run_concurrent_writers_test(const string& allocator_type) {
       string key = string_printf("key%d", rand());
       string value = string_printf("value%d", rand());
       table->insert(key, value);
-      usleep(1); // yield to other processes
+      usleep(1); // Yield to other processes
     } while (now() < (start_time + 1000000));
 
     _exit(0);
 
   } else {
-    // parent process: wait for children to terminate
+    // Parent process: wait for children to terminate
     auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
     int num_failures = 0;

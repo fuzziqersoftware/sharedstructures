@@ -77,10 +77,10 @@ def run_basic_test(allocator_type):
 
   assert {} == expected
 
-  del table  # this should unmap the shared memory pool and close the fd
+  del table  # This should unmap the shared memory pool and close the fd
   sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
-  # this will fail if the test prints anything after before_lsof is taken since
+  # This will fail if the test prints anything after before_lsof is taken since
   # the stdout/stderr offsets will be different
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
@@ -136,7 +136,7 @@ def run_conditional_writes_test(allocator_type):
   insert_both(expected, table, b"key2", b"value2")
   verify_state(expected, table)
 
-  # check that conditions on the same key work
+  # Check that conditions on the same key work
   conditional_insert_both(expected, table, b"key1", b"value2", b"key1",
       b"value1_1", False)
   verify_state(expected, table)
@@ -144,7 +144,7 @@ def run_conditional_writes_test(allocator_type):
       b"value1_1", True)
   verify_state(expected, table)
 
-  # check that conditions on other keys work
+  # Check that conditions on other keys work
   conditional_insert_both(expected, table, b"key2", b"value1", b"key1",
       b"value1", False)
   verify_state(expected, table)
@@ -152,7 +152,7 @@ def run_conditional_writes_test(allocator_type):
       b"value1", True)
   verify_state(expected, table)
 
-  # check that missing conditions work
+  # Check that missing conditions work
   conditional_missing_insert_both(expected, table, b"key2", b"key3", b"value3",
       False)
   verify_state(expected, table)
@@ -160,7 +160,7 @@ def run_conditional_writes_test(allocator_type):
       True)
   verify_state(expected, table)
 
-  # check that conditional deletes work
+  # Check that conditional deletes work
   conditional_delete_both(expected, table, b"key1", b"value2", b"key1", False)
   verify_state(expected, table)
   conditional_delete_both(expected, table, b"key1", b"value1", b"key1", True)
@@ -190,7 +190,7 @@ def run_collision_test(allocator_type):
     del t[k]
     del e[k]
 
-  # writing 5 keys to a 4-slot hashtable forces a collision
+  # Writing 5 keys to a 4-slot hashtable forces a collision
   assert 2 == table.bits()
   assert 0 == len(table)
 
@@ -220,7 +220,7 @@ def run_incr_test(allocator_type):
     del table[k]
     del expected[k]
 
-  # giving garbage to incr() should cause a TypeError
+  # Giving garbage to incr() should cause a TypeError
   try:
     table.incr(b'missing', b'not a number, lolz')
     assert False
@@ -251,7 +251,7 @@ def run_incr_test(allocator_type):
   assert -15.5 == table.incr(b"double-2", -15.5)
   assert 13 == len(table)
 
-  # all the keys should have the values we set, but the keys created by incr
+  # All the keys should have the values we set, but the keys created by incr
   # should all be 64 bits
   assert struct.pack(b'@b', 40) == table[b"int8"]
   assert struct.pack(b'@h', 4000) == table[b"int16"]
@@ -282,7 +282,7 @@ def run_incr_test(allocator_type):
   assert struct.pack(b'@d', -25.5) == table.incr(b"double-2", -10.0)
   assert 13 == table.size()
 
-  # test incr() on keys of the wrong size
+  # Test incr() on keys of the wrong size
   try:
     table.incr(b"string", 14)
     assert False
@@ -294,7 +294,6 @@ def run_incr_test(allocator_type):
   except ValueError:
     pass
 
-  # we're done here
   table.clear()
   assert len(table) == 0
 
@@ -311,7 +310,7 @@ def run_concurrent_readers_test(allocator_type):
     child_pids.add(os.fork())
 
   if 0 in child_pids:
-    # child process: try up to a second to get the key
+    # Child process: try up to a second to get the key
     table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     value = 100
@@ -334,7 +333,7 @@ def run_concurrent_readers_test(allocator_type):
     os._exit(int(value != 110))
 
   else:
-    # parent process: write the key, then wait for children to terminate
+    # Parent process: write the key, then wait for children to terminate
     table = sharedstructures.HashTable(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     for value in range(100, 110):

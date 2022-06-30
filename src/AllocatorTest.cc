@@ -85,7 +85,7 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(0, alloc->base_object_offset());
   expect_eq(4096, pool->size());
 
-  // basic allocate/free
+  // Basic allocate/free
   uint64_t off = alloc->allocate(100);
   expect_ne(0, off);
   expect_eq(100, alloc->block_size(off));
@@ -93,7 +93,7 @@ void run_basic_test(const string& allocator_type) {
   expect_lt(alloc->bytes_free(), orig_free_bytes - 100);
   expect_eq(0, alloc->base_object_offset());
 
-  // make sure the block is writable, lolz
+  // Make sure the block is writable
   char* data = pool->at<char>(off);
   check_fill_area(data, 100);
   alloc->free(off);
@@ -101,14 +101,14 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(orig_free_bytes, alloc->bytes_free());
   expect_eq(0, alloc->base_object_offset());
 
-  // make sure allocate_object/free_object call constructors/destructors
+  // Make sure allocate_object/free_object call constructors/destructors
   expect_eq(0, TestClass::instance_count);
   TestClass* t = pool->at<TestClass>(alloc->allocate_object<TestClass>());
   expect_eq(1, TestClass::instance_count);
   alloc->free_object<TestClass>(pool->at(t));
   expect_eq(0, TestClass::instance_count);
 
-  // allocate 128KB (this should cause an expansion)
+  // Allocate 8KB (this should cause an expansion)
   off = alloc->allocate(1024 * 8);
   expect_ne(0, off);
   expect_eq(1024 * 8, alloc->block_size(off));
@@ -124,7 +124,7 @@ void run_smart_pointer_test(const string& allocator_type) {
   auto alloc = create_allocator(pool, allocator_type);
   auto g = alloc->lock(true);
 
-  // make sure allocate_object/free_object call constructors/destructors
+  // Make sure allocate_object/free_object call constructors/destructors
   expect_eq(0, TestClass::instance_count);
   auto t = alloc->allocate_object_ptr<TestClass>();
   expect_eq(1, TestClass::instance_count);
@@ -184,9 +184,9 @@ void run_lock_test(const string& allocator_type) {
     }
     _exit(0);
   }
-  usleep(100000); // give the child time to take the lock
+  usleep(100000); // Give the child time to take the lock
 
-  // we should have to wait to get the lock; the child process is holding it
+  // We should have to wait to get the lock; the child process is holding it
   uint64_t end_time;
   {
     auto g = alloc->lock(true);
@@ -194,7 +194,7 @@ void run_lock_test(const string& allocator_type) {
   }
   expect_ge(end_time - start_time, 1000000);
 
-  // make sure the child exited cleanly
+  // Make sure the child exited cleanly
   int exit_status;
   expect_eq(child_pid, waitpid(child_pid, &exit_status, 0));
   expect_eq(true, WIFEXITED(exit_status));
@@ -230,7 +230,7 @@ void run_crash_test(const string& allocator_type) {
     bytes_free = alloc->bytes_free();
   }
 
-  // child: open a pool, lock it, and be killed with SIGKILL
+  // Child: open a pool, lock it, and be killed with SIGKILL
   pid_t pid = fork();
   if (!pid) {
     shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
@@ -246,7 +246,7 @@ void run_crash_test(const string& allocator_type) {
     }
   }
 
-  // parent: wait a bit, kill the child with SIGKILL, make sure the pool is
+  // Parent: wait a bit, kill the child with SIGKILL, make sure the pool is
   // still consistent (and not locked)
   shared_ptr<Pool> pool(new Pool(pool_name_prefix + allocator_type, 1024 * 1024));
   auto alloc = create_allocator(pool, allocator_type);
@@ -259,14 +259,14 @@ void run_crash_test(const string& allocator_type) {
   }
   kill(pid, SIGKILL);
 
-  // note: on linux, we can still get the start_time of a zombie process, so we
-  // wait() on it here
+  // Note: on linux, we can still get the start_time of a zombie process (and
+  // is how sharedstructures knows to clean up the lock), so wait() on it here
   int exit_status;
   expect_eq(pid, waitpid(pid, &exit_status, 0));
   expect_eq(true, WIFSIGNALED(exit_status));
   expect_eq(SIGKILL, WTERMSIG(exit_status));
 
-  // even though the pool is still locked, we should be able to lock the pool
+  // Even though the pool is still locked, we should be able to lock the pool
   // because the child was killed, and the lock should show that it was stolen
   expect_eq(true, alloc->is_locked(true));
   auto g = alloc->lock(true);
@@ -300,7 +300,7 @@ int main(int, char**) {
     }
     printf("all tests passed\n");
 
-    // only delete the pool if the tests pass; if they don't, we might want to
+    // Only delete the pool if the tests pass; if they don't, we might want to
     // examine its contents
     for (const auto& allocator_type : allocator_types) {
       Pool::delete_pool(pool_name_prefix + allocator_type);

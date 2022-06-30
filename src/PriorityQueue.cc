@@ -30,7 +30,7 @@ PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator, uint64_t base_offs
     auto g = this->allocator->lock(true);
     this->base_offset = this->allocator->base_object_offset();
     if (!this->base_offset) {
-      // we can't use sizeof() here because the Node structure varies in size
+      // We can't use sizeof() here because the Node structure varies in size
       this->base_offset = this->allocator->allocate_object<QueueBase>();
       this->allocator->set_base_object_offset(this->base_offset);
     }
@@ -52,7 +52,7 @@ void PriorityQueue::push(const void* data, size_t size) {
   auto p = this->allocator->get_pool();
   auto base = this->queue_base();
 
-  // figure out if we need to reallocate the array
+  // Figure out if we need to reallocate the array
   uint64_t new_allocated_count;
   uint64_t new_offset;
   if (base->allocated_count == 0) {
@@ -68,7 +68,7 @@ void PriorityQueue::push(const void* data, size_t size) {
     new_offset = base->array_offset;
   }
 
-  // if we reallocated the array, copy the contents to the new array and update
+  // If we reallocated the array, copy the contents to the new array and update
   // the pointer and allocated count
   if (new_offset != base->array_offset) {
     uint64_t* old_array = p->at<uint64_t>(base->array_offset);
@@ -80,11 +80,11 @@ void PriorityQueue::push(const void* data, size_t size) {
     base->allocated_count = new_allocated_count;
   }
 
-  // copy the item itself into the pool
+  // Copy the item itself into the pool
   uint64_t item_data_offset = this->allocator->allocate(size);
   memcpy(p->at<void>(item_data_offset), data, size);
 
-  // add the pointer into the heap
+  // Add the pointer into the heap
   base = this->queue_base(); // allocate() above may have invalidated this
   this->array(base)[base->count] = item_data_offset;
   base->count++;
@@ -114,7 +114,7 @@ string PriorityQueue::pop() {
   } else { // 2 or more items
     uint64_t* array = this->array(base);
 
-    // put the last item into the first slot and sift it up appropriately
+    // Put the last item into the first slot and sift it up appropriately
     returned_item_offset = array[0];
     array[0] = array[base->count - 1];
     base->count--;
@@ -191,7 +191,7 @@ void PriorityQueue::sift_down_locked(uint64_t start_index, uint64_t target_index
   while (target_index > start_index) {
     uint64_t parent_index = (target_index - 1) >> 1;
 
-    // if the parent is less than the target, we're done
+    // If the parent is less than the target, we're done
     if (!this->less_locked(displaced_item, array[parent_index])) {
       break;
     }

@@ -171,7 +171,7 @@ private:
   uint64_t result_index;
   std::vector<std::pair<std::string, std::string>> slot_contents;
 
-  void advance_to_nonempty_slot();
+  void advance_to_nonempty_slot_if_needed();
 };
 
 

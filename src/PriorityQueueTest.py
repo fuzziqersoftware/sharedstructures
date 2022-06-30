@@ -43,10 +43,10 @@ def run_basic_test(allocator_type):
   except IndexError:
     pass
 
-  del q  # this should unmap the shared memory pool and close the fd
+  del q  # This should unmap the shared memory pool and close the fd
   sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
-  # make sure we didn't leak an fd
+  # Make sure we didn't leak an fd
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
@@ -58,7 +58,7 @@ def run_concurrent_producers_test(allocator_type):
     child_pids.add(os.fork())
 
   if 0 in child_pids:
-    # child process: generate the numbers [0, 1000) prefixed with our pid
+    # Child process: generate the numbers [0, 1000) prefixed with our pid
     q = sharedstructures.PriorityQueue(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     pid = os.getpid()
@@ -68,7 +68,7 @@ def run_concurrent_producers_test(allocator_type):
     os._exit(0)
 
   else:
-    # parent process: write the key, then wait for children to terminate
+    # Parent process: write the key, then wait for children to terminate
     q = sharedstructures.PriorityQueue(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     latest_value_from_process = {pid: -1 for pid in child_pids}
@@ -84,7 +84,7 @@ def run_concurrent_producers_test(allocator_type):
         assert latest_value_from_process[pid] < value
         latest_value_from_process[pid] = value
 
-      except IndexError:  # queue is empty
+      except IndexError:  # Queue is empty
         pid, exit_status = os.wait()
         child_pids.remove(pid)
         if os.WIFEXITED(exit_status) and (os.WEXITSTATUS(exit_status) == 0):
@@ -102,7 +102,7 @@ def run_concurrent_producers_test(allocator_type):
 def run_concurrent_consumers_test(allocator_type):
   print('-- [%s] concurrent consumers' % allocator_type)
 
-  # initialize the queue before forking children
+  # Initialize the queue before forking children
   q = sharedstructures.PriorityQueue(POOL_NAME_PREFIX + allocator_type, allocator_type)
   del q
 
@@ -111,7 +111,7 @@ def run_concurrent_consumers_test(allocator_type):
     child_pids.add(os.fork())
 
   if 0 in child_pids:
-    # child process: read numbers and expect them to be in increasing order
+    # Child process: read numbers and expect them to be in increasing order
     # stop when -1 is received
     q = sharedstructures.PriorityQueue(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
@@ -132,7 +132,7 @@ def run_concurrent_consumers_test(allocator_type):
     os._exit(0)
 
   else:
-    # parent process: push numbers [0, 10000), then wait for children
+    # Parent process: push numbers [0, 10000), then wait for children
     q = sharedstructures.PriorityQueue(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     for v in range(10000):

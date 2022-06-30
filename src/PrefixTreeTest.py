@@ -85,10 +85,10 @@ def run_basic_test(allocator_type):
 
   assert {} == expected
 
-  del table  # this should unmap the shared memory pool and close the fd
+  del table  # This should unmap the shared memory pool and close the fd
   sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
-  # make sure we didn't leak an fd
+  # Make sure we didn't leak an fd
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
@@ -145,7 +145,7 @@ def run_conditional_writes_test(allocator_type):
   insert_both(expected, table, b"key3", True)
   verify_state(expected, table)
 
-  # check that conditions on the same key work for various types
+  # Check that conditions on the same key work for various types
   conditional_insert_both(expected, table, b"key1", b"value2", b"key1",
       b"value1_1", False)
   verify_state(expected, table)
@@ -163,12 +163,12 @@ def run_conditional_writes_test(allocator_type):
   conditional_insert_both(expected, table, b"key3", True, b"key3", False, True)
   verify_state(expected, table)
 
-  # now:
+  # Now:
   # key1 = "value1_1"
   # key2 = 15.0
   # key3 = False
 
-  # check that conditions on other keys work
+  # Check that conditions on other keys work
   conditional_insert_both(expected, table, b"key3", True, b"key1", b"value1",
       False)
   verify_state(expected, table)
@@ -188,12 +188,12 @@ def run_conditional_writes_test(allocator_type):
   conditional_insert_both(expected, table, b"key2", 10.0, b"key3", True, True)
   verify_state(expected, table)
 
-  # now:
+  # Now:
   # key1 = "value1"
   # key2 = 10.0
   # key3 = True
 
-  # check that Missing conditions work
+  # Check that Missing conditions work
   conditional_insert_both(expected, table, b"key4", None, b"key4", None, False)
   verify_state(expected, table)
   conditional_missing_insert_both(expected, table, b"key2", b"key4", None, False)
@@ -201,13 +201,13 @@ def run_conditional_writes_test(allocator_type):
   conditional_missing_insert_both(expected, table, b"key4", b"key4", None, True)
   verify_state(expected, table)
 
-  # now:
+  # Now:
   # key1 = "value1"
   # key2 = 10.0
   # key3 = True
   # key4 = None
 
-  # check that conditional deletes work
+  # Check that conditional deletes work
   conditional_delete_both(expected, table, b"key1", b"value2", b"key1", False)
   verify_state(expected, table)
   conditional_delete_both(expected, table, b"key1", b"value1", b"key1", True)
@@ -316,7 +316,7 @@ def run_types_test(allocator_type):
 
   expect_key_missing(table, b'key-missing')
 
-  # this calls exists() internally
+  # This calls exists() internally
   assert b'key-string' in table
   assert b'key-string-unicode' in table
   assert b'key-int' in table
@@ -386,7 +386,7 @@ def run_incr_test(allocator_type):
   table[b'key-double'] = 1.0
   assert 3 == len(table)
 
-  # giving garbage to incr() should cause a TypeError
+  # Giving garbage to incr() should cause a TypeError
   try:
     table.incr(b'key-missing', b'not a number, lolz')
     assert False
@@ -414,7 +414,7 @@ def run_incr_test(allocator_type):
   assert 0.0 == table[b'key-double2']
   assert 6 == len(table)
 
-  # test incr() on keys of the wrong type
+  # Test incr() on keys of the wrong type
   table[b'key-null'] = None
   table[b'key-string'] = b'value-string'
   assert 8 == len(table)
@@ -467,13 +467,12 @@ def run_incr_test(allocator_type):
     pass
   assert 1.0 == table[b'key-double']
 
-  # test converting integers between Int and Number
+  # Test converting integers between Int and Number
   assert 0x2AAAAAAAAAAAAAAA == table.incr(b'key-int', 0x2AAAAAAAAAAAAAA0)
   assert 8 == len(table)
   assert 3 == table.incr(b'key-int-long', -0x3333333333333330)
   assert 8 == len(table)
 
-  # we're done here
   table.clear()
   assert len(table) == 0
 
@@ -489,7 +488,7 @@ def run_concurrent_readers_test(allocator_type):
     child_pids.add(os.fork())
 
   if 0 in child_pids:
-    # child process: try up to a second to get the key
+    # Child process: try up to a second to get the key
     table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     value = 100
@@ -512,7 +511,7 @@ def run_concurrent_readers_test(allocator_type):
     os._exit(int(value != 110))
 
   else:
-    # parent process: write the key, then wait for children to terminate
+    # Parent process: write the key, then wait for children to terminate
     table = sharedstructures.PrefixTree(POOL_NAME_PREFIX + allocator_type, allocator_type)
 
     for value in range(100, 110):

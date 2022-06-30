@@ -38,7 +38,7 @@ This module provides the HashTable, PrefixTree, Queue, PriorityQueue, and IntVec
 
 
 
-// helper functions
+// Helper functions
 
 static shared_ptr<sharedstructures::Allocator> sharedstructures_internal_get_allocator(
     const char* pool_name, const char* allocator_type) {
@@ -75,7 +75,7 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
     const sharedstructures::PrefixTree::LookupResult& res) {
   switch (res.type) {
     case ResultValueType::Missing:
-      // this can't happen
+      // This can't happen
       PyErr_SetString(PyExc_NotImplementedError, "missing result returned");
       return nullptr;
 
@@ -84,14 +84,14 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
         return PyBytes_FromStringAndSize(nullptr, 0);
       }
       switch (res.as_string[0]) {
-        // the first byte tells what the format is
-        case 0: // byte string
+        // The first byte tells what the format is
+        case 0: // Byte string
           return PyBytes_FromStringAndSize(res.as_string.data() + 1, res.as_string.size() - 1);
-        case 1: // unicode string
+        case 1: // Unicode string
           return PyUnicode_FromWideChar(
               reinterpret_cast<const wchar_t*>(res.as_string.data() + 1),
               (res.as_string.size() - 1) / sizeof(wchar_t));
-        case 2: // marshalled object
+        case 2: // Marshalled object
           return PyMarshal_ReadObjectFromString(
               const_cast<char*>(res.as_string.data()) + 1,
               res.as_string.size() - 1);
@@ -386,7 +386,7 @@ static PyObject* sharedstructures_HashTableIterator_Next(PyObject* py_self) {
 
   // TODO: factor this out with PrefixTreeIterator
   if (self->return_keys && self->return_values) {
-    // if both, return a tuple of the two items
+    // If both, return a tuple of the two items
     PyObject* ret_key = PyBytes_FromStringAndSize(res.first.data(), res.first.size());
     if (!ret_key) {
       return nullptr;
@@ -489,7 +489,7 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"pool_name", "allocator_type",
       "base_offset", "bits", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
@@ -502,7 +502,7 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // try to construct the pool before filling in the python object
+  // Try to construct the pool before filling in the python object
   try {
     auto allocator = sharedstructures_internal_get_allocator(pool_name,
         allocator_type);
@@ -596,7 +596,7 @@ static int sharedstructures_HashTable_SetItem(PyObject* py_self, PyObject* key,
         Py_MARSHAL_VERSION);
     if (!marshalled_obj) {
       // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-      // here we assume it does
+      // Here we assume it does
       return -1;
     }
 
@@ -670,7 +670,7 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
       check_value_object, Py_MARSHAL_VERSION);
   if (!marshalled_check_value_obj) {
     // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-    // here we assume it does
+    // Here we assume it does
     return nullptr;
   }
   char* marshalled_check_value_data;
@@ -691,7 +691,7 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
         target_value_object, Py_MARSHAL_VERSION);
     if (!marshalled_target_value_obj) {
       // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-      // here we assume it does
+      // Here we assume it does
       Py_DECREF(marshalled_check_value_obj);
       return nullptr;
     }
@@ -754,7 +754,7 @@ static PyObject* sharedstructures_HashTable_check_missing_and_set(
         target_value_object, Py_MARSHAL_VERSION);
     if (!marshalled_target_value_obj) {
       // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-      // here we assume it does
+      // Here we assume it does
       return nullptr;
     }
     char* marshalled_target_value_data;
@@ -782,7 +782,7 @@ static PyObject* sharedstructures_HashTable_iter_generic(PyObject* py_self,
     bool return_keys, bool return_values) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
 
-  // args: table, return_keys, return_values
+  // Args: table, return_keys, return_values
   PyObject* args = Py_BuildValue("OOO", self, return_keys ? Py_True : Py_False,
       return_values ? Py_True : Py_False);
   if (!args) {
@@ -970,7 +970,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"tree_obj", "return_keys", "return_values",
       "prefix", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
@@ -1046,7 +1046,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_Next(PyObject* py_self) {
   self->it++;
 
   if (self->return_keys && self->return_values) {
-    // if both, return a tuple of the two items
+    // If both, return a tuple of the two items
     PyObject* ret_key = PyBytes_FromStringAndSize(res.first.data(), res.first.size());
     if (!ret_key) {
       return nullptr;
@@ -1146,7 +1146,7 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
@@ -1261,7 +1261,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   if (PyLong_Check(value)) {
     int64_t raw_value = PyLong_AsLongLong(value);
     if ((raw_value == -1) && PyErr_Occurred()) {
-      PyErr_Clear(); // we'll insert it as a marshalled string instead
+      PyErr_Clear(); // We'll insert it as a marshalled string instead
     } else {
       self->table->insert(k.first, k.second, raw_value);
       return 0;
@@ -1303,7 +1303,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     if (size == 0) {
       self->table->insert(k.first, k.second, "", 0);
     } else {
-      // prepend the type byte
+      // Prepend the type byte
       string insert_data;
       insert_data += '\x00';
       insert_data.append(data, size);
@@ -1312,12 +1312,12 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     return 0;
   }
 
-  // no types matches, so we'll marshal instead
+  // No types matches, so we'll marshal instead
   PyObject* marshalled_obj = PyMarshal_WriteObjectToString(value,
       Py_MARSHAL_VERSION);
   if (!marshalled_obj) {
     // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-    // here we assume it does
+    // Here we assume it does
     return -1;
   }
 
@@ -1513,7 +1513,7 @@ static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
     bool return_keys, bool return_values, PyObject* prefix = nullptr) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
 
-  // args: table, return_keys, return_values
+  // Args: table, return_keys, return_values
   PyObject* args = nullptr;
   if (prefix) {
     args = Py_BuildValue("OOOO", self, return_keys ? Py_True : Py_False,
@@ -1767,7 +1767,7 @@ static PyObject* sharedstructures_Queue_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
@@ -1880,7 +1880,7 @@ static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
     obj_to_write = PyMarshal_WriteObjectToString(item, Py_MARSHAL_VERSION);
     if (!obj_to_write) {
       // TODO: does PyMarshal_WriteObjectToString set an exception on failure?
-      // here we assume it does
+      // Here we assume it does
       return nullptr;
     }
   } else {
@@ -1901,7 +1901,7 @@ static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
     }
   }
 
-  // of obj_to_write isn't item, then it's a temporary object we created
+  // If obj_to_write isn't item, then it's a temporary object we created
   if (obj_to_write != item) {
     Py_DECREF(obj_to_write);
   }
@@ -2062,7 +2062,7 @@ static PyObject* sharedstructures_PriorityQueue_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"pool_name", "allocator_type", "base_offset", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
@@ -2240,7 +2240,7 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // see comment in sharedstructures_HashTableIterator_New about const_cast
+  // See comment in sharedstructures_HashTableIterator_New about const_cast
   static const char* kwarg_names[] = {"pool_name", nullptr};
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
@@ -2249,7 +2249,7 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
     return nullptr;
   }
 
-  // try to construct the pool before filling in the python object
+  // Try to construct the pool before filling in the python object
   try {
     shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
     new (&self->v) shared_ptr<sharedstructures::IntVector>(
@@ -2631,7 +2631,7 @@ static PyTypeObject sharedstructures_IntVectorType = {
 
 
 
-// module-level names
+// Module-level names
 
 static PyObject* sharedstructures_delete_pool(PyObject*, PyObject* args) {
   const char* pool_name;
@@ -2661,7 +2661,7 @@ static PyMethodDef sharedstructures_methods[] = {
 
 
 
-// initialization
+// Initialization
 
 static struct PyModuleDef sharedstructures_module_def = {
   PyModuleDef_HEAD_INIT,
@@ -2669,10 +2669,10 @@ static struct PyModuleDef sharedstructures_module_def = {
   sharedstructures_doc,     // m_doc
   -1,                       // m_size
   sharedstructures_methods, // m_methods
-  nullptr,                     // m_reload
-  nullptr,                     // m_traverse
-  nullptr,                     // m_clear
-  nullptr,                     // m_free
+  nullptr,                  // m_reload
+  nullptr,                  // m_traverse
+  nullptr,                  // m_clear
+  nullptr,                  // m_free
 };
 
 static PyObject* sharedstructures_module_init() {

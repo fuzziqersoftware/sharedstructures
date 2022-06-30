@@ -13,8 +13,8 @@ public:
   ~SimpleAllocator() = default;
 
 
-  // allocator functions.
-  // there are three sets of these.
+  // Allocator functions.
+  // There are three sets of these.
   // - allocate/free behave like malloc/free but deal with raw offsets instead
   //   of pointers.
   // - allocate_object/free_object behave like the new/delete operators (they
@@ -34,7 +34,7 @@ public:
   virtual size_t bytes_allocated() const;
   virtual size_t bytes_free() const;
 
-  // locks the entire pool
+  // Locks the entire pool
   virtual ProcessReadWriteLockGuard lock(bool writing) const;
   virtual bool is_locked(bool writing) const;
 
@@ -42,18 +42,16 @@ public:
 
 
 private:
-  // pool structure
-
   struct Data {
-    std::atomic<uint64_t> size; // this is part of the Pool structure
+    std::atomic<uint64_t> size; // This is part of the Pool structure
 
     std::atomic<uint8_t> initialized;
 
     ProcessReadWriteLock data_lock;
 
     std::atomic<uint64_t> base_object_offset;
-    std::atomic<uint64_t> bytes_allocated; // sum of allocated block sizes
-    std::atomic<uint64_t> bytes_committed; // same as above, + the block structs
+    std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
+    std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
 
     std::atomic<uint64_t> head;
     std::atomic<uint64_t> tail;
@@ -65,7 +63,7 @@ private:
   const Data* data() const;
 
 
-  // struct that describes an allocated block. inside the pool, these form a
+  // Struct that describes an allocated block. Inside the pool, these form a
   // doubly-linked list with variable-size elements.
   struct AllocatedBlock {
     uint64_t prev;

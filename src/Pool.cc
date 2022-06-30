@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <phosg/Strings.hh>
+#include <phosg/Platform.hh>
 
 using namespace std;
 
@@ -32,12 +33,13 @@ static int unlink_segment(const char* name, bool file) {
 Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     max_size(max_size) {
 
-  // on Linux, shared memory objects can be resized at any time just by calling
-  // ftruncate again. but on OSX, ftruncate can be called only once for each
-  // shared memory object, so we instead have to memory-map a file on disk.
-  if (MAP_HASSEMAPHORE) {
-    file = true;
-  }
+  // On Linux, shared memory objects can be resized at any time just by calling
+  // ftruncate again. But on OSX, ftruncate can be called only once for each
+  // shared memory object, so we instead have to memory-map a file on disk
+  // (which allows resizing after creation).
+#ifdef PHOSG_MACOS
+  file = true;
+#endif
 
   this->fd = open_segment(this->name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0666,
       file);
@@ -47,13 +49,13 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
       throw cannot_open_file(this->name);
     }
 
-    // we did not create the shared memory object; get its size
+    // We did not create the shared memory object; get its size
     this->pool_size = fstat(this->fd).st_size;
     if (this->pool_size == 0) {
       throw runtime_error("existing pool is empty");
     }
 
-    // map it all into memory
+    // Map it all into memory
     this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
     if (this->data == MAP_FAILED) {
@@ -61,8 +63,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     }
 
   } else {
-
-    // we created the shared memory object, so its size is zero. resize it to
+    // We created the shared memory object, so its size is zero. Resize it to
     // the minimum size and initialize the basic data structures.
     this->pool_size = PAGE_SIZE;
     if (ftruncate(this->fd, this->pool_size)) {
@@ -86,7 +87,6 @@ Pool::~Pool() {
   if (this->data) {
     munmap(this->data, this->pool_size);
   }
-  // this->fd is closed automatically because it's a scoped_fd
 }
 
 
@@ -96,7 +96,7 @@ const string& Pool::get_name() const {
 
 
 void Pool::expand(size_t new_size) {
-  // the new size must be a multiple of the page size, so round it up.
+  // The new size must be a multiple of the page size, so round it up.
   new_size = (new_size + PAGE_SIZE - 1) & (~(PAGE_SIZE - 1));
   if (this->max_size && (new_size > this->max_size)) {
     throw runtime_error("can\'t expand pool beyond maximum size");
@@ -110,9 +110,9 @@ void Pool::expand(size_t new_size) {
   }
   this->data->size = new_size;
 
-  // now the underlying shared memory object is larger; we need to recreate our
+  // Now the underlying shared memory object is larger; we need to recreate our
   // view of it
-  this->check_size_and_remap(); // sets this->pool_size
+  this->check_size_and_remap(); // Sets this->pool_size
 }
 
 void Pool::check_size_and_remap() const {
@@ -121,7 +121,7 @@ void Pool::check_size_and_remap() const {
   if (new_pool_size != this->pool_size) {
     munmap(this->data, this->pool_size);
 
-    // remap the pool with the new size
+    // Remap the pool with the new size
     this->pool_size = new_pool_size;
     this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
         MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);
@@ -143,7 +143,7 @@ void Pool::map_and_call(uint64_t offset, size_t size,
   uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
   uint64_t offset_within_page = offset ^ page_offset;
 
-  // map two pages if it spans a page boundary
+  // Map two pages if it spans a page boundary
   uint8_t page_count = 1 + ((offset_within_page + size) > PAGE_SIZE);
   void* data = mmap(nullptr, page_count * PAGE_SIZE, PROT_READ | PROT_WRITE,
       MAP_SHARED | MAP_HASSEMAPHORE, this->fd, 0);

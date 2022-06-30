@@ -79,14 +79,14 @@ void run_heapsort(const string& allocator_type) {
 
   auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
-  // put the numbers 1-1000 in the pq
+  // Put the numbers 1-1000 in the queue
   for (size_t x = 1000; x > 0; x--) {
     char buf[8];
     int size = sprintf(buf, "%04zu", x);
     q->push(buf, size);
   }
 
-  // we should get them back in increasing order
+  // We should get them back in increasing order
   for (size_t x = 1; x <= 1000; x++) {
     char buf[8];
     sprintf(buf, "%04zu", x);
@@ -105,7 +105,7 @@ void run_heapsort(const string& allocator_type) {
 void run_concurrent_producers_test(const string& allocator_type) {
   printf("-- [%s] concurrent producers\n", allocator_type.c_str());
 
-  // make sure the queue is initialized
+  // Make sure the queue is initialized
   get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
   unordered_set<pid_t> child_pids;
@@ -119,7 +119,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
   }
 
   if (child_pids.count(0)) {
-    // child process: generate the numbers [0, 100) prefixed with our pid
+    // Child process: generate the numbers [0, 100) prefixed with our pid
     auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
     char buffer[32];
@@ -132,7 +132,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
     _exit(0);
 
   } else {
-    // parent process: read everything from the queue until all processes
+    // Parent process: read everything from the queue until all processes
     // terminate
     auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
@@ -155,7 +155,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
         expect_lt(it->second, value);
         it->second = value;
 
-      } catch (const out_of_range&) { // queue is empty
+      } catch (const out_of_range&) { // Queue is empty
         int exit_status;
         pid_t exited_pid;
         if ((exited_pid = waitpid(-1, &exit_status, WNOHANG)) != 0) {
@@ -181,7 +181,7 @@ void run_concurrent_producers_test(const string& allocator_type) {
 void run_concurrent_consumers_test(const string& allocator_type) {
   printf("-- [%s] concurrent consumers\n", allocator_type.c_str());
 
-  // make sure the queue is initialized
+  // Make sure the queue is initialized
   get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
   unordered_set<pid_t> child_pids;
@@ -195,7 +195,7 @@ void run_concurrent_consumers_test(const string& allocator_type) {
   }
 
   if (child_pids.count(0)) {
-    // child process: read numbers and expect them to be in increasing order
+    // Child process: read numbers and expect them to be in increasing order
     // stop when -1 is received
     auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
@@ -223,7 +223,7 @@ void run_concurrent_consumers_test(const string& allocator_type) {
     _exit(0);
 
   } else {
-    // parent process: push numbers [0, 1000), then wait for children
+    // Parent process: push numbers [0, 1000), then wait for children
     auto q = get_or_create_queue(pool_name_prefix + allocator_type, allocator_type);
 
     for (int64_t v = 0; v < 1000; v++) {

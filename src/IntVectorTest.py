@@ -28,7 +28,7 @@ def run_basic_test():
   v.expand(limit)
   assert len(v) == limit
 
-  # load, store
+  # Test load/store
   for x in range(limit):
     assert v.load(x) == 0
   for x in range(limit):
@@ -36,7 +36,7 @@ def run_basic_test():
   for x in range(limit):
     assert v.load(x) == x
 
-  # exchange
+  # Test exchange
   for x in range(limit):
     assert v.exchange(x, x + 10) == x
   for x in range(limit):
@@ -46,14 +46,14 @@ def run_basic_test():
   for x in range(limit):
     assert v.load(x) == x
 
-  # compare_exchange
+  # Test compare_exchange
   for x in range(limit):
     assert v.compare_exchange(x, 10, 15) == x
   for x in range(limit):
     assert v.load(x) == (15 if (x == 10) else x)
   v.store(10, 10)
 
-  # add, subtract
+  # Test add/subtract
   for x in range(limit):
     assert v.add(x, 30) == x
   for x in range(limit):
@@ -63,7 +63,7 @@ def run_basic_test():
   for x in range(limit):
     assert v.load(x) == x
 
-  # bitwise_and, bitwise_or
+  # Test bitwise_and/bitwise_or
   for x in range(limit):
     assert v.bitwise_or(x, 0x7F) == x
   for x in range(limit):
@@ -73,11 +73,11 @@ def run_basic_test():
   for x in range(limit):
     assert v.load(x) == x & ~0x7F
 
-  # reset for xor test
+  # Reset for xor test
   for x in range(limit):
     v.store(x, x)
 
-  # bitwise_xor
+  # Test bitwise_xor
   for x in range(limit):
     assert v.bitwise_xor(x, 0x7F) == x
   for x in range(limit):
@@ -87,10 +87,10 @@ def run_basic_test():
   for x in range(limit):
     assert v.load(x) == x
 
-  del v  # this should unmap the shared memory pool and close the fd
+  del v  # This should unmap the shared memory pool and close the fd
   sharedstructures.delete_pool(POOL_NAME)
 
-  # make sure we didn't leak an fd
+  # Make sure we didn't leak an fd
   assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 

@@ -99,19 +99,19 @@ static bool process_for_token_is_running(int32_t token) {
 
 static bool futex_wait(atomic<int32_t>* lock, int32_t expected_value,
     const struct timespec* timeout) {
-  // wait on a futex. returns true if futex_wake was called by another process
-  // or if the value didn't match the expected value at call time. returns false
-  // if the syscall was interrupted or the timeout expired. neither of these
+  // Wait on a futex. Returns true if futex_wake was called by another process
+  // or if the value didn't match the expected value at call time. Returns false
+  // if the syscall was interrupted or the timeout expired. Neither of these
   // return values makes any guarantee about the futex's value, they just tell
   // what the most likely scenario is (is the value different or not?).
   if (syscall(SYS_futex, lock, FUTEX_WAIT, expected_value, timeout, nullptr, 0) == -1) {
     if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-      return true; // value didn't match the input
+      return true; // Value didn't match the input
     }
     if ((errno == EINTR) || (errno == ETIMEDOUT)) {
-      return false; // timed out or interrupted
+      return false; // Timed out or interrupted
     }
-    // some other thing
+    // Some other thing
     throw runtime_error("futex_wait failed: " + string_for_error(errno));
   }
   return true;
@@ -129,7 +129,7 @@ static void futex_wake(atomic<int32_t>* lock, int32_t num_wakes) {
 
 static int32_t acquire_process_lock(atomic<int32_t>* lock, int32_t desired_value) {
   for (;;) {
-    // try several times to get the lock
+    // Try several times to get the lock
     int32_t expected_value;
     uint64_t spin_count = 0;
     while (spin_count < SPIN_LIMIT) {
@@ -141,8 +141,8 @@ static int32_t acquire_process_lock(atomic<int32_t>* lock, int32_t desired_value
     }
 
 #ifdef PHOSG_LINUX
-    // someone else is holding the lock; wait for them to be done.
-    // expected_value now contains the other process' token (not zero). if the
+    // Someone else is holding the lock; wait for them to be done.
+    // expected_value now contains the other process' token (not zero). If the
     // futex value is likely to be different (because either futex_wake was
     // called or it's already different), don't bother checking if the other
     // process is running.
@@ -151,16 +151,16 @@ static int32_t acquire_process_lock(atomic<int32_t>* lock, int32_t desired_value
       continue;
     }
 #else
-    // mac os doesn't have futex; we have to busy-wait
-    // TODO: implement futex-like functionality on mac os if possible (it must
+    // macOS doesn't have futex; we have to busy-wait.
+    // TODO: implement futex-like functionality on macOS if possible (it must
     // be possible somehow)
     sched_yield();
 #endif
 
     if (!process_for_token_is_running(expected_value)) {
-      // the holding process died; steal the lock from it. if we get the lock,
+      // The holding process died; steal the lock from it. If we get the lock,
       // repair the allocator structures since they could be in an
-      // inconsistent state. if we don't get the lock, then another process
+      // inconsistent state. If we don't get the lock, then another process
       // got there first and we'll just keep waiting
       if (lock->compare_exchange_strong(expected_value, desired_value)) {
         return expected_value;
@@ -174,7 +174,9 @@ static void release_process_lock(atomic<int32_t>* lock, int32_t expected_token) 
     return;
   }
 #ifdef PHOSG_LINUX
-  // wake 'em all! last one to the lock is a rotten egg!
+  // Wake them all - there will be a race for the lock if many processes are
+  // waiting, but we don't keep the waiters in a queue so there isn't anything
+  // better we can do here (for now)
   futex_wake(lock, INT_MAX);
 #endif
 }
@@ -187,7 +189,7 @@ static bool wait_for_reader_release(atomic<int32_t>* lock) {
     }
 
 #ifdef PHOSG_LINUX
-    // existing_token now contains the other process' token (not zero). if the
+    // existing_token now contains the other process' token (not zero). If the
     // futex value is likely to be different (because either futex_wake was
     // called or it's already different), don't bother checking if the other
     // process is running.
@@ -216,11 +218,11 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
     for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
       int32_t existing_token = data->reader_tokens[x].load();
       if (existing_token == 0) {
-        continue; // no process in this reader slot
+        continue; // No process in this reader slot
       }
 
-      // wait for this reader to release. if they don't, then check if the
-      // process is still running, and clear the lock if it's not. because this
+      // Wait for this reader to release. If they don't, then check if the
+      // process is still running, and clear the lock if it's not. Because this
       // process was a reader, we don't need to repair the allocator state if we
       // cleared its lock.
       wait_for_reader_release(&data->reader_tokens[x]);
@@ -228,7 +230,7 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
 
   } else {
     for (;;) {
-      // first check for an empty slot and return it if found
+      // First check for an empty slot and return it if found
       for (size_t x = 0; x < NUM_READER_SLOTS; x++) {
         int32_t existing_token = data->reader_tokens[x].load();
         if (existing_token == 0) {
@@ -236,7 +238,7 @@ static void wait_for_reader_drain(ProcessReadWriteLock* data, bool wait_all) {
         }
       }
 
-      // no empty slots; pick an "arbitrary" slot and wait on it
+      // No empty slots; pick an "arbitrary" slot and wait on it
       int32_t reader_slot = getpid_cached() % NUM_READER_SLOTS;
       wait_for_reader_release(&data->reader_tokens[reader_slot]);
     }
@@ -267,7 +269,7 @@ ProcessLockGuard::~ProcessLockGuard() {
 }
 
 size_t ProcessLockGuard::data_size() {
-  // everything must be 64-bit aligned, so even though we only use 32 bits, we
+  // Everything must be 64-bit aligned, so even though we only use 32 bits, we
   // claim to use 64
   return sizeof(int64_t);
 }
@@ -295,7 +297,7 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
   auto* data = this->pool->at<ProcessReadWriteLock>(this->offset);
 
   if (behavior == Behavior::Write) {
-    // take the write lock, then wait for readers to drain or die. because we're
+    // Take the write lock, then wait for readers to drain or die. Because we're
     // holding the write lock, no new readers can be added
     this->reader_slot = -1;
     this->stolen_lock_token = acquire_process_lock(&data->write_lock, this->lock_token);
@@ -306,8 +308,8 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
 
     int32_t reader_token = this_process_token();
     do {
-      // take the write lock, find an empty reader slot and take it, then
-      // release the write lock. but if the caller needs to write when stolen
+      // Take the write lock, find an empty reader slot and take it, then
+      // release the write lock. But if the caller needs to write when stolen
       // (for example, to call repair()), then return immediately
       this->stolen_lock_token = acquire_process_lock(&data->write_lock, this->lock_token);
       if (this->stolen_lock_token && (behavior == Behavior::ReadUnlessStolen)) {
@@ -324,7 +326,7 @@ ProcessReadWriteLockGuard::ProcessReadWriteLockGuard(Pool* pool,
       }
       release_process_lock(&data->write_lock, this->lock_token);
 
-      // if there were no available reader slots, wait for any slot to drain and
+      // If there were no available reader slots, wait for any slot to drain and
       // try again
       if (this->reader_slot == NUM_READER_SLOTS) {
         wait_for_reader_drain(data, false);
@@ -363,8 +365,8 @@ void ProcessReadWriteLockGuard::downgrade() {
     }
   }
 
-  // if we're holding a write lock, there had better not be any readers.
-  // shouldn't we have waited for them to drain before returning?!
+  // If we're holding a write lock, there had better not be any readers.
+  // Shouldn't we have waited for them to drain before returning?!
   throw logic_error("write lock held with no available reader slots");
 }
 

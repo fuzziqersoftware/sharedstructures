@@ -27,25 +27,24 @@ public:
   virtual ProcessReadWriteLockGuard lock(bool writing) const;
   virtual bool is_locked(bool writing) const;
 
-  // for debugging
+  // Debugging functions
   virtual void verify() const;
   void print(FILE* stream) const;
 
 private:
-  // pool structure
 
   struct Data {
-    std::atomic<uint64_t> size; // this is part of the Pool structure
+    std::atomic<uint64_t> size; // This is part of the Pool structure
 
     std::atomic<uint8_t> initialized;
 
     ProcessReadWriteLock data_lock;
 
     std::atomic<uint64_t> base_object_offset;
-    std::atomic<uint64_t> bytes_allocated; // sum of allocated block sizes
-    std::atomic<uint64_t> bytes_committed; // same as above, + the block structs
+    std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
+    std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
 
-    // minimum order is 4 (0x10); maximum order is 57 (0x0200000000000000),
+    // Minimum order is 4 (0x10) and maximum order is 57 (0x0200000000000000),
     // for a total of 54 orders
     static const int8_t minimum_order;
     static const int8_t maximum_order;
@@ -60,7 +59,7 @@ private:
 
 
   struct FreeBlock {
-    // high bit: allocated (must be 0); next 6 bits: order; rest: prev ptr
+    // High bit: allocated (must be 0); next 6 bits: order; rest: prev ptr
     uint64_t prev_order_allocated;
     uint64_t next;
 
@@ -70,7 +69,7 @@ private:
   };
 
   struct AllocatedBlock {
-    // high bit: allocated (must be 1)
+    // High bit: allocated (must be 1)
     uint64_t size_allocated;
 
     uint64_t size() const;

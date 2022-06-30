@@ -37,12 +37,10 @@ unordered_set<pid_t> fork_children(size_t num_processes) {
     if (pid == -1) {
       throw runtime_error("fork() failed: " + string_for_error(errno));
     } else {
-      if (pid) {
-        // parent
+      if (pid) { // Parent
         printf("--   child process %d started\n", pid);
         child_pids.emplace(pid);
-      } else {
-        // child
+      } else { // Child
         child_pids.clear();
         return child_pids;
       }
@@ -119,7 +117,7 @@ void run_lock_test() {
     return;
   }
 
-  // child process: lock the pool and write the pid to the pool, then check that
+  // Child process: lock the pool and write the pid to the pool, then check that
   // it wasn't changed just before releasing the lock
   auto pool = create_pool();
 
@@ -139,7 +137,7 @@ void run_lock_test() {
       *pool_pid = pid;
       *pool_last_pid = pid;
 
-      // normally you shouldn't yield while holding the lock; we do this so
+      // Normally you shouldn't yield while holding the lock; we do this so
       // other processes get a chance to check the lock (which allows this test
       // to actually test mutual exclusion)
       sched_yield();
@@ -147,7 +145,7 @@ void run_lock_test() {
       expect_eq(pid, *pool_pid);
       *pool_pid = 0;
     }
-    // don't grab the lock again immediately; give other processes a chance
+    // Don't grab the lock again immediately; give other processes a chance
     sched_yield();
 
     num_loops++;
@@ -156,7 +154,7 @@ void run_lock_test() {
   printf("--   process %d terminated after %" PRIu64 " acquisitions (%" PRIu64 " after other processes)\n",
       getpid(), num_loops, num_after_loops);
 
-  // we succeeded if we got the lock at all
+  // We succeeded if we got the lock at all
   _exit(0);
 }
 
@@ -171,7 +169,7 @@ void run_read_write_lock_test() {
     return;
   }
 
-  // child process: lock the pool and write the pid to the pool, then check that
+  // Child process: lock the pool and write the pid to the pool, then check that
   // it wasn't changed just before releasing the lock
   auto pool = create_pool();
 
@@ -185,7 +183,7 @@ void run_read_write_lock_test() {
   int64_t* pool_pid = pool->at<int64_t>(0x08);
   int64_t* pool_last_pid = pool->at<int64_t>(0x10);
   while (now() < start + 1000000) {
-    // lock the pool for writes, put our pid there, and let other processes read
+    // Lock the pool for writes, put our pid there, and let other processes read
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Write);
       expect_eq(0, g.stolen_token());
@@ -199,7 +197,7 @@ void run_read_write_lock_test() {
       *pool_pid = pid;
       *pool_last_pid = pid;
 
-      // normally you shouldn't yield while holding the lock; we do this so
+      // Normally you shouldn't yield while holding the lock; we do this so
       // other processes get a chance to check the lock (which allows this test
       // to actually test mutual exclusion)
       sched_yield();
@@ -207,15 +205,15 @@ void run_read_write_lock_test() {
       expect_eq(pid, *pool_pid);
       *pool_pid = 0;
     }
-    // don't grab the lock again immediately; give other processes a chance
+    // Don't grab the lock again immediately; give other processes a chance
     sched_yield();
 
-    // now read; check if the pid doesn't match our pid
+    // Now read; check if the pid doesn't match our pid
     {
       ProcessReadWriteLockGuard g(pool.get(), 0x18, Behavior::Read);
       expect_eq(0, g.stolen_token());
 
-      // we don't check if the lock is locked for writing - it's possible that
+      // We don't check if the lock is locked for writing - it's possible that
       // is_locked returns true if a writer is waiting for readers to drain
       expect_eq(true, pool->at<ProcessReadWriteLock>(0x18)->is_locked(false));
 
@@ -240,7 +238,7 @@ void run_read_write_lock_test() {
       " after others; %" PRIu64 " reads after self; %" PRIu64 " reads after others)\n",
       getpid(), num_loops, num_after_loops, num_reads_after_self, num_reads_after_other);
 
-  // we succeeded if we got the lock at all
+  // We succeeded if we got the lock at all
   _exit(0);
 }
 
@@ -280,7 +278,7 @@ void run_write_crash_test_case(Behavior parent_behavior) {
     }
     expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
 
-    // this should steal the lock even though the child exists as a zombie, and
+    // This should steal the lock even though the child exists as a zombie, and
     // should appear stolen even if locking for reading
     printf("--   parent acquiring lock\n");
     ProcessReadWriteLockGuard g(pool.get(), 0x18, parent_behavior);
@@ -296,7 +294,7 @@ void run_write_crash_test_case(Behavior parent_behavior) {
       expect_eq(true, lock->is_locked(false));
     }
 
-    // the child should have died with status 0
+    // The child should have died with status 0
     wait_for_children(child_pids);
   }
 }
@@ -336,8 +334,8 @@ void run_read_crash_test() {
 
   auto pool = create_pool();
 
-  // with all the reader slots full, any lock call should clear them all out.
-  // the lock shouldn't appear stolen because the processes crashed while
+  // With all the reader slots full, any lock call should clear them all out.
+  // The lock shouldn't appear stolen because the processes crashed while
   // reading, so no repairs are needed
   auto zombie_pids = fill_reader_slots(pool);
   expect_eq(NUM_READER_SLOTS, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
@@ -348,7 +346,7 @@ void run_read_crash_test() {
   expect_eq(0, pool->at<ProcessReadWriteLock>(0x18)->reader_count());
   wait_for_children(zombie_pids);
 
-  // behavior should be similar when we lock the pool for reading, except we
+  // Behavior should be similar when we lock the pool for reading, except we
   // shouldn't clear all the reader slots; we should clear only one
   zombie_pids = fill_reader_slots(pool);
   expect_eq(NUM_READER_SLOTS,
@@ -378,7 +376,7 @@ int main(int, char**) {
     run_read_crash_test();
     printf("all tests passed\n");
 
-    // only delete the pool if the tests pass; if they don't, we might want to
+    // Only delete the pool if the tests pass; if they don't, we might want to
     // examine its contents
     Pool::delete_pool(pool_name);
 

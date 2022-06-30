@@ -205,7 +205,9 @@ void Queue::verify(bool print) {
   QueueBase* base = p->at<QueueBase>(this->base_offset);
   uint64_t prev_offset = 0;
   uint64_t current_offset;
-  size_t count = static_cast<size_t>(-2); // intentional overflow (don't count front/back nodes)
+  // We intentionally overflow a size_t here to start at a "negative" number, so
+  // we won't count the front and back nodes
+  size_t count = static_cast<size_t>(-2);
   size_t bytes = 0;
   for (current_offset = p->at(&base->front_node); current_offset;
        current_offset = p->at<Node>(current_offset)->next_offset, count++) {
