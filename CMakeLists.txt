@@ -66,6 +66,7 @@ add_library(sharedstructures
 target_include_directories(sharedstructures PUBLIC ${Python3_INCLUDE_DIR})
 target_link_libraries(sharedstructures PUBLIC phosg ${Python3_LIBRARY_DIRS})
 if (LINUX)
+	target_link_libraries(sharedstructures PUBLIC pthread)
 	target_link_libraries(sharedstructures PUBLIC rt)
 endif()
 
