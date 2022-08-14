@@ -1,4 +1,4 @@
-# sharedstructures
+# sharedstructures <img align="right" src="s-sharedstructures.png" />
 
 sharedstructures is a C++ and Python 3 library for storing data structures in automatically-created, dynamically-sized shared memory objects. This library can be used to share complex data between processes in a performant way.
 
