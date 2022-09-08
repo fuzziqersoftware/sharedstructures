@@ -87,7 +87,14 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
         // The first byte tells what the format is
         case 0: // Byte string
           return PyBytes_FromStringAndSize(res.as_string.data() + 1, res.as_string.size() - 1);
-        case 1: // Unicode string
+        case 1: // Unaligned unicode string (deprecated)
+          // Note: This type is deprecated because this encoding requires either
+          // an unaligned pointer access (which can cause undefined behavior)
+          // or a second copy of the string data to an aligned address. The
+          // new Unicode string type (3) should be used instead. At the time
+          // this type (1) was deprecated, the Python module no longer generates
+          // values in encoding (1) at all, but we keep the decoder here for
+          // what little backward compatibility there is to be had.
           return PyUnicode_FromWideChar(
               reinterpret_cast<const wchar_t*>(res.as_string.data() + 1),
               (res.as_string.size() - 1) / sizeof(wchar_t));
@@ -95,6 +102,18 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
           return PyMarshal_ReadObjectFromString(
               const_cast<char*>(res.as_string.data()) + 1,
               res.as_string.size() - 1);
+        case 3: { // Aligned unicode string
+          if (res.as_string.size() < 2) {
+            PyErr_SetString(PyExc_TypeError, "unicode string data is missing header");
+          }
+          size_t header_bytes = res.as_string[1];
+          if (res.as_string.size() < header_bytes) {
+            PyErr_SetString(PyExc_TypeError, "unicode string data is too short for header");
+          }
+          return PyUnicode_FromWideChar(
+              reinterpret_cast<const wchar_t*>(res.as_string.data() + header_bytes),
+              (res.as_string.size() - header_bytes) / sizeof(wchar_t));
+        }
         default:
           PyErr_SetString(PyExc_TypeError, "unknown string format");
           return nullptr;
@@ -157,11 +176,13 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
     return res;
 
   } else if (PyUnicode_Check(o)) {
-    LookupResult res("\x01", 1);
+    LookupResult res("\x03", 1);
+    res.as_string.push_back(sizeof(wchar_t));
+    size_t header_bytes = max<size_t>(sizeof(wchar_t), 2);
     Py_ssize_t count = PyUnicode_GetLength(o);
-    res.as_string.resize(res.as_string.size() + count * sizeof(wchar_t));
+    res.as_string.resize(header_bytes + count * sizeof(wchar_t), '\0');
     Py_ssize_t chars_copied = PyUnicode_AsWideChar(
-        o, reinterpret_cast<wchar_t*>(res.as_string.data() + 1), count);
+        o, reinterpret_cast<wchar_t*>(res.as_string.data() + header_bytes), count);
     if (chars_copied != count) {
       throw runtime_error("failed to convert python object to LookupResult");
     }
@@ -1282,11 +1303,13 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
     if (size < 0) {
       return -1;
     }
-    string insert_data("\x01", 1);
+    string insert_data("\x03", 1);
+    insert_data.push_back(sizeof(wchar_t));
+    size_t header_bytes = max<size_t>(sizeof(wchar_t), 2);
     Py_ssize_t count = PyUnicode_GetLength(value);
-    insert_data.resize(insert_data.size() + count * sizeof(wchar_t));
+    insert_data.resize(header_bytes + count * sizeof(wchar_t), '\0');
     Py_ssize_t chars_copied = PyUnicode_AsWideChar(
-        value, reinterpret_cast<wchar_t*>(insert_data.data() + 1), count);
+        value, reinterpret_cast<wchar_t*>(insert_data.data() + header_bytes), count);
     if (chars_copied != count) {
       throw runtime_error("failed to convert python object to string");
     }
