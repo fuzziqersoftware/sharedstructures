@@ -87,7 +87,7 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
         // The first byte tells what the format is
         case 0: // Byte string
           return PyBytes_FromStringAndSize(res.as_string.data() + 1, res.as_string.size() - 1);
-        case 1: // Unaligned unicode string (deprecated)
+        case 1: { // Unaligned unicode string (deprecated)
           // Note: This type is deprecated because this encoding requires either
           // an unaligned pointer access (which can cause undefined behavior)
           // or a second copy of the string data to an aligned address. The
@@ -95,9 +95,11 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
           // this type (1) was deprecated, the Python module no longer generates
           // values in encoding (1) at all, but we keep the decoder here for
           // what little backward compatibility there is to be had.
+          string aligned_data = res.as_string.substr(1);
           return PyUnicode_FromWideChar(
-              reinterpret_cast<const wchar_t*>(res.as_string.data() + 1),
-              (res.as_string.size() - 1) / sizeof(wchar_t));
+              reinterpret_cast<const wchar_t*>(aligned_data.data()),
+              aligned_data.size() / sizeof(wchar_t));
+        }
         case 2: // Marshalled object
           return PyMarshal_ReadObjectFromString(
               const_cast<char*>(res.as_string.data()) + 1,
