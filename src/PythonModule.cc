@@ -107,10 +107,12 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
         case 3: { // Aligned unicode string
           if (res.as_string.size() < 2) {
             PyErr_SetString(PyExc_TypeError, "unicode string data is missing header");
+            return nullptr;
           }
           size_t header_bytes = res.as_string[1];
           if (res.as_string.size() < header_bytes) {
             PyErr_SetString(PyExc_TypeError, "unicode string data is too short for header");
+            return nullptr;
           }
           return PyUnicode_FromWideChar(
               reinterpret_cast<const wchar_t*>(res.as_string.data() + header_bytes),
