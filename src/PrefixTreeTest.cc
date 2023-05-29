@@ -1,22 +1,22 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
-#include <phosg/Strings.hh>
 #include <phosg/Process.hh>
+#include <phosg/Strings.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
-#include "SimpleAllocator.hh"
 #include "LogarithmicAllocator.hh"
+#include "Pool.hh"
 #include "PrefixTree.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 
@@ -25,9 +25,7 @@ using LookupResult = PrefixTree::LookupResult;
 
 const string pool_name_prefix = "PrefixTreeTest-cc-pool-";
 
-
-shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
-    const string& allocator_type) {
+shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool, const string& allocator_type) {
   if (allocator_type == "simple") {
     return shared_ptr<Allocator>(new SimpleAllocator(pool));
   }
@@ -37,26 +35,19 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
 
-
-shared_ptr<PrefixTree> get_or_create_tree(const string& name,
-    const string& allocator_type) {
+shared_ptr<PrefixTree> get_or_create_tree(const string& name, const string& allocator_type) {
   shared_ptr<Pool> pool(new Pool(name));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   return shared_ptr<PrefixTree>(new PrefixTree(alloc, 0));
 }
 
-
-void expect_key_missing(const shared_ptr<PrefixTree> table, const void* k,
-    size_t s) {
-  try {
+void expect_key_missing(const shared_ptr<PrefixTree> table, const void* k, size_t s) {
+  expect_raises<out_of_range>([&]() {
     table->at(k, s);
-    expect(false);
-  } catch (const out_of_range& e) { }
+  });
 }
 
-
-void verify_structure(const shared_ptr<PrefixTree> table,
-    const char* expected_structure) {
+void verify_structure(const shared_ptr<PrefixTree> table, const char* expected_structure) {
   // Remove whitespace from expected_structure
   string processed_expected_structure;
   for (const char* ch = expected_structure; *ch; ch++) {
@@ -99,7 +90,6 @@ void verify_state(
   }
 }
 
-
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
 
@@ -123,8 +113,8 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(104, table->bytes_for_prefix("k", 1));
   expect_eq(2160, table->bytes_for_prefix("", 0)); // The root node has 00-FF
 
-  LookupResult r;
-  r.type = PrefixTree::ResultValueType::String;
+  LookupResult r(PrefixTree::ResultValueType::MISSING);
+  r.type = PrefixTree::ResultValueType::STRING;
   r.as_string = "value1";
   expect_eq(r, table->at("key1", 4));
   r.as_string = "value222";
@@ -195,8 +185,8 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(initial_pool_allocated, table->get_allocator()->bytes_allocated());
 }
 
-static bool insert_vector(shared_ptr<PrefixTree> table, const string& key,
-    const vector<string> value_parts) {
+static bool insert_vector(
+    shared_ptr<PrefixTree> table, const string& key, const vector<string> value_parts) {
   vector<struct iovec> iov;
   for (const auto& part : value_parts) {
     iov.emplace_back();
@@ -324,23 +314,21 @@ void run_conditional_writes_test(const string& allocator_type) {
   // key2 = 10.0
   // key3 = true
 
-  // Check that Missing conditions work
+  // Check that MISSING conditions work
   {
-    PrefixTree::CheckRequest check("key4", 4);
+    PrefixTree::CheckRequest check("key4", 4, nullptr);
     expect_eq(false, table->insert("key4", 4, &check));
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key2", 4,
-        PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key2", 4, PrefixTree::ResultValueType::MISSING);
     expect_eq(false, table->insert("key2", 4, &check));
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key4", 4,
-        PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::MISSING);
     expect_eq(true, table->insert("key4", 4, &check));
-    expect_eq(LookupResult(), table->at("key4", 4));
+    expect_eq(LookupResult(nullptr), table->at("key4", 4));
   }
 
   // Now:
@@ -378,15 +366,14 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->exists("key3", 4));
   }
   {
-    // It doesn't make sense to do a Missing check on the same key for an erase,
+    // It doesn't make sense to do a MISSING check on the same key for an erase,
     // but w/e - it's convenient for the test and it should work anyway
-    PrefixTree::CheckRequest check("key4", 4,
-        PrefixTree::ResultValueType::Missing);
+    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::MISSING);
     expect_eq(false, table->erase("key4", 4, &check));
-    expect_eq(LookupResult(), table->at("key4", 4));
+    expect_eq(LookupResult(nullptr), table->at("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key4", 4);
+    PrefixTree::CheckRequest check("key4", 4, nullptr);
     expect_eq(true, table->erase("key4", 4, &check));
     expect_eq(false, table->exists("key4", 4));
     expect_eq(false, table->erase("key4", 4, &check));
@@ -600,10 +587,10 @@ void run_types_test(const string& allocator_type) {
 
   // Uncomment this to easily see the difference between result types
   // TODO: make this a helper function or something
-  //LookupResult l(2.38);
-  //auto r = table->at("key-double", 10);
-  //string ls = l.str(), rs = r.str();
-  //fprintf(stderr, "%s vs %s\n", ls.c_str(), rs.c_str());
+  // LookupResult l(2.38);
+  // auto r = table->at("key-double", 10);
+  // string ls = l.str(), rs = r.str();
+  // fprintf(stderr, "%s vs %s\n", ls.c_str(), rs.c_str());
 
   auto table = get_or_create_tree(pool_name_prefix + allocator_type, allocator_type);
 
@@ -617,8 +604,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(true, table->insert("key-string-short", 16, "short", 5));
   expect_eq(true, table->insert("key-string-empty", 16, "", 0));
   expect_eq(true, table->insert("key-int", 7, (int64_t)(1024 * 1024 * -3)));
-  expect_eq(true, table->insert("key-int-long", 12,
-      (int64_t)0x9999999999999999));
+  expect_eq(true, table->insert("key-int-long", 12, (int64_t)0x9999999999999999));
   expect_eq(true, table->insert("key-double", 10, 2.38));
   expect_eq(true, table->insert("key-true", 8, true));
   expect_eq(true, table->insert("key-false", 9, false));
@@ -628,10 +614,7 @@ void run_types_test(const string& allocator_type) {
   expect_eq(42, table->node_size());
 
   // Get their values again
-  try {
-    table->at("key-missing", 11);
-    expect(false);
-  } catch (const out_of_range& e) { }
+  expect_key_missing(table, "key-missing", 11);
   expect_eq(LookupResult("value-string"), table->at("key-string", 10));
   expect_eq(LookupResult("short"), table->at("key-string-short", 16));
   expect_eq(LookupResult(""), table->at("key-string-empty", 16));
@@ -641,24 +624,20 @@ void run_types_test(const string& allocator_type) {
   expect_eq(LookupResult(2.38), table->at("key-double", 10));
   expect_eq(LookupResult(true), table->at("key-true", 8));
   expect_eq(LookupResult(false), table->at("key-false", 9));
-  expect_eq(LookupResult(), table->at("key-null", 8));
+  expect_eq(LookupResult(nullptr), table->at("key-null", 8));
 
   // Make sure type() returns the same types as at()
   // Note: type() doesn't throw for missing keys, but at() does
-  expect_eq(PrefixTree::ResultValueType::Missing,
-      table->type("key-missing", 11));
-  expect_eq(PrefixTree::ResultValueType::String, table->type("key-string", 10));
-  expect_eq(PrefixTree::ResultValueType::String,
-      table->type("key-string-short", 16));
-  expect_eq(PrefixTree::ResultValueType::String,
-      table->type("key-string-empty", 16));
-  expect_eq(PrefixTree::ResultValueType::Int, table->type("key-int", 7));
-  expect_eq(PrefixTree::ResultValueType::Int, table->type("key-int-long", 12));
-  expect_eq(PrefixTree::ResultValueType::Double,
-      table->type("key-double", 10));
-  expect_eq(PrefixTree::ResultValueType::Bool, table->type("key-true", 8));
-  expect_eq(PrefixTree::ResultValueType::Bool, table->type("key-false", 9));
-  expect_eq(PrefixTree::ResultValueType::Null, table->type("key-null", 8));
+  expect_eq(PrefixTree::ResultValueType::MISSING, table->type("key-missing", 11));
+  expect_eq(PrefixTree::ResultValueType::STRING, table->type("key-string", 10));
+  expect_eq(PrefixTree::ResultValueType::STRING, table->type("key-string-short", 16));
+  expect_eq(PrefixTree::ResultValueType::STRING, table->type("key-string-empty", 16));
+  expect_eq(PrefixTree::ResultValueType::INT, table->type("key-int", 7));
+  expect_eq(PrefixTree::ResultValueType::INT, table->type("key-int-long", 12));
+  expect_eq(PrefixTree::ResultValueType::DOUBLE, table->type("key-double", 10));
+  expect_eq(PrefixTree::ResultValueType::BOOL, table->type("key-true", 8));
+  expect_eq(PrefixTree::ResultValueType::BOOL, table->type("key-false", 9));
+  expect_eq(PrefixTree::ResultValueType::NULL_VALUE, table->type("key-null", 8));
 
   // Make sure exists() returns true for all the keys we expect
   expect_eq(false, table->exists("key-missing", 11));
@@ -748,8 +727,7 @@ void run_incr_test(const string& allocator_type) {
 
   // incr should create the key if it doesn't exist
   expect_eq(100, table->incr("i2", 2, (int64_t)100));
-  expect_eq(0x5555555555555555, table->incr("I2", 2,
-      (int64_t)0x5555555555555555));
+  expect_eq(0x5555555555555555, table->incr("I2", 2, (int64_t)0x5555555555555555));
   expect_eq(10.0, table->incr("d2", 2, 10.0));
   expect_eq(LookupResult((int64_t)100), table->at("i2", 2));
   expect_eq(LookupResult((int64_t)0x5555555555555555), table->at("I2", 2));
@@ -806,42 +784,33 @@ void run_incr_test(const string& allocator_type) {
       "  6E:null," // n
       "  73:S\"value-string\")"); // s
 
-  try {
+  expect_raises<out_of_range>([&]() {
     table->incr("n", 1, 13.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("n", 1, (int64_t)13);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("s", 1, 13.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("s", 1, (int64_t)13);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("i", 1, 13.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("I", 1, 13.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("I2", 1, 13.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("d", 1, (int64_t)13);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table->incr("d2", 2, (int64_t)13);
-    expect(false);
-  } catch (const out_of_range& e) { }
+  });
 
   // The structure should not have changed at all
   verify_structure(table,
@@ -856,8 +825,7 @@ void run_incr_test(const string& allocator_type) {
       "  73:S\"value-string\")"); // s
 
   // Test converting integers between Int and LongInt
-  expect_eq((int64_t)0xAAAAAAAAAAAAAAAA, table->incr("i", 1,
-      (int64_t)0xAAAAAAAAAAAAAAA0));
+  expect_eq((int64_t)0xAAAAAAAAAAAAAAAA, table->incr("i", 1, (int64_t)0xAAAAAAAAAAAAAAA0));
   expect_eq(8, table->size());
   expect_eq(3, table->incr("I", 1, (int64_t)-0x3333333333333330));
   expect_eq(8, table->size());
@@ -909,7 +877,8 @@ void run_concurrent_readers_test(const string& allocator_type) {
               allocator_type.c_str(), getpid_cached(), value);
           value++;
         }
-      } catch (const out_of_range& e) { }
+      } catch (const out_of_range& e) {
+      }
       usleep(1); // Yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
@@ -953,7 +922,6 @@ void run_concurrent_readers_test(const string& allocator_type) {
     expect_eq(0, num_failures);
   }
 }
-
 
 void run_concurrent_writers_test(const string& allocator_type) {
   printf("-- [%s] concurrent writers\n", allocator_type.c_str());
@@ -1013,7 +981,6 @@ void run_concurrent_writers_test(const string& allocator_type) {
     table->get_allocator()->verify();
   }
 }
-
 
 int main(int, char**) {
   int retcode = 0;

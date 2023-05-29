@@ -11,7 +11,6 @@
 
 namespace sharedstructures {
 
-
 class Queue {
 public:
   Queue() = delete;
@@ -64,7 +63,7 @@ private:
     uint64_t prev_offset;
     uint64_t next_offset;
     uint8_t data[0];
-  };
+  } __attribute__((packed));
 
   struct QueueBase {
     uint64_t item_count;
@@ -74,7 +73,7 @@ private:
     Node back_node;
 
     QueueBase();
-  };
+  } __attribute__((packed));
 
   void setup_base_locked();
 
@@ -82,6 +81,5 @@ private:
   void unlink_node_locked(Node* node);
   Node* create_node_locked(const void* data, size_t size);
 };
-
 
 } // namespace sharedstructures

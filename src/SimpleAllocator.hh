@@ -12,7 +12,6 @@ public:
   explicit SimpleAllocator(std::shared_ptr<Pool> pool);
   ~SimpleAllocator() = default;
 
-
   // Allocator functions.
   // There are three sets of these.
   // - allocate/free behave like malloc/free but deal with raw offsets instead
@@ -40,12 +39,12 @@ public:
 
   virtual void verify() const;
 
-
 private:
   struct Data {
     std::atomic<uint64_t> size; // This is part of the Pool structure
 
     std::atomic<uint8_t> initialized;
+    uint8_t unused[7];
 
     ProcessReadWriteLock data_lock;
 
@@ -57,11 +56,10 @@ private:
     std::atomic<uint64_t> tail;
 
     uint8_t arena[0];
-  };
+  } __attribute__((packed));
 
   Data* data();
   const Data* data() const;
-
 
   // Struct that describes an allocated block. Inside the pool, these form a
   // doubly-linked list with variable-size elements.
@@ -71,7 +69,7 @@ private:
     uint64_t size;
 
     uint64_t effective_size();
-  };
+  } __attribute__((packed));
 
   virtual void repair();
 };

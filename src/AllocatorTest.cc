@@ -1,7 +1,7 @@
 #include <errno.h>
 #include <signal.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
@@ -21,10 +21,12 @@ using namespace sharedstructures;
 
 const string pool_name_prefix = "AllocatorTest-cc-pool-";
 
-
 class TestClass {
 public:
-  TestClass() : member_variable(1), f_calls(0), const_f_calls(0) {
+  TestClass()
+      : member_variable(1),
+        f_calls(0),
+        const_f_calls(0) {
     this->instance_count++;
   }
   ~TestClass() {
@@ -48,7 +50,6 @@ public:
 
 size_t TestClass::instance_count;
 
-
 void check_fill_area(void* ptr, size_t size) {
   uint8_t* data = (uint8_t*)ptr;
   for (size_t x = 0; x < size; x++) {
@@ -58,7 +59,6 @@ void check_fill_area(void* ptr, size_t size) {
     expect_eq(x & 0xFF, data[x]);
   }
 }
-
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -70,7 +70,6 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   }
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
-
 
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
@@ -184,12 +183,15 @@ void run_lock_test(const string& allocator_type) {
     }
     _exit(0);
   }
+  fprintf(stderr, "parent waiting\n");
   usleep(100000); // Give the child time to take the lock
 
   // We should have to wait to get the lock; the child process is holding it
   uint64_t end_time;
   {
+    fprintf(stderr, "parent locking\n");
     auto g = alloc->lock(true);
+    fprintf(stderr, "parent holds lock\n");
     end_time = now();
   }
   expect_ge(end_time - start_time, 1000000);
@@ -223,7 +225,7 @@ void run_crash_test(const string& allocator_type) {
 
       memcpy(pool->at<void>(offset), data.data(), data.size());
 
-      offset_to_data.emplace(offset, move(data));
+      offset_to_data.emplace(offset, std::move(data));
     }
 
     bytes_allocated = alloc->bytes_allocated();
@@ -274,19 +276,17 @@ void run_crash_test(const string& allocator_type) {
   expect_eq(bytes_allocated, alloc->bytes_allocated());
   expect_eq(bytes_free, alloc->bytes_free());
   for (const auto& it : offset_to_data) {
-    expect_eq(0, memcmp(pool->at<void>(it.first), it.second.data(),
-        it.second.size()));
+    expect_eq(0, memcmp(pool->at<void>(it.first), it.second.data(), it.second.size()));
     alloc->free(it.first);
   }
 }
-
 
 int main(int, char**) {
   int retcode = 0;
 
   vector<string> allocator_types({
-    "simple",
-    "logarithmic",
+      "simple",
+      "logarithmic",
   });
 
   try {

@@ -48,7 +48,6 @@ public:
 
   const std::string& get_name() const;
 
-
   // Expands the pool to the given size. If the given size is smaller than the
   // pool's size, does nothing.
   void expand(size_t new_size);
@@ -61,7 +60,6 @@ public:
   // Returns the size of the pool in bytes.
   size_t size() const;
 
-
   // Basic accessor functions.
   // The return values of the functions in this section are invalidated by any
   // action that causes the pool to change size or be remapped. These are:
@@ -70,13 +68,15 @@ public:
   // - read_lock/write_lock
 
   // Converts an offset into a usable pointer
-  template <typename T> T* at(uint64_t offset) {
+  template <typename T>
+  T* at(uint64_t offset) {
     if (!this->data) {
       throw std::bad_alloc();
     }
     return (T*)((uint8_t*)this->data + offset);
   }
-  template <typename T> const T* at(uint64_t offset) const {
+  template <typename T>
+  const T* at(uint64_t offset) const {
     if (!this->data) {
       throw std::bad_alloc();
     }
@@ -84,20 +84,21 @@ public:
   }
 
   // Converts a usable pointer into an offset
-  template <typename T> uint64_t at(const T* ptr) const {
+  template <typename T>
+  uint64_t at(const T* ptr) const {
     if (!this->data) {
       throw std::bad_alloc();
     }
     return (uint64_t)ptr - (uint64_t)this->data;
   }
 
-
   // Temporary-state accessor functions.
   // These are necessary only in special situations - for example, if we lock
   // the pool and expand it, but it then doesn't fit in the current process'
   // address space. To unlock the pool after such an occurrence, we map only the
   // page containing the lock, clear it, and unmap the page immediately.
-  template <typename T> T map_and_read_atomic(uint64_t offset) const {
+  template <typename T>
+  T map_and_read_atomic(uint64_t offset) const {
     uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
     uint64_t offset_within_page = offset ^ page_offset;
 
@@ -114,7 +115,8 @@ public:
     return ret;
   }
 
-  template <typename T> void map_and_write_atomic(uint64_t offset, T value) {
+  template <typename T>
+  void map_and_write_atomic(uint64_t offset, T value) {
     uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
     uint64_t offset_within_page = offset ^ page_offset;
 
@@ -133,7 +135,6 @@ public:
   void map_and_call(uint64_t offset, size_t size,
       std::function<void(void*, size_t)> cb);
 
-
   // Full-featured accessor.
   // In most situations you can treat this like a normal pointer, except that
   // it's not affected by pool remaps (so you don't have to worry about calling
@@ -144,7 +145,8 @@ public:
   template <typename T>
   class PoolPointer {
   public:
-    PoolPointer(Pool* pool, uint64_t offset) : pool(pool), offset(offset) { }
+    PoolPointer(Pool* pool, uint64_t offset) : pool(pool),
+                                               offset(offset) {}
     PoolPointer(const PoolPointer&) = default;
     PoolPointer(PoolPointer&&) = default;
     ~PoolPointer() = default;
@@ -179,7 +181,6 @@ public:
     uint64_t offset;
   };
 
-
   // Deletes a pool (without opening it). If the pool is not open by any other
   // processes, it's deleted immediately; if it is open somewhere, it's deleted
   // when all processes have closed it.
@@ -188,7 +189,7 @@ public:
 private:
   struct Data {
     std::atomic<uint64_t> size;
-  };
+  } __attribute__((packed));
 
   std::string name;
   size_t max_size;

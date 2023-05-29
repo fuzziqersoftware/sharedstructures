@@ -16,7 +16,6 @@ public:
   Allocator(Pool&&) = delete;
   virtual ~Allocator() = default;
 
-
   // Allocator functions. There are three sets of these.
   // - allocate/free behave like malloc/free but deal with raw offsets instead
   //   of pointers
@@ -45,18 +44,19 @@ public:
 
   virtual void free(uint64_t x) = 0;
 
-  template <typename T> void free_object(uint64_t off) {
+  template <typename T>
+  void free_object(uint64_t off) {
     T* x = this->pool->at<T>(off);
     x->T::~T();
     this->free(off);
   }
-  template <typename T> void free_object_ptr(T* ptr) {
+  template <typename T>
+  void free_object_ptr(T* ptr) {
     this->free_object<T>(this->pool->at(ptr));
   }
 
   // Returns the size of the allocated block starting at offset
   virtual size_t block_size(uint64_t offset) const = 0;
-
 
   // Base object functions. The base object is a single pointer stored in the
   // pool's header, which can be used to keep track of the main data structure
@@ -65,7 +65,6 @@ public:
 
   virtual void set_base_object_offset(uint64_t offset) = 0;
   virtual uint64_t base_object_offset() const = 0;
-
 
   // Introspection functions
 
@@ -79,17 +78,14 @@ public:
   // modifying the pool concurrently. This value should be used for monitoring
   // only, not for behavioral decisions.
 
-
   // Locking functions
 
   virtual ProcessReadWriteLockGuard lock(bool writing) const = 0;
   virtual bool is_locked(bool writing) const = 0;
 
-
   // Debugging functions
 
   virtual void verify() const = 0;
-
 
 protected:
   std::shared_ptr<Pool> pool;

@@ -1,26 +1,25 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
 #include "LogarithmicAllocator.hh"
-#include "SimpleAllocator.hh"
+#include "Pool.hh"
 #include "PrefixTree.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 
 using namespace sharedstructures;
-
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -32,7 +31,6 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   }
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
-
 
 template <typename T>
 struct Stats {
@@ -72,30 +70,28 @@ struct Stats<T> get_stats(const vector<T>& x) {
 
 template <typename T>
 void print_stats(FILE* f, const char* title, struct Stats<T>& stats) {
-  fprintf(f, "%s: count=%zu avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
-      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%"
-      PRIu64 "\n", title, stats.count, stats.mean, stats.min, stats.p01,
+  fprintf(f, "%s: count=%zu avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64 " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%" PRIu64 "\n",
+      title, stats.count, stats.mean, stats.min, stats.p01,
       stats.p10, stats.p50, stats.p90, stats.p99, stats.max);
 }
 
 void print_stats(FILE* f, const char* title, struct Stats<double>& stats) {
-  fprintf(f, "%s: count=%zu avg=%lg min=%lg p01=%lg p10=%lg p50=%lg "
-      "p90=%lg p99=%lg max=%lg\n", title, stats.count, stats.mean, stats.min,
+  fprintf(f, "%s: count=%zu avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg p99=%lg max=%lg\n",
+      title, stats.count, stats.mean, stats.min,
       stats.p01, stats.p10, stats.p50, stats.p90, stats.p99, stats.max);
 }
 
-
 void print_usage(const char* argv0) {
   fprintf(stderr,
-    "usage: %s -X<allocator-type> [options]\n"
-    "  options:\n"
-    "    -l<max-pool-size> : pool will grow up to this size (bytes)\n"
-    "    -s<min-alloc-size> : allocations will be at least this many bytes each\n"
-    "    -S<max-alloc-size> : allocations will be at most this many bytes each\n"
-    "    -P<pool-name> : filename for the pool\n"
-    "    -A : preallocate the entire pool up to max-pool-size\n", argv0);
+      "usage: %s -X<allocator-type> [options]\n"
+      "  options:\n"
+      "    -l<max-pool-size> : pool will grow up to this size (bytes)\n"
+      "    -s<min-alloc-size> : allocations will be at least this many bytes each\n"
+      "    -S<max-alloc-size> : allocations will be at most this many bytes each\n"
+      "    -P<pool-name> : filename for the pool\n"
+      "    -A : preallocate the entire pool up to max-pool-size\n",
+      argv0);
 }
-
 
 int main(int argc, char** argv) {
 
@@ -172,7 +168,7 @@ int main(int argc, char** argv) {
     auto res = t.at(key_str, key_len);
     uint64_t end = now();
 
-    expect_eq(res.type, PrefixTree::ResultValueType::Null);
+    expect_eq(res.type, PrefixTree::ResultValueType::NULL_VALUE);
     get_times.emplace_back(end - start);
   }
 

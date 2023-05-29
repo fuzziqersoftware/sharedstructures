@@ -7,13 +7,12 @@
 
 namespace sharedstructures {
 
-
 struct ProcessLock {
   std::atomic<int32_t> lock;
   int32_t __force_alignment__;
 
   bool is_locked() const;
-};
+} __attribute__((packed));
 
 struct ProcessReadWriteLock {
   std::atomic<int32_t> write_lock;
@@ -21,8 +20,7 @@ struct ProcessReadWriteLock {
 
   bool is_locked(bool writing) const;
   size_t reader_count() const;
-};
-
+} __attribute__((packed));
 
 class ProcessLockGuard {
 public:
@@ -44,16 +42,15 @@ private:
   int32_t stolen_lock_token;
 };
 
-
 class ProcessReadWriteLockGuard {
 public:
   enum class Behavior {
-    Read = 0,
-    Write,
+    READ = 0,
+    WRITE,
 
     // If stolen, the returned lock is held for writing instead. The caller must
     // not forget to check for this case!
-    ReadUnlessStolen,
+    READ_UNLESS_STOLEN,
   };
 
   ProcessReadWriteLockGuard() = delete;

@@ -13,15 +13,16 @@ using namespace std;
 
 namespace sharedstructures {
 
-
-Queue::Queue(shared_ptr<Allocator> allocator) : allocator(allocator) {
+Queue::Queue(shared_ptr<Allocator> allocator)
+    : allocator(allocator) {
   auto g = this->allocator->lock(true);
   this->base_offset = this->allocator->allocate_object<QueueBase>();
   this->setup_base_locked();
 }
 
-Queue::Queue(shared_ptr<Allocator> allocator, uint64_t base_offset) :
-    allocator(allocator), base_offset(base_offset) {
+Queue::Queue(shared_ptr<Allocator> allocator, uint64_t base_offset)
+    : allocator(allocator),
+      base_offset(base_offset) {
   if (!this->base_offset) {
     auto g = this->allocator->lock(false);
     this->base_offset = this->allocator->base_object_offset();
@@ -48,7 +49,6 @@ void Queue::setup_base_locked() {
   base->back_node.next_offset = 0;
 }
 
-
 shared_ptr<Allocator> Queue::get_allocator() const {
   return this->allocator;
 }
@@ -56,7 +56,6 @@ shared_ptr<Allocator> Queue::get_allocator() const {
 uint64_t Queue::base() const {
   return this->base_offset;
 }
-
 
 void Queue::link_node_locked(Node* new_node, Node* prev, Node* next) {
   auto p = this->allocator->get_pool();
@@ -68,8 +67,7 @@ void Queue::link_node_locked(Node* new_node, Node* prev, Node* next) {
 
   QueueBase* base = p->at<QueueBase>(this->base_offset);
   base->item_count++;
-  base->total_value_bytes += this->allocator->block_size(
-      p->at(new_node)) - sizeof(Node);
+  base->total_value_bytes += this->allocator->block_size(p->at(new_node)) - sizeof(Node);
 }
 
 void Queue::unlink_node_locked(Node* node) {
@@ -82,8 +80,7 @@ void Queue::unlink_node_locked(Node* node) {
 
   QueueBase* base = p->at<QueueBase>(this->base_offset);
   base->item_count--;
-  base->total_value_bytes -= this->allocator->block_size(
-      p->at(node)) - sizeof(Node);
+  base->total_value_bytes -= this->allocator->block_size(p->at(node)) - sizeof(Node);
 }
 
 Queue::Node* Queue::create_node_locked(const void* data, size_t size) {
@@ -138,7 +135,6 @@ void Queue::push(bool front, const string& data) {
   }
 }
 
-
 string Queue::pop_back() {
   auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
@@ -181,22 +177,19 @@ string Queue::pop(bool front) {
   }
 }
 
-
 size_t Queue::size() const {
   auto g = this->allocator->lock(false);
-  return this->allocator->get_pool()->at<QueueBase>(
-      this->base_offset)->item_count;
+  return this->allocator->get_pool()->at<QueueBase>(this->base_offset)->item_count;
 }
 
 size_t Queue::bytes() const {
   auto g = this->allocator->lock(false);
-  return this->allocator->get_pool()->at<QueueBase>(
-      this->base_offset)->total_value_bytes;
+  return this->allocator->get_pool()->at<QueueBase>(this->base_offset)->total_value_bytes;
 }
 
-
-Queue::QueueBase::QueueBase() : item_count(0), total_value_bytes(0) { }
-
+Queue::QueueBase::QueueBase()
+    : item_count(0),
+      total_value_bytes(0) {}
 
 void Queue::verify(bool print) {
   auto g = this->allocator->lock(false);
@@ -246,5 +239,4 @@ void Queue::verify(bool print) {
   }
 }
 
-
-}
+} // namespace sharedstructures

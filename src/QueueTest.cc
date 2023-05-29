@@ -1,21 +1,21 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <phosg/Strings.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
-#include "SimpleAllocator.hh"
 #include "LogarithmicAllocator.hh"
+#include "Pool.hh"
 #include "Queue.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 
@@ -23,9 +23,8 @@ using namespace sharedstructures;
 
 const string pool_name_prefix = "QueueTest-cc-pool-";
 
-
-shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
-    const string& allocator_type) {
+shared_ptr<Allocator> create_allocator(
+    shared_ptr<Pool> pool, const string& allocator_type) {
   if (allocator_type == "simple") {
     return shared_ptr<Allocator>(new SimpleAllocator(pool));
   }
@@ -35,14 +34,12 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
 
-
-shared_ptr<Queue> get_or_create_queue(const string& name,
-    const string& allocator_type) {
+shared_ptr<Queue> get_or_create_queue(
+    const string& name, const string& allocator_type) {
   shared_ptr<Pool> pool(new Pool(name));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   return shared_ptr<Queue>(new Queue(alloc, 0));
 }
-
 
 void run_basic_tests(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
@@ -81,10 +78,9 @@ void run_basic_tests(const string& allocator_type) {
     q->verify();
     expect_eq(0, q->size());
     expect_eq(0, q->bytes());
-    try {
+    expect_raises<out_of_range>([&]() {
       q->pop(!reverse);
-      expect(false);
-    } catch (const out_of_range&) { }
+    });
     q->verify();
   };
 
@@ -119,10 +115,9 @@ void run_basic_tests(const string& allocator_type) {
     q->verify();
     expect_eq(0, q->size());
     expect_eq(0, q->bytes());
-    try {
+    expect_raises<out_of_range>([&]() {
       q->pop(front);
-      expect(false);
-    } catch (const out_of_range&) { }
+    });
     q->verify();
   };
 
@@ -246,7 +241,7 @@ void run_concurrent_consumers_test(const string& allocator_type) {
         fprintf(stderr, "value !< prev_value (%zd !< %zd)\n", value, prev_value);
         expect(false);
       }
-      //expect_gt(value, prev_value);
+      // expect_gt(value, prev_value);
       prev_value = value;
     };
 
@@ -291,7 +286,6 @@ void run_concurrent_consumers_test(const string& allocator_type) {
     expect_eq(0, num_failures);
   }
 }
-
 
 int main(int, char**) {
   int retcode = 0;

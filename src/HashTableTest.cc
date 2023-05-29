@@ -1,28 +1,27 @@
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <phosg/Process.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
-#include <phosg/Process.hh>
 #include <string>
 
+#include "HashTable.hh"
+#include "LogarithmicAllocator.hh"
 #include "Pool.hh"
 #include "SimpleAllocator.hh"
-#include "LogarithmicAllocator.hh"
-#include "HashTable.hh"
 
 using namespace std;
 using namespace sharedstructures;
 
 const string pool_name_prefix = "HashTableTest-cc-pool-";
-
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -35,15 +34,12 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
 
-
 void expect_key_missing(const HashTable& table, const void* k,
     size_t s) {
-  try {
+  expect_raises<out_of_range>([&]() {
     table.at(k, s);
-    expect(false);
-  } catch (const out_of_range& e) { }
+  });
 }
-
 
 void verify_state(
     const unordered_map<string, string>& expected,
@@ -62,7 +58,6 @@ void verify_state(
   }
   expect_eq(true, missing_elements.empty());
 }
-
 
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
@@ -106,7 +101,6 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
 
-
 void run_collision_test(const string& allocator_type) {
   printf("-- [%s] collision\n", allocator_type.c_str());
 
@@ -143,7 +137,6 @@ void run_collision_test(const string& allocator_type) {
   // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, alloc->bytes_allocated());
 }
-
 
 void run_conditional_writes_test(const string& allocator_type) {
   printf("-- [%s] conditional writes\n", allocator_type.c_str());
@@ -220,7 +213,6 @@ void run_conditional_writes_test(const string& allocator_type) {
   expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
 }
 
-
 template <typename T>
 static bool insert_typed(HashTable& table, const char* key, T v) {
   return table.insert(key, strlen(key), &v, sizeof(v));
@@ -296,14 +288,12 @@ void run_incr_test(const string& allocator_type) {
   expect_eq(13, table.size());
 
   // Test incr() on keys of the wrong type
-  try {
+  expect_raises<out_of_range>([&]() {
     table.incr("string", 6, (int64_t)14);
-    expect(false);
-  } catch (const out_of_range& e) { }
-  try {
+  });
+  expect_raises<out_of_range>([&]() {
     table.incr("string", 6, 15.0);
-    expect(false);
-  } catch (const out_of_range& e) { }
+  });
 
   table.clear();
   expect_eq(0, table.size());
@@ -311,7 +301,6 @@ void run_incr_test(const string& allocator_type) {
   // The empty table should not leak any allocated memory
   expect_eq(initial_pool_allocated, table.get_allocator()->bytes_allocated());
 }
-
 
 void run_concurrent_readers_test(const string& allocator_type) {
   printf("-- [%s] concurrent readers\n", allocator_type.c_str());
@@ -351,7 +340,8 @@ void run_concurrent_readers_test(const string& allocator_type) {
           value++;
           value_str = to_string(value);
         }
-      } catch (const out_of_range& e) { }
+      } catch (const out_of_range& e) {
+      }
       usleep(1); // Yield to other processes
     } while ((value < 110) && (now() < (start_time + 1000000)));
 
@@ -397,8 +387,6 @@ void run_concurrent_readers_test(const string& allocator_type) {
     expect_eq(0, num_failures);
   }
 }
-
-
 
 int main(int, char**) {
   int retcode = 0;

@@ -11,22 +11,27 @@
 
 #include <utility>
 
-#include "Pool.hh"
 #include "Allocator.hh"
-#include "SimpleAllocator.hh"
-#include "LogarithmicAllocator.hh"
+#include "AtomicVector.hh"
 #include "HashTable.hh"
+#include "LogarithmicAllocator.hh"
+#include "Pool.hh"
 #include "PrefixTree.hh"
-#include "IntVector.hh"
-#include "Queue.hh"
 #include "PriorityQueue.hh"
+#include "Queue.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 
+// Python uses some defined (e.g. PyObject_HEAD) that confuse clang-format, and
+// the object type declarations are formatted slightly unusually, so we disable
+// formatting for this entire file.
+// clang-format off
+
+
+
 using ResultValueType = sharedstructures::PrefixTree::ResultValueType;
 using LookupResult = sharedstructures::PrefixTree::LookupResult;
-
-
 
 // TODO: make sure long is supported everywhere int is supported
 
@@ -74,12 +79,12 @@ static pair<const char*, size_t> sharedstructures_internal_get_key(
 static PyObject* sharedstructures_internal_get_python_object_for_result(
     const sharedstructures::PrefixTree::LookupResult& res) {
   switch (res.type) {
-    case ResultValueType::Missing:
+    case ResultValueType::MISSING:
       // This can't happen
       PyErr_SetString(PyExc_NotImplementedError, "missing result returned");
       return nullptr;
 
-    case ResultValueType::String:
+    case ResultValueType::STRING:
       if (res.as_string.empty()) {
         return PyBytes_FromStringAndSize(nullptr, 0);
       }
@@ -123,19 +128,19 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
           return nullptr;
       }
 
-    case ResultValueType::Int:
+    case ResultValueType::INT:
       return PyLong_FromLongLong(res.as_int);
 
-    case ResultValueType::Double:
+    case ResultValueType::DOUBLE:
       return PyFloat_FromDouble(res.as_double);
 
-    case ResultValueType::Bool: {
+    case ResultValueType::BOOL: {
       PyObject* ret = res.as_bool ? Py_True : Py_False;
       Py_INCREF(ret);
       return ret;
     }
 
-    case ResultValueType::Null:
+    case ResultValueType::NULL_VALUE:
       Py_INCREF(Py_None);
       return Py_None;
   }
@@ -147,7 +152,7 @@ static PyObject* sharedstructures_internal_get_python_object_for_result(
 static LookupResult sharedstructures_internal_get_result_for_python_object(
     PyObject* o) {
   if (o == Py_None) {
-    return LookupResult();
+    return LookupResult(nullptr);
 
   } else if (o == Py_True) {
     return LookupResult(true);
@@ -325,7 +330,7 @@ Arguments:\n\
 
 typedef struct {
   PyObject_HEAD
-  shared_ptr<sharedstructures::IntVector> v;
+  shared_ptr<sharedstructures::AtomicVector<int64_t>> v;
 } sharedstructures_IntVector;
 
 
@@ -1456,8 +1461,8 @@ Returns True if a set was performed or a key was deleted. Returns False if the\n
 check fails, or if target_key was going to be deleted but it already didn't\n\
 exist.";
 
-static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
-    PyObject* args) {
+static PyObject* sharedstructures_PrefixTree_check_and_set(
+    PyObject* py_self, PyObject* args) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
 
   char* check_key;
@@ -1474,7 +1479,7 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(PyObject* py_self,
 
   bool written;
   try {
-    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size);
+    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size, ResultValueType::MISSING);
     check.value = sharedstructures_internal_get_result_for_python_object(check_value_object);
     if (target_value_object) {
       auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
@@ -1519,8 +1524,8 @@ static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
 
   bool written;
   try {
-    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size,
-        ResultValueType::Missing);
+    sharedstructures::PrefixTree::CheckRequest check(
+        check_key, check_key_size, ResultValueType::MISSING);
     if (target_value_object) {
       auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
       written = self->table->insert(target_key, target_key_size, target_value, &check);
@@ -2279,8 +2284,8 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
   // Try to construct the pool before filling in the python object
   try {
     shared_ptr<sharedstructures::Pool> pool(new sharedstructures::Pool(pool_name));
-    new (&self->v) shared_ptr<sharedstructures::IntVector>(
-        new sharedstructures::IntVector(pool));
+    new (&self->v) shared_ptr<sharedstructures::AtomicVector<int64_t>>(
+        new sharedstructures::AtomicVector<int64_t>(pool));
 
   } catch (const exception& e) {
     PyErr_Format(PyExc_RuntimeError, "failed to initialize int vector: %s", e.what());
@@ -2416,8 +2421,8 @@ IntVector.compare_exchange(index, expected_value, new_value) -> int\n\
 Returns the value that was stored in the array before the operation. If the\n\
 returned value is equal to expected_value, the exchange was performed.";
 
-static PyObject* sharedstructures_IntVector_compare_exchange(PyObject* py_self,
-    PyObject* args) {
+static PyObject* sharedstructures_IntVector_compare_exchange(
+    PyObject* py_self, PyObject* args) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
 
   int64_t index, expected_value, new_value, old_value;
@@ -2555,6 +2560,90 @@ static PyObject* sharedstructures_IntVector_bitwise_xor(PyObject* py_self,
   return PyLong_FromLongLong(old_value);
 }
 
+static const char* sharedstructures_IntVector_load_bit_doc =
+"Atomically reads a bit from the array. The array is composed of 64-bit\n\
+integers, so if index is in the range 0-63, it wil lread from the first\n\
+integer; the range 64-127 corresponds to the second, and so on.\n\
+\n\
+IntVector.load_bit(index) -> bool";
+
+static PyObject* sharedstructures_IntVector_load_bit(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index;
+  if (!PyArg_ParseTuple(args, "L", &index)) {
+    return nullptr;
+  }
+
+  bool result;
+  try {
+    result = self->v->load_bit(index);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return nullptr;
+  }
+
+  PyObject* ret = result ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
+static const char* sharedstructures_IntVector_set_bit_doc =
+"Atomically sets a bit in the array. The index parameter has the same meaning\n\
+as in load_bit.\n\
+\n\
+IntVector.set_bit(index, value) -> None";
+
+static PyObject* sharedstructures_IntVector_set_bit(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index;
+  int value;
+  if (!PyArg_ParseTuple(args, "Lp", &index, &value)) {
+    return nullptr;
+  }
+
+  try {
+    self->v->set_bit(index, value);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return nullptr;
+  }
+
+  Py_INCREF(Py_None);
+  return Py_None;
+}
+
+static const char* sharedstructures_IntVector_toggle_bit_doc =
+"Atomically flips a bit in the array. The index parameter has the same meaning\n\
+as in load_bit. Returns the new value of the bit.\n\
+\n\
+IntVector.toggle_bit(index) -> bool";
+
+static PyObject* sharedstructures_IntVector_toggle_bit(
+    PyObject* py_self, PyObject* args) {
+  sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
+
+  int64_t index;
+  if (!PyArg_ParseTuple(args, "L", &index)) {
+    return nullptr;
+  }
+
+  bool result;
+  try {
+    result = self->v->toggle_bit(index);
+  } catch (const out_of_range&) {
+    PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
+    return nullptr;
+  }
+
+  PyObject* ret = result ? Py_True : Py_False;
+  Py_INCREF(ret);
+  return ret;
+}
+
 static const char* sharedstructures_IntVector_pool_bytes_doc =
 "Returns the size of the underlying shared memory pool.";
 
@@ -2586,6 +2675,12 @@ static PyMethodDef sharedstructures_IntVector_methods[] = {
       sharedstructures_IntVector_bitwise_or_doc},
   {"bitwise_xor", (PyCFunction)sharedstructures_IntVector_bitwise_xor, METH_VARARGS,
       sharedstructures_IntVector_bitwise_xor_doc},
+  {"load_bit", (PyCFunction)sharedstructures_IntVector_load_bit, METH_VARARGS,
+      sharedstructures_IntVector_load_bit_doc},
+  {"set_bit", (PyCFunction)sharedstructures_IntVector_set_bit, METH_VARARGS,
+      sharedstructures_IntVector_set_bit_doc},
+  {"toggle_bit", (PyCFunction)sharedstructures_IntVector_toggle_bit, METH_VARARGS,
+      sharedstructures_IntVector_toggle_bit_doc},
   {nullptr, nullptr, 0, nullptr},
 };
 

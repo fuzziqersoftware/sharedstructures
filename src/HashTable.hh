@@ -9,9 +9,7 @@
 
 namespace sharedstructures {
 
-
 class HashTableIterator;
-
 
 class HashTable {
 public:
@@ -124,19 +122,19 @@ private:
     // key_size.
     // if key_offset is 0, then this slot is empty.
     // if key_size is (uint64_t)-1, then this slot contains indirect slots
-  };
+  } __attribute__((packed));
 
   struct IndirectValue {
     uint64_t next;
     uint64_t key_offset;
     uint64_t key_size;
-  };
+  } __attribute__((packed));
 
   struct HashTableBase {
-    uint8_t bits;
+    uint64_t bits;
     uint64_t slots_offset;
     uint64_t item_count;
-  };
+  } __attribute__((packed));
 
   uint64_t create_hash_base(uint8_t bits);
   std::pair<uint64_t, uint64_t> walk_indirect_list(uint64_t indirect_offset,
@@ -149,7 +147,6 @@ private:
   std::pair<std::string, std::string> next_key_value_internal(
       const void* current, size_t size, bool return_value) const;
 };
-
 
 class HashTableIterator {
 public:
@@ -173,6 +170,5 @@ private:
 
   void advance_to_nonempty_slot_if_needed();
 };
-
 
 } // namespace sharedstructures

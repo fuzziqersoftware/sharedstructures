@@ -1,25 +1,24 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
 #include "LogarithmicAllocator.hh"
+#include "Pool.hh"
 #include "SimpleAllocator.hh"
 
 using namespace std;
 
 using namespace sharedstructures;
-
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -31,7 +30,6 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   }
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
-
 
 template <typename T>
 struct Stats {
@@ -69,18 +67,18 @@ struct Stats<T> get_stats(const vector<T>& x) {
   return ret;
 }
 
-
-void print_usage(const char* argv0) {
+void
+print_usage(const char* argv0) {
   fprintf(stderr,
-    "usage: %s -X<allocator-type> [options]\n"
-    "  options:\n"
-    "    -l<max-pool-size> : pool will grow up to this size (bytes)\n"
-    "    -s<min-alloc-size> : allocations will be at least this many bytes each\n"
-    "    -S<max-alloc-size> : allocations will be at most this many bytes each\n"
-    "    -P<pool-name> : filename for the pool\n"
-    "    -A : preallocate the entire pool up to max-pool-size\n", argv0);
+      "usage: %s -X<allocator-type> [options]\n"
+      "  options:\n"
+      "    -l<max-pool-size> : pool will grow up to this size (bytes)\n"
+      "    -s<min-alloc-size> : allocations will be at least this many bytes each\n"
+      "    -S<max-alloc-size> : allocations will be at most this many bytes each\n"
+      "    -P<pool-name> : filename for the pool\n"
+      "    -A : preallocate the entire pool up to max-pool-size\n",
+      argv0);
 }
-
 
 int main(int argc, char** argv) {
 
@@ -140,7 +138,8 @@ int main(int argc, char** argv) {
           (pool->size() - alloc->bytes_free());
       efficiencies.emplace_back(efficiency);
       fprintf(stderr, "allocation #%zu: %zu allocated, %zu free, %zu total, "
-          "%g efficiency\n", allocated_regions.size(), allocated_size,
+                      "%g efficiency\n",
+          allocated_regions.size(), allocated_size,
           alloc->bytes_free(), pool->size(), efficiency);
     }
 
@@ -174,32 +173,30 @@ int main(int argc, char** argv) {
       double efficiency = (float)alloc->bytes_allocated() /
           (pool->size() - alloc->bytes_free());
       efficiencies.emplace_back(efficiency);
-      fprintf(stderr, "free #%zu: %zu allocated, %zu free, %zu total, "
-          "%g efficiency\n", allocated_regions.size(), allocated_size,
+      fprintf(stderr, "free #%zu: %zu allocated, %zu free, %zu total, %g efficiency\n",
+          allocated_regions.size(), allocated_size,
           alloc->bytes_free(), pool->size(), efficiency);
     }
   }
 
   sort(efficiencies.begin(), efficiencies.end());
   auto efficiency_stats = get_stats(efficiencies);
-  fprintf(stdout, "efficiency: avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg "
-      "p99=%lg max=%lg\n", efficiency_stats.mean, efficiency_stats.min,
+  fprintf(stdout, "efficiency: avg=%lg min=%lg p01=%lg p10=%lg p50=%lg p90=%lg p99=%lg max=%lg\n",
+      efficiency_stats.mean, efficiency_stats.min,
       efficiency_stats.p01, efficiency_stats.p10, efficiency_stats.p50,
       efficiency_stats.p90, efficiency_stats.p99, efficiency_stats.max);
 
   sort(alloc_times.begin(), alloc_times.end());
   auto alloc_time_stats = get_stats(alloc_times);
-  fprintf(stdout, "alloc usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
-      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
-      " max=%" PRIu64 "\n", alloc_time_stats.mean, alloc_time_stats.min,
+  fprintf(stdout, "alloc usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64 " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%" PRIu64 "\n",
+      alloc_time_stats.mean, alloc_time_stats.min,
       alloc_time_stats.p01, alloc_time_stats.p10, alloc_time_stats.p50,
       alloc_time_stats.p90, alloc_time_stats.p99, alloc_time_stats.max);
 
   sort(free_times.begin(), free_times.end());
   auto free_time_stats = get_stats(free_times);
-  fprintf(stdout, "free usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64
-      " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64
-      " max=%" PRIu64 "\n", free_time_stats.mean, free_time_stats.min,
+  fprintf(stdout, "free usecs: avg=%" PRIu64 " min=%" PRIu64 " p01=%" PRIu64 " p10=%" PRIu64 " p50=%" PRIu64 " p90=%" PRIu64 " p99=%" PRIu64 " max=%" PRIu64 "\n",
+      free_time_stats.mean, free_time_stats.min,
       free_time_stats.p01, free_time_stats.p10, free_time_stats.p50,
       free_time_stats.p90, free_time_stats.p99, free_time_stats.max);
 

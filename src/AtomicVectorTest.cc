@@ -1,46 +1,42 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <phosg/Strings.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
+#include "AtomicVector.hh"
 #include "Pool.hh"
-#include "IntVector.hh"
 
 using namespace std;
 using namespace sharedstructures;
 
 const string pool_name = "IntVectorTest-cc-pool";
 
-
-shared_ptr<IntVector> get_or_create_vector() {
+template <typename T>
+shared_ptr<AtomicVector<T>> get_or_create_vector() {
   shared_ptr<Pool> pool(new Pool(pool_name));
-  return shared_ptr<IntVector>(new IntVector(pool));
+  return shared_ptr<AtomicVector<T>>(new AtomicVector<T>(pool));
 }
 
-
-
-void print_vector(shared_ptr<IntVector> v) {
+void print_vector(shared_ptr<AtomicVector<int64_t>> v) {
   size_t count = v->size();
   for (size_t x = 0; x < count; x++) {
-    fprintf(stderr, "  v[%zu] == %" PRIu64 "\n", x, v->load(x));
+    fprintf(stderr, "  v[%zu] == %" PRId64 "\n", x, v->load(x));
   }
 }
-
-
 
 void run_basic_test() {
   printf("-- basic\n");
 
-  auto v = get_or_create_vector();
+  auto v = get_or_create_vector<int64_t>();
 
   const ssize_t limit = 1024;
 
@@ -133,6 +129,32 @@ void run_basic_test() {
     expect_eq(x, v->load(x));
   }
 
+  // Test bit operations
+  for (size_t x = 0; x < 10; x++) {
+    v->store(x, 0);
+  }
+  for (size_t x = 0; x < 320; x++) {
+    v->set_bit(x * 2, true);
+  }
+  for (size_t x = 0; x < 640; x++) {
+    expect_eq(!(x & 1), v->load_bit(x));
+  }
+  for (size_t x = 0; x < 10; x++) {
+    expect_eq(0xAAAAAAAAAAAAAAAA, static_cast<uint64_t>(v->load(x)));
+  }
+  for (size_t x = 0; x < 160; x++) {
+    v->set_bit(x * 4, false);
+  }
+  for (size_t x = 0; x < 10; x++) {
+    expect_eq(0x2222222222222222, static_cast<uint64_t>(v->load(x)));
+  }
+  for (size_t x = 0; x < 320; x++) {
+    expect_eq(!(x & 1), v->toggle_bit(x * 2));
+  }
+  for (size_t x = 0; x < 10; x++) {
+    expect_eq(0x8888888888888888, static_cast<uint64_t>(v->load(x)));
+  }
+
   // Should be 3 pages
   expect_eq(4096 * 3, v->get_pool()->size());
 }
@@ -152,7 +174,7 @@ void run_concurrent_readers_test() {
 
   if (child_pids.count(0)) {
     // Child process: try up to 3 seconds for value to go from 100 to 110
-    auto v = get_or_create_vector();
+    auto v = get_or_create_vector<int64_t>();
 
     int64_t value = 100;
     uint64_t start_time = now();
@@ -168,7 +190,7 @@ void run_concurrent_readers_test() {
 
   } else {
     // Parent process: increment the value from 100 to 110
-    auto v = get_or_create_vector();
+    auto v = get_or_create_vector<int64_t>();
 
     for (int64_t value = 100; value < 110; value++) {
       usleep(100000);
@@ -193,7 +215,6 @@ void run_concurrent_readers_test() {
   }
 }
 
-
 int main(int, char**) {
   int retcode = 0;
 
@@ -202,12 +223,12 @@ int main(int, char**) {
     run_basic_test();
     run_concurrent_readers_test();
     printf("all tests passed\n");
+    Pool::delete_pool(pool_name);
 
   } catch (const exception& e) {
     printf("failure: %s\n", e.what());
     retcode = 1;
   }
-  Pool::delete_pool(pool_name);
 
   return retcode;
 }

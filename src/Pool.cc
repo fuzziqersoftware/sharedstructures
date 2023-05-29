@@ -5,13 +5,12 @@
 #include <sys/mman.h>
 #include <unistd.h>
 
-#include <phosg/Strings.hh>
 #include <phosg/Platform.hh>
+#include <phosg/Strings.hh>
 
 using namespace std;
 
 namespace sharedstructures {
-
 
 static int open_segment(const char* name, int type, mode_t mode, bool file) {
   if (file) {
@@ -29,9 +28,9 @@ static int unlink_segment(const char* name, bool file) {
   }
 }
 
-
-Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
-    max_size(max_size) {
+Pool::Pool(const string& name, size_t max_size, bool file)
+    : name(name),
+      max_size(max_size) {
 
   // On Linux, shared memory objects can be resized at any time just by calling
   // ftruncate again. But on OSX, ftruncate can be called only once for each
@@ -41,8 +40,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
   file = true;
 #endif
 
-  this->fd = open_segment(this->name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0666,
-      file);
+  this->fd = open_segment(this->name.c_str(), O_RDWR | O_CREAT | O_EXCL, 0666, file);
   if (this->fd == -1 && errno == EEXIST) {
     this->fd = open_segment(this->name.c_str(), O_RDWR, 0666, file);
     if (this->fd == -1) {
@@ -68,8 +66,7 @@ Pool::Pool(const string& name, size_t max_size, bool file) : name(name),
     this->pool_size = PAGE_SIZE;
     if (ftruncate(this->fd, this->pool_size)) {
       unlink_segment(this->name.c_str(), file);
-      throw runtime_error("can\'t resize memory map: " +
-          string_for_error(errno));
+      throw runtime_error("can\'t resize memory map: " + string_for_error(errno));
     }
 
     this->data = (Data*)mmap(nullptr, this->pool_size, PROT_READ | PROT_WRITE,
@@ -89,11 +86,9 @@ Pool::~Pool() {
   }
 }
 
-
 const string& Pool::get_name() const {
   return this->name;
 }
-
 
 void Pool::expand(size_t new_size) {
   // The new size must be a multiple of the page size, so round it up.
@@ -116,8 +111,7 @@ void Pool::expand(size_t new_size) {
 }
 
 void Pool::check_size_and_remap() const {
-  uint64_t new_pool_size = this->pool_size ? this->data->size.load() :
-      fstat(this->fd).st_size;
+  uint64_t new_pool_size = this->pool_size ? this->data->size.load() : fstat(this->fd).st_size;
   if (new_pool_size != this->pool_size) {
     munmap(this->data, this->pool_size);
 
@@ -138,8 +132,8 @@ size_t Pool::size() const {
   return this->data->size;
 }
 
-void Pool::map_and_call(uint64_t offset, size_t size,
-    function<void(void*, size_t)> cb) {
+void Pool::map_and_call(
+    uint64_t offset, size_t size, function<void(void*, size_t)> cb) {
   uint64_t page_offset = offset & ~(PAGE_SIZE - 1);
   uint64_t offset_within_page = offset ^ page_offset;
 
@@ -153,7 +147,6 @@ void Pool::map_and_call(uint64_t offset, size_t size,
   cb((char*)data + offset_within_page, size);
   munmap(data, page_count * PAGE_SIZE);
 }
-
 
 bool Pool::delete_pool(const std::string& name, bool file) {
   int ret = unlink_segment(name.c_str(), file || MAP_HASSEMAPHORE);

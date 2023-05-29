@@ -54,7 +54,6 @@ endforeach()
 add_library(sharedstructures
   src/Allocator.cc
   src/HashTable.cc
-  src/IntVector.cc
   src/LogarithmicAllocator.cc
   src/Pool.cc
   src/PrefixTree.cc
@@ -95,7 +94,7 @@ endif()
 
 enable_testing()
 
-foreach(TestName IN ITEMS AllocatorTest HashTableTest IntVectorTest PrefixTreeTest PriorityQueueTest ProcessLockTest QueueTest)
+foreach(TestName IN ITEMS AllocatorTest HashTableTest AtomicVectorTest PrefixTreeTest PriorityQueueTest ProcessLockTest QueueTest)
 	add_executable(${TestName} src/${TestName}.cc)
 	target_link_libraries(${TestName} sharedstructures)
 	add_test(NAME ${TestName} COMMAND ${TestName})
@@ -130,9 +129,9 @@ install(FILES ${Headers} DESTINATION include/sharedstructures)
 # Linux
 # 	PYTHON_MODULE_CXXFLAGS = -DLINUX
 # 	PYTHON_MODULE_LDFLAGS = -shared
-# 
+#
 # sharedstructures.abi3.so: $(OBJECTS) PythonModule.o
 # 	$(CXX) $^ $(PYTHON_MODULE_LDFLAGS) $(LDFLAGS) -o $@
-# 
+#
 # PythonModule.o: PythonModule.cc
 # 	$(CXX) $(CXXFLAGS) $(PYTHON_MODULE_CXXFLAGS) -fno-strict-aliasing -fno-common -g $(PYTHON_INCLUDES) -c PythonModule.cc -o PythonModule.o

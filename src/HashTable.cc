@@ -4,39 +4,27 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <phosg/Hash.hh>
+
 using namespace std;
 
 namespace sharedstructures {
 
-
-static uint64_t fnv1a64(const void* data, size_t size,
-    uint64_t hash = 0xCBF29CE484222325) {
-
-  const uint8_t *data_ptr = (const uint8_t*)data;
-  const uint8_t *end_ptr = data_ptr + size;
-
-  for (; data_ptr != end_ptr; data_ptr++) {
-    hash = (hash ^ (uint64_t)*data_ptr) * 0x00000100000001B3;
-  }
-  return hash;
-}
-
-
-HashTable::HashTable(shared_ptr<Allocator> allocator, uint8_t bits) :
-    allocator(allocator) {
+HashTable::HashTable(shared_ptr<Allocator> allocator, uint8_t bits)
+    : allocator(allocator) {
   auto g = this->allocator->lock(true);
   this->base_offset = this->create_hash_base(bits);
 }
 
-HashTable::HashTable(shared_ptr<Allocator> allocator, uint64_t base_offset,
-    uint8_t bits) : allocator(allocator), base_offset(base_offset) {
+HashTable::HashTable(shared_ptr<Allocator> allocator, uint64_t base_offset, uint8_t bits)
+    : allocator(allocator),
+      base_offset(base_offset) {
   if (!this->base_offset) {
     auto g = this->allocator->lock(false);
     this->base_offset = this->allocator->base_object_offset();
   }
 
   if (!this->base_offset) {
-
     auto g = this->allocator->lock(true);
     this->base_offset = this->allocator->base_object_offset();
     if (!this->base_offset) {
@@ -46,7 +34,6 @@ HashTable::HashTable(shared_ptr<Allocator> allocator, uint64_t base_offset,
   }
 }
 
-
 shared_ptr<Allocator> HashTable::get_allocator() const {
   return this->allocator;
 }
@@ -55,28 +42,31 @@ uint64_t HashTable::base() const {
   return this->base_offset;
 }
 
+HashTable::CheckRequest::CheckRequest(
+    const void* key, size_t key_size, const void* value, size_t value_size)
+    : key(key),
+      key_size(key_size),
+      value(value),
+      value_size(value_size),
+      key_hash(fnv1a64(this->key, this->key_size)) {}
+HashTable::CheckRequest::CheckRequest(
+    const void* key, size_t key_size, const std::string& value)
+    : CheckRequest(key, key_size, value.data(), value.size()) {}
+HashTable::CheckRequest::CheckRequest(
+    const void* key, size_t key_size)
+    : CheckRequest(key, key_size, nullptr, 0) {}
+HashTable::CheckRequest::CheckRequest(
+    const std::string& key, const void* value, size_t value_size)
+    : CheckRequest(key.data(), key.size(), value, value_size) {}
+HashTable::CheckRequest::CheckRequest(
+    const std::string& key, const std::string& value)
+    : CheckRequest(key.data(), key.size(), value.data(), value.size()) {}
+HashTable::CheckRequest::CheckRequest(
+    const std::string& key)
+    : CheckRequest(key.data(), key.size(), nullptr, 0) {}
 
-HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size,
-    const void* value, size_t value_size) : key(key), key_size(key_size),
-    value(value), value_size(value_size),
-    key_hash(fnv1a64(this->key, this->key_size)) { }
-HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size,
-    const std::string& value) :
-    CheckRequest(key, key_size, value.data(), value.size()) { }
-HashTable::CheckRequest::CheckRequest(const void* key, size_t key_size) :
-    CheckRequest(key, key_size, nullptr, 0) { }
-HashTable::CheckRequest::CheckRequest(const std::string& key, const void* value,
-    size_t value_size) :
-    CheckRequest(key.data(), key.size(), value, value_size) { }
-HashTable::CheckRequest::CheckRequest(const std::string& key,
-    const std::string& value) :
-    CheckRequest(key.data(), key.size(), value.data(), value.size()) { }
-HashTable::CheckRequest::CheckRequest(const std::string& key) :
-    CheckRequest(key.data(), key.size(), nullptr, 0) { }
-
-
-bool HashTable::insert(const void* k, size_t k_size, const void* v,
-    size_t v_size, const CheckRequest* check) {
+bool HashTable::insert(
+    const void* k, size_t k_size, const void* v, size_t v_size, const CheckRequest* check) {
   uint64_t hash = fnv1a64(k, k_size);
 
   auto g = this->allocator->lock(true);
@@ -94,8 +84,7 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
 
   // Get the slot pointer
   HashTableBase* table = p->at<HashTableBase>(this->base_offset);
-  uint64_t slot_offset = table->slots_offset +
-      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  uint64_t slot_offset = table->slots_offset + (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
   Slot* slot = p->at<Slot>(slot_offset);
 
   // If the slot is empty, just link it to the value
@@ -118,12 +107,10 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
       slot->key_offset = new_kv_pair_offset;
       slot->key_size = k_size;
 
-    // If the key doesn't match, convert this slot to an indirect value
+      // If the key doesn't match, convert this slot to an indirect value
     } else {
-      uint64_t existing_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t existing_offset = this->allocator->allocate(sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* existing = p->at<IndirectValue>(existing_offset);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       slot = p->at<Slot>(slot_offset); // may be invalidated
@@ -140,7 +127,7 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
       table->item_count++;
     }
 
-  // The slot contains indirect values...
+    // The slot contains indirect values...
   } else {
     // Walk the list, looking for keys that match the one we're inserting
     auto walk_ret = walk_indirect_list(slot->key_offset & (~1), k, k_size);
@@ -153,10 +140,9 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
       indirect->key_offset = new_kv_pair_offset;
       indirect->key_size = k_size;
 
-    // No match; allocate a new indirect value at the end
+      // No match; allocate a new indirect value at the end
     } else {
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* prev = p->at<IndirectValue>(walk_ret.first);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       table = p->at<HashTableBase>(this->base_offset); // may be invalidated
@@ -172,18 +158,18 @@ bool HashTable::insert(const void* k, size_t k_size, const void* v,
   return true;
 }
 
-bool HashTable::insert(const void* k, size_t k_size, const string& v,
-    const CheckRequest* check) {
+bool HashTable::insert(
+    const void* k, size_t k_size, const string& v, const CheckRequest* check) {
   return this->insert(k, k_size, v.data(), v.size(), check);
 }
 
-bool HashTable::insert(const string& k, const void* v, size_t v_size,
-    const CheckRequest* check) {
+bool HashTable::insert(
+    const string& k, const void* v, size_t v_size, const CheckRequest* check) {
   return this->insert(k.data(), k.size(), v, v_size, check);
 }
 
-bool HashTable::insert(const string& k, const string& v,
-    const CheckRequest* check) {
+bool HashTable::insert(
+    const string& k, const string& v, const CheckRequest* check) {
   return this->insert(k.data(), k.size(), v.data(), v.size(), check);
 }
 
@@ -197,8 +183,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
 
   // Get the slot pointer
   HashTableBase* table = p->at<HashTableBase>(this->base_offset);
-  uint64_t slot_offset = table->slots_offset +
-      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  uint64_t slot_offset = table->slots_offset + (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
   Slot* slot = p->at<Slot>(slot_offset);
 
   // If the slot is empty, create a new 64-bit value
@@ -219,8 +204,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
     if ((slot->key_size == k_size) &&
         !memcmp(p->at<void>(slot->key_offset), k, k_size)) {
       uint64_t v_offset = slot->key_offset + slot->key_size;
-      uint64_t v_size = this->allocator->block_size(slot->key_offset) -
-          slot->key_size;
+      uint64_t v_size = this->allocator->block_size(slot->key_offset) - slot->key_size;
       if (v_size == 1) {
         *p->at<int8_t>(v_offset) += delta;
         return *p->at<int8_t>(v_offset);
@@ -237,12 +221,10 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
         throw out_of_range("incr() against key of wrong size");
       }
 
-    // The key doesn't match. convert this to an indirect value
+      // The key doesn't match. convert this to an indirect value
     } else {
-      uint64_t existing_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t existing_offset = this->allocator->allocate(sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* existing = p->at<IndirectValue>(existing_offset);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       slot = p->at<Slot>(slot_offset); // may be invalidated
@@ -251,8 +233,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
       created->next = 0;
       created->key_offset = this->allocator->allocate(k_size + sizeof(int64_t));
       memcpy(p->at<void>(created->key_offset), k, k_size);
-      memcpy(p->at<void>(created->key_offset + k_size), &delta,
-          sizeof(int64_t));
+      memcpy(p->at<void>(created->key_offset + k_size), &delta, sizeof(int64_t));
       created->key_size = k_size;
 
       existing->next = created_offset;
@@ -266,7 +247,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
       return delta;
     }
 
-  // The slot contains indirect values
+    // The slot contains indirect values
   } else {
     // Walk the list, looking for keys that match the one we're inserting
     auto walk_ret = walk_indirect_list(slot->key_offset & (~1), k, k_size);
@@ -275,8 +256,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
     if (walk_ret.second) {
       IndirectValue* indirect = p->at<IndirectValue>(walk_ret.second);
       uint64_t v_offset = indirect->key_offset + indirect->key_offset;
-      uint64_t v_size = this->allocator->block_size(indirect->key_offset) -
-          indirect->key_size;
+      uint64_t v_size = this->allocator->block_size(indirect->key_offset) - indirect->key_size;
       if (v_size == 1) {
         *p->at<int8_t>(v_offset) += delta;
         return *p->at<int8_t>(v_offset);
@@ -293,10 +273,9 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
         throw out_of_range("incr() against key of wrong size");
       }
 
-    // No match; allocate a new indirect value at the end
+      // No match; allocate a new indirect value at the end
     } else {
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* prev = p->at<IndirectValue>(walk_ret.first);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       table = p->at<HashTableBase>(this->base_offset); // may be invalidated
@@ -305,8 +284,7 @@ int64_t HashTable::incr(const void* k, size_t k_size, int64_t delta) {
       created->next = 0;
       created->key_offset = this->allocator->allocate(k_size + sizeof(int64_t));
       memcpy(p->at<void>(created->key_offset), k, k_size);
-      memcpy(p->at<void>(created->key_offset + k_size), &delta,
-          sizeof(int64_t));
+      memcpy(p->at<void>(created->key_offset + k_size), &delta, sizeof(int64_t));
       created->key_size = k_size;
       table->item_count++;
 
@@ -329,8 +307,7 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
 
   // Get the slot pointer
   HashTableBase* table = p->at<HashTableBase>(this->base_offset);
-  uint64_t slot_offset = table->slots_offset +
-      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  uint64_t slot_offset = table->slots_offset + (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
   Slot* slot = p->at<Slot>(slot_offset);
 
   // If the slot is empty, create a new 64-bit value
@@ -351,8 +328,7 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
     if ((slot->key_size == k_size) &&
         !memcmp(p->at<void>(slot->key_offset), k, k_size)) {
       uint64_t v_offset = slot->key_offset + slot->key_size;
-      uint64_t v_size = this->allocator->block_size(slot->key_offset) -
-          slot->key_size;
+      uint64_t v_size = this->allocator->block_size(slot->key_offset) - slot->key_size;
       if (v_size == 4) {
         *p->at<float>(v_offset) += delta;
         return *p->at<float>(v_offset);
@@ -363,12 +339,10 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
         throw out_of_range("incr() against key of wrong size");
       }
 
-    // The key doesn't match; convert this to an indirect value
+      // The key doesn't match; convert this to an indirect value
     } else {
-      uint64_t existing_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t existing_offset = this->allocator->allocate(sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* existing = p->at<IndirectValue>(existing_offset);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       slot = p->at<Slot>(slot_offset); // may be invalidated
@@ -391,7 +365,7 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
       return delta;
     }
 
-  // The slot contains indirect values
+    // The slot contains indirect values
   } else {
     // Walk the list, looking for keys that match the one we're inserting
     auto walk_ret = walk_indirect_list(slot->key_offset & (~1), k, k_size);
@@ -400,8 +374,7 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
     if (walk_ret.second) {
       IndirectValue* indirect = p->at<IndirectValue>(walk_ret.second);
       uint64_t v_offset = indirect->key_offset + indirect->key_offset;
-      uint64_t v_size = this->allocator->block_size(indirect->key_offset) -
-          indirect->key_size;
+      uint64_t v_size = this->allocator->block_size(indirect->key_offset) - indirect->key_size;
       if (v_size == 4) {
         *p->at<float>(v_offset) += delta;
         return *p->at<float>(v_offset);
@@ -412,10 +385,9 @@ double HashTable::incr(const void* k, size_t k_size, double delta) {
         throw out_of_range("incr() against key of wrong size");
       }
 
-    // No match; allocate a new indirect value at the end
+      // No match; allocate a new indirect value at the end
     } else {
-      uint64_t created_offset = this->allocator->allocate(
-          sizeof(IndirectValue));
+      uint64_t created_offset = this->allocator->allocate(sizeof(IndirectValue));
       IndirectValue* prev = p->at<IndirectValue>(walk_ret.first);
       IndirectValue* created = p->at<IndirectValue>(created_offset);
       table = p->at<HashTableBase>(this->base_offset); // may be invalidated
@@ -452,8 +424,7 @@ bool HashTable::erase(const void* k, size_t k_size, const CheckRequest* check) {
 
   // Get the slot pointer
   HashTableBase* table = p->at<HashTableBase>(this->base_offset);
-  uint64_t slot_offset = table->slots_offset +
-      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  uint64_t slot_offset = table->slots_offset + (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
   Slot* slot = p->at<Slot>(slot_offset);
 
   // If the slot is empty, there's nothing to delete
@@ -479,11 +450,10 @@ bool HashTable::erase(const void* k, size_t k_size, const CheckRequest* check) {
       table->item_count--;
     }
 
-  // The slot contains indirect values
+    // The slot contains indirect values
   } else {
     // Walk the list, looking for keys that match the one we're inserting
-    auto walk_ret = this->walk_indirect_list(slot->key_offset & (~1), k,
-        k_size);
+    auto walk_ret = this->walk_indirect_list(slot->key_offset & (~1), k, k_size);
 
     // If we found a match, unlink and delete it
     if (walk_ret.second) {
@@ -522,7 +492,6 @@ bool HashTable::erase(const std::string& k, const CheckRequest* check) {
   return this->erase(k.data(), k.size(), check);
 }
 
-
 void HashTable::clear() {
   auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
@@ -548,7 +517,7 @@ void HashTable::clear() {
         indirect_offset = next_offset;
       }
 
-    // Not an indirect value - just delete the buffer
+      // Not an indirect value - just delete the buffer
     } else {
       this->allocator->free(slot->key_offset);
     }
@@ -563,7 +532,6 @@ void HashTable::clear() {
   h->item_count = 0;
 }
 
-
 bool HashTable::exists(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
@@ -576,7 +544,6 @@ bool HashTable::exists(const std::string& k) const {
   return this->exists(k.data(), k.size());
 }
 
-
 string HashTable::at(const void* k, size_t k_size) const {
   uint64_t hash = fnv1a64(k, k_size);
 
@@ -584,8 +551,7 @@ string HashTable::at(const void* k, size_t k_size) const {
     auto g = this->allocator->lock(false);
     auto walk_ret = this->walk_tables(k, k_size, hash);
     if (walk_ret.first) {
-      return string(this->allocator->get_pool()->at<char>(walk_ret.first),
-          walk_ret.second);
+      return string(this->allocator->get_pool()->at<char>(walk_ret.first), walk_ret.second);
     }
   }
   throw out_of_range(string((char*)k, k_size));
@@ -594,7 +560,6 @@ string HashTable::at(const void* k, size_t k_size) const {
 string HashTable::at(const std::string& k) const {
   return this->at(k.data(), k.size());
 }
-
 
 vector<pair<string, string>> HashTable::get_slot_contents(
     uint64_t slot_index) const {
@@ -619,7 +584,7 @@ vector<pair<string, string>> HashTable::get_slot_contents(
     ret.emplace_back(make_pair(string(key, slot->key_size),
         string(value, this->allocator->block_size(slot->key_offset) - slot->key_size)));
 
-  // The slot contains indirect values; walk the list and return them all
+    // The slot contains indirect values; walk the list and return them all
   } else {
     uint64_t indirect_offset = slot->key_offset & (~1);
     IndirectValue* indirect = p->at<IndirectValue>(indirect_offset);
@@ -644,17 +609,14 @@ HashTableIterator HashTable::end() const {
   return HashTableIterator(this, 1 << this->bits());
 }
 
-
 size_t HashTable::size() const {
   auto g = this->allocator->lock(false);
-  return this->allocator->get_pool()->at<HashTableBase>(
-      this->base_offset)->item_count;
+  return this->allocator->get_pool()->at<HashTableBase>(this->base_offset)->item_count;
 }
 
 uint8_t HashTable::bits() const {
   auto g = this->allocator->lock(false);
-  return this->allocator->get_pool()->at<HashTableBase>(
-      this->base_offset)->bits;
+  return this->allocator->get_pool()->at<HashTableBase>(this->base_offset)->bits;
 }
 
 void HashTable::print(FILE* stream) const {
@@ -664,8 +626,8 @@ void HashTable::print(FILE* stream) const {
   const HashTableBase* h = p->at<HashTableBase>(this->base_offset);
 
   const Slot* slots = p->at<Slot>(h->slots_offset);
-  fprintf(stream, "Table: bits=%hhu, slots@%" PRIu64 "\n", h->bits,
-      h->slots_offset);
+  fprintf(stream, "Table: bits=%" PRIu64 ", slots@%" PRIu64 "\n",
+      h->bits, h->slots_offset);
 
   for (size_t slot_id = 0; slot_id < (size_t)(1 << h->bits); slot_id++) {
     if (!slots[slot_id].key_offset) {
@@ -681,15 +643,13 @@ void HashTable::print(FILE* stream) const {
       uint64_t indirect_offset = slots[slot_id].key_offset & (~1);
       while (indirect_offset) {
         const IndirectValue* indirect = p->at<IndirectValue>(indirect_offset);
-        fprintf(stream, "    Indirect: @%" PRIu64 ", next=%" PRIu64
-            ", value=%" PRIu64 ":%" PRIu64 "\n", indirect_offset,
-            indirect->next, indirect->key_offset, indirect->key_size);
+        fprintf(stream, "    Indirect: @%" PRIu64 ", next=%" PRIu64 ", value=%" PRIu64 ":%" PRIu64 "\n",
+            indirect_offset, indirect->next, indirect->key_offset, indirect->key_size);
         indirect_offset = indirect->next;
       }
     }
   }
 }
-
 
 uint64_t HashTable::create_hash_base(uint8_t bits) {
   if (bits < 2) {
@@ -715,9 +675,8 @@ uint64_t HashTable::create_hash_base(uint8_t bits) {
   return base_offset;
 }
 
-
-pair<uint64_t, uint64_t> HashTable::walk_indirect_list(uint64_t indirect_offset,
-    const void* k, size_t k_size) const {
+pair<uint64_t, uint64_t> HashTable::walk_indirect_list(
+    uint64_t indirect_offset, const void* k, size_t k_size) const {
   auto p = this->allocator->get_pool();
 
   uint64_t prev_indirect_offset = 0;
@@ -735,8 +694,8 @@ pair<uint64_t, uint64_t> HashTable::walk_indirect_list(uint64_t indirect_offset,
   return make_pair(prev_indirect_offset, indirect_offset);
 }
 
-pair<uint64_t, uint64_t> HashTable::walk_tables(const void* k, size_t k_size,
-    uint64_t hash) const {
+pair<uint64_t, uint64_t> HashTable::walk_tables(
+    const void* k, size_t k_size, uint64_t hash) const {
   auto p = this->allocator->get_pool();
 
   const HashTableBase* table = p->at<HashTableBase>(this->base_offset);
@@ -745,8 +704,7 @@ pair<uint64_t, uint64_t> HashTable::walk_tables(const void* k, size_t k_size,
     return make_pair(0, 0);
   }
 
-  uint64_t slot_offset = slots_offset +
-      (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
+  uint64_t slot_offset = slots_offset + (hash & ((1 << table->bits) - 1)) * sizeof(Slot);
   Slot* slot = p->at<Slot>(slot_offset);
 
   // If the slot is empty, the key doesn't exist
@@ -763,24 +721,21 @@ pair<uint64_t, uint64_t> HashTable::walk_tables(const void* k, size_t k_size,
           this->allocator->block_size(slot->key_offset) - slot->key_size);
     }
 
-  // The slot contains indirect values
+    // The slot contains indirect values
   } else {
     // Walk the list, looking for keys that match the one we're looking for
-    auto walk_ret = this->walk_indirect_list(slot->key_offset & (~1), k,
-        k_size);
+    auto walk_ret = this->walk_indirect_list(slot->key_offset & (~1), k, k_size);
 
     // If we found a match, return its value
     if (walk_ret.second) {
       IndirectValue* indirect = p->at<IndirectValue>(walk_ret.second);
       return make_pair(indirect->key_offset + indirect->key_size,
-          this->allocator->block_size(indirect->key_offset) -
-            indirect->key_size);
+          this->allocator->block_size(indirect->key_offset) - indirect->key_size);
     }
   }
 
   return make_pair(0, 0);
 }
-
 
 bool HashTable::execute_check(const CheckRequest& check) const {
   auto walk_ret = this->walk_tables(check.key, check.key_size, check.key_hash);
@@ -797,10 +752,12 @@ bool HashTable::execute_check(const CheckRequest& check) const {
   }
 }
 
-
-HashTableIterator::HashTableIterator(const HashTable* table,
-    uint64_t slot_index) : table(table), slot_index(slot_index),
-    result_index(0), slot_contents() {
+HashTableIterator::HashTableIterator(
+    const HashTable* table, uint64_t slot_index)
+    : table(table),
+      slot_index(slot_index),
+      result_index(0),
+      slot_contents() {
   if (this->slot_index < (1ULL << this->table->bits())) {
     this->slot_contents = this->table->get_slot_contents(this->slot_index);
     this->advance_to_nonempty_slot_if_needed();

@@ -4,7 +4,6 @@
 
 namespace sharedstructures {
 
-
 class LogarithmicAllocator : public Allocator {
 public:
   LogarithmicAllocator() = delete;
@@ -32,11 +31,11 @@ public:
   void print(FILE* stream) const;
 
 private:
-
   struct Data {
     std::atomic<uint64_t> size; // This is part of the Pool structure
 
     std::atomic<uint8_t> initialized;
+    uint8_t unused[7];
 
     ProcessReadWriteLock data_lock;
 
@@ -52,11 +51,10 @@ private:
     std::atomic<uint64_t> free_tail[54];
 
     uint8_t arena[0];
-  };
+  } __attribute__((packed));
 
   Data* data();
   const Data* data() const;
-
 
   struct FreeBlock {
     // High bit: allocated (must be 0); next 6 bits: order; rest: prev ptr
@@ -66,7 +64,7 @@ private:
     uint64_t prev() const;
     int8_t order() const;
     bool allocated() const;
-  };
+  } __attribute__((packed));
 
   struct AllocatedBlock {
     // High bit: allocated (must be 1)
@@ -74,12 +72,12 @@ private:
 
     uint64_t size() const;
     bool allocated() const;
-  };
+  } __attribute__((packed));
 
   union Block {
     FreeBlock free;
     AllocatedBlock allocated;
-  };
+  } __attribute__((packed));
 
   virtual void repair();
 

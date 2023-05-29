@@ -1,28 +1,27 @@
 #define __STDC_FORMAT_MACROS
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
-#include <unistd.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <phosg/Strings.hh>
 #include <phosg/Time.hh>
 #include <phosg/UnitTest.hh>
 #include <string>
 
-#include "Pool.hh"
-#include "SimpleAllocator.hh"
 #include "LogarithmicAllocator.hh"
+#include "Pool.hh"
 #include "PriorityQueue.hh"
+#include "SimpleAllocator.hh"
 
 using namespace std;
 
 using namespace sharedstructures;
 
 const string pool_name_prefix = "PriorityQueueTest-cc-pool-";
-
 
 shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
     const string& allocator_type) {
@@ -35,14 +34,12 @@ shared_ptr<Allocator> create_allocator(shared_ptr<Pool> pool,
   throw invalid_argument("unknown allocator type: " + allocator_type);
 }
 
-
-shared_ptr<PriorityQueue> get_or_create_queue(const string& name,
-    const string& allocator_type) {
+shared_ptr<PriorityQueue> get_or_create_queue(
+    const string& name, const string& allocator_type) {
   shared_ptr<Pool> pool(new Pool(name));
   shared_ptr<Allocator> alloc = create_allocator(pool, allocator_type);
   return shared_ptr<PriorityQueue>(new PriorityQueue(alloc, 0));
 }
-
 
 void run_basic_test(const string& allocator_type) {
   printf("-- [%s] basic\n", allocator_type.c_str());
@@ -66,10 +63,9 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(1, q->size());
   expect_eq("v3", q->pop());
   expect_eq(0, q->size());
-  try {
+  expect_raises<out_of_range>([&]() {
     q->pop();
-    expect(false);
-  } catch (const out_of_range&) { }
+  });
 
   // TODO: test that no item data blocks are leaked
 }
@@ -94,10 +90,9 @@ void run_heapsort(const string& allocator_type) {
   }
 
   expect_eq(0, q->size());
-  try {
+  expect_raises<out_of_range>([&]() {
     q->pop();
-    expect(false);
-  } catch (const out_of_range&) { }
+  });
 
   // TODO: test that no item data blocks are leaked
 }
@@ -164,8 +159,8 @@ void run_concurrent_producers_test(const string& allocator_type) {
             printf("-- [%s]   child %d terminated successfully\n",
                 allocator_type.c_str(), exited_pid);
           } else {
-            printf("-- [%s]   child %d failed (%d)\n", allocator_type.c_str(),
-                exited_pid, exit_status);
+            printf("-- [%s]   child %d failed (%d)\n",
+                allocator_type.c_str(), exited_pid, exit_status);
             num_failures++;
           }
         }
@@ -216,7 +211,7 @@ void run_concurrent_consumers_test(const string& allocator_type) {
         fprintf(stderr, "value !< prev_value (%zd !< %zd)\n", value, prev_value);
         expect(false);
       }
-      //expect_gt(value, prev_value);
+      // expect_gt(value, prev_value);
       prev_value = value;
     };
 
@@ -262,7 +257,6 @@ void run_concurrent_consumers_test(const string& allocator_type) {
     expect_eq(0, q->size());
   }
 }
-
 
 int main(int, char**) {
   int retcode = 0;

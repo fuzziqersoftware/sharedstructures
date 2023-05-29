@@ -7,7 +7,6 @@ using namespace std;
 
 namespace sharedstructures {
 
-
 SimpleAllocator::SimpleAllocator(std::shared_ptr<Pool> pool) : Allocator(pool) {
   auto data = this->data();
 
@@ -29,7 +28,6 @@ SimpleAllocator::SimpleAllocator(std::shared_ptr<Pool> pool) : Allocator(pool) {
   data->bytes_allocated = 0;
   data->bytes_committed = sizeof(Data);
 }
-
 
 uint64_t SimpleAllocator::allocate(size_t size) {
   auto data = this->data();
@@ -89,7 +87,7 @@ uint64_t SimpleAllocator::allocate(size_t size) {
     // If this block is big enough, remember it if it's the smallest one so far
     if ((free_block_size >= needed_size) &&
         ((candidate_size < needed_size) ||
-         (free_block_size < candidate_size))) {
+            (free_block_size < candidate_size))) {
       candidate_offset = current_block + sizeof(AllocatedBlock) +
           b->effective_size();
       candidate_size = free_block_size;
@@ -183,7 +181,6 @@ size_t SimpleAllocator::block_size(uint64_t offset) const {
   return b->size;
 }
 
-
 void SimpleAllocator::set_base_object_offset(uint64_t offset) {
   this->data()->base_object_offset = offset;
 }
@@ -191,7 +188,6 @@ void SimpleAllocator::set_base_object_offset(uint64_t offset) {
 uint64_t SimpleAllocator::base_object_offset() const {
   return this->data()->base_object_offset;
 }
-
 
 size_t SimpleAllocator::bytes_allocated() const {
   return this->data()->bytes_allocated;
@@ -202,13 +198,12 @@ size_t SimpleAllocator::bytes_free() const {
   return data->size - data->bytes_committed;
 }
 
-
 ProcessReadWriteLockGuard SimpleAllocator::lock(bool writing) const {
   this->pool->check_size_and_remap();
 
-  ProcessReadWriteLockGuard::Behavior behavior = writing ?
-      ProcessReadWriteLockGuard::Behavior::Write :
-      ProcessReadWriteLockGuard::Behavior::ReadUnlessStolen;
+  ProcessReadWriteLockGuard::Behavior behavior = writing
+      ? ProcessReadWriteLockGuard::Behavior::WRITE
+      : ProcessReadWriteLockGuard::Behavior::READ_UNLESS_STOLEN;
   ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()),
       offsetof(Data, data_lock), behavior);
 
@@ -228,11 +223,9 @@ bool SimpleAllocator::is_locked(bool writing) const {
   return this->pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(writing);
 }
 
-
 void SimpleAllocator::verify() const {
   // TODO
 }
-
 
 SimpleAllocator::Data* SimpleAllocator::data() {
   return this->pool->at<Data>(0);
@@ -241,7 +234,6 @@ SimpleAllocator::Data* SimpleAllocator::data() {
 const SimpleAllocator::Data* SimpleAllocator::data() const {
   return this->pool->at<Data>(0);
 }
-
 
 void SimpleAllocator::repair() {
   auto data = this->data();
@@ -267,7 +259,6 @@ void SimpleAllocator::repair() {
   data->bytes_allocated = bytes_allocated;
   data->bytes_committed = bytes_committed;
 }
-
 
 uint64_t SimpleAllocator::AllocatedBlock::effective_size() {
   return (this->size + 7) & (~7);

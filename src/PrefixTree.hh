@@ -11,7 +11,6 @@
 
 namespace sharedstructures {
 
-
 class PrefixTreeIterator;
 
 class PrefixTree {
@@ -39,14 +38,15 @@ public:
   uint64_t base() const;
 
   enum class ResultValueType {
-    Missing = 0,
-    String  = 1,
-    Int     = 2,
-    Double  = 3,
-    Bool    = 4,
-    Null    = 5,
+    MISSING = 0,
+    STRING = 1,
+    INT = 2,
+    DOUBLE = 3,
+    BOOL = 4,
+    NULL_VALUE = 5, // NULL is a pseudo-keyword in C, so we can't use it :|
   };
 
+  // TODO: We really should use std::variant instead of this struct.
   struct LookupResult {
     ResultValueType type;
     std::string as_string;
@@ -54,14 +54,22 @@ public:
     double as_double;
     bool as_bool;
 
-    LookupResult(ResultValueType t); // Missing (this is never returned by at())
-    LookupResult(); // Null
-    LookupResult(bool b); // Bool
-    LookupResult(int64_t i); // Int
-    LookupResult(double d); // Double
-    LookupResult(const char* s); // String
-    LookupResult(const void* s, size_t size); // String
-    LookupResult(const std::string& s); // String
+    // For legacy reasons, there is no default constructor. It used to be that
+    // the default constructor created a LookupResult with the type Null, when
+    // it instead would make more sense for that to create a LookupResult with
+    // type Missing, but the default constructor's behavior can't be changed
+    // without breaking existing usage. Rather than break existing usage at
+    // runtime by changing the default constructor's result, we break it at
+    // compile time by removing the default constructor.
+    LookupResult(ResultValueType v); // Missing (this is never returned by at())
+    LookupResult(nullptr_t v); // Null
+    LookupResult(bool v); // Bool
+    LookupResult(int64_t v); // Int
+    LookupResult(double v); // Double
+    LookupResult(const char* v); // String
+    LookupResult(const void* v, size_t size); // String
+    LookupResult(const std::string& v); // String
+    LookupResult(std::string&& v); // String
 
     bool operator==(const LookupResult& other) const;
     bool operator!=(const LookupResult& other) const;
@@ -82,8 +90,10 @@ public:
     // cases: (const char*, size_t) and (const string&, int64_t); just pass
     // s.data() and s.size() instead
     template <typename... Args>
-    CheckRequest(const void* key, size_t key_size, Args... args) :
-        key(key), key_size(key_size), value(std::forward<Args>(args)...) { }
+    CheckRequest(const void* key, size_t key_size, Args... args)
+        : key(key),
+          key_size(key_size),
+          value(std::forward<Args>(args)...) {}
   };
 
   // Inserts/overwrites a key with a string value
@@ -95,9 +105,9 @@ public:
       const CheckRequest* check = nullptr);
   bool insert(const std::string& k, const std::string& v,
       const CheckRequest* check = nullptr);
-  bool insert(const void* k, size_t k_size, const struct iovec *iov,
+  bool insert(const void* k, size_t k_size, const struct iovec* iov,
       size_t iovcnt, const CheckRequest* check = nullptr);
-  bool insert(const std::string& k, const struct iovec *iov, size_t iovcnt,
+  bool insert(const std::string& k, const struct iovec* iov, size_t iovcnt,
       const CheckRequest* check = nullptr);
 
   // Inserts/overwrites a key with an integer value
@@ -236,7 +246,7 @@ private:
 
     static size_t size_for_range(uint8_t start, uint8_t end);
     static size_t full_size();
-  };
+  } __attribute__((packed));
 
   enum class StoredValueType {
     // Here we take advantage of the restriction that all allocations are
@@ -245,41 +255,41 @@ private:
     // The lowest 3 bits of a slot's contents determine what type of data is
     // stored in the slot, according to the below values:
 
-    // SubNode refers to a Node structure. The high 61 bits of the contents are
+    // SUBNODE refers to a Node structure. The high 61 bits of the contents are
     // the Node's offset. But if the offset is 0, the slot is empty. (This means
     // that a slot is empty if and only if its contents == 0.)
-    SubNode     = 0,
+    SUBNODE = 0,
 
-    // String refers to a raw data buffer. The high 61 bits of the contents are
+    // STRING refers to a raw data buffer. The high 61 bits of the contents are
     // the buffer's offset. The length isn't stored explicitly anywhere; it's
     // retrieved from the allocator. For zero-length strings, the buffer offset
     // is 0 and no buffer is allocated.
-    String      = 1,
+    STRING = 1,
 
-    // Int is a 61-bit inlined integer. The lowest 3 bits are 010, and the other
+    // INT is a 61-bit inlined integer. The lowest 3 bits are 010, and the other
     // bits are the integer's value. When read, it's sign-extended to 64 bits.
-    Int         = 2,
+    INT = 2,
 
-    // LongInt is a 64-bit integer. This type is only used when the top 4 bits
+    // LONG_INT is a 64-bit integer. This type is only used when the top 4 bits
     // of the value don't all match (so sign-extension from 61 bits would
     // produce the wrong result). The high 61 bits of the slot contents are the
     // offset of an 8-byte region that holds the integer's value.
-    LongInt     = 3,
+    LONG_INT = 3,
 
-    // Double is a floating-point value. It's implemented similarly to LongInt,
+    // DOUBLE is a floating-point value. It's implemented similarly to LONG_INT,
     // except the value is a double instead of an int64_t, and the value 0.0 is
     // stored with no extra storage (the offset is 0).
-    Double      = 4,
+    DOUBLE = 4,
 
     // Trivial is a singleton value. The high 61 bits identify which singleton
     // is stored here: 0 = false, 1 = true, 2 = null.
-    Trivial     = 5,
+    TRIVIAL = 5,
 
     // ShortString is a 7-byte or shorter string. The string's contents are
     // stored in the high 7 bytes of the slot contents; the low byte stores the
     // type in the low 3 bits and the string's length (0-7) in the next 3 bits.
     // The high 2 bits of the low byte are unused.
-    ShortString = 6,
+    SHORT_STRING = 6,
 
     // StoredValueTypes can be up to 7 (this is a 3-bit field). Type 7 is
     // currently unused.
@@ -292,7 +302,7 @@ private:
     Node root;
 
     TreeBase();
-  };
+  } __attribute__((packed));
 
   void increment_item_count(ssize_t delta);
   void increment_node_count(ssize_t delta);
@@ -328,7 +338,6 @@ private:
   static bool slot_has_child(uint64_t s);
 };
 
-
 class PrefixTreeIterator {
 public:
   PrefixTreeIterator() = delete;
@@ -353,6 +362,5 @@ private:
   std::pair<std::string, PrefixTree::LookupResult> current_result;
   bool complete;
 };
-
 
 } // namespace sharedstructures

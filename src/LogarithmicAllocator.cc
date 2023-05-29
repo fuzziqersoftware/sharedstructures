@@ -12,7 +12,6 @@ using namespace std;
 
 namespace sharedstructures {
 
-
 uint64_t LogarithmicAllocator::FreeBlock::prev() const {
   return this->prev_order_allocated & 0x01FFFFFFFFFFFFFF;
 }
@@ -33,7 +32,6 @@ bool LogarithmicAllocator::AllocatedBlock::allocated() const {
   return (this->size_allocated >> 63) & 1;
 }
 
-
 // Returns the size of an order (in bytes)
 static uint64_t size_for_order(int8_t order) {
   return 1 << order;
@@ -45,7 +43,7 @@ static int8_t order_for_size(uint64_t size) {
   if ((size & (size - 1)) == 0) {
     return 63 - __builtin_clzll(size);
 
-  // Else, it's not an order size - return the next-larger order size
+    // Else, it's not an order size - return the next-larger order size
   } else {
     return 64 - __builtin_clzll(size);
   }
@@ -72,9 +70,7 @@ static uint64_t next_order_boundary(uint64_t offset, int8_t order) {
   return offset;
 }
 
-
-LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
-    Allocator(pool) {
+LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) : Allocator(pool) {
   auto data = this->data();
 
   if (data->initialized) {
@@ -104,10 +100,8 @@ LogarithmicAllocator::LogarithmicAllocator(shared_ptr<Pool> pool) :
   this->create_free_blocks(start_offset, data->size - start_offset);
 }
 
-
 uint64_t LogarithmicAllocator::allocate(size_t size) {
-  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))
-      ->is_locked(true));
+  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(true));
 
   // Need to store an AllocatedBlock too, and size must be a multiple of 8. This
   // means needed_size is >= 0x10.
@@ -120,7 +114,9 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   auto data = this->data();
   int8_t split_order = needed_order;
   for (; !data->free_head[split_order - Data::minimum_order] &&
-         split_order <= Data::maximum_order; split_order++);
+       split_order <= Data::maximum_order;
+       split_order++) {
+  }
 
   // If there's available space in a possibly-higher order, allocate from it
   if (split_order < Data::maximum_order) {
@@ -128,8 +124,7 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
     // might need to split it until we get the size we want
     for (; split_order > needed_order; split_order--) {
       int8_t new_order = split_order - 1;
-      uint64_t head_block_offset = data->free_head[
-          split_order - Data::minimum_order];
+      uint64_t head_block_offset = data->free_head[split_order - Data::minimum_order];
       uint64_t new_block_offset = head_block_offset + size_for_order(new_order);
 
       // Remove the original block from the higher order and add the two new
@@ -167,7 +162,7 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   // The pool size may not be a multiple of the order size, so there may be a
   // block at the end that could be part of a newly-allocated block if we
   // expanded the pool. However, it can't be part of a higher-order block - only
-  // lower-order blocks can be allocated within this space. so we start looking
+  // lower-order blocks can be allocated within this space. So, we start looking
   // at the next-lowest block order to see if anything is allocated.
   //
   // This logic is best illustrated by example. Imagine the following memory
@@ -201,7 +196,7 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   uint64_t block_offset = original_size & (~(order_size - 1));
   int8_t block_order = largest_order_within_size(original_size - block_offset);
   while ((block_order >= Data::minimum_order) &&
-         (block_offset < original_size)) {
+      (block_offset < original_size)) {
     FreeBlock* block = this->pool->at<FreeBlock>(block_offset);
     if (block->allocated()) {
       break; // Have to expand beyond this order
@@ -230,8 +225,8 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   uint64_t allocated_block_offset;
   if (block_offset >= original_size) {
     allocated_block_offset = original_size & (~(order_size - 1));
-  // If there's a conflicting allocated block, then we'll have to expand further
-  // and return f instead.
+    // If there's a conflicting allocated block, then we'll have to expand further
+    // and return f instead.
   } else {
     allocated_block_offset = (original_size & (~(order_size - 1))) +
         size_for_order(needed_order);
@@ -246,12 +241,9 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
   // are in the area we want to allocate
   if (block_offset >= original_size) {
     uint64_t deleted_block_offset = allocated_block_offset;
-    int8_t deleted_block_order = largest_order_within_size(
-        original_size - allocated_block_offset);
     while (deleted_block_offset < original_size) {
       this->unlink_block(deleted_block_offset);
       deleted_block_offset += size_for_order(block_order);
-      deleted_block_order--;
     }
   }
 
@@ -287,8 +279,7 @@ uint64_t LogarithmicAllocator::allocate(size_t size) {
 }
 
 void LogarithmicAllocator::create_free_block(uint64_t offset, int8_t order) {
-  atomic<uint64_t>* tail = &this->data()->free_tail[
-      order - Data::minimum_order];
+  atomic<uint64_t>* tail = &this->data()->free_tail[order - Data::minimum_order];
 
   // Fill in the block struct
   FreeBlock* block = this->pool->at<FreeBlock>(offset);
@@ -332,8 +323,7 @@ void LogarithmicAllocator::create_free_blocks(uint64_t offset,
 }
 
 void LogarithmicAllocator::free(uint64_t offset) {
-  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))
-      ->is_locked(true));
+  assert(pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(true));
 
   auto data = this->data();
   if ((offset < sizeof(Data) + sizeof(AllocatedBlock)) ||
@@ -426,13 +416,11 @@ void LogarithmicAllocator::unlink_block(uint64_t block_offset) {
   }
 }
 
-
 size_t LogarithmicAllocator::block_size(uint64_t offset) const {
   const AllocatedBlock* b = this->pool->at<AllocatedBlock>(
       offset - sizeof(AllocatedBlock));
   return b->size();
 }
-
 
 void LogarithmicAllocator::set_base_object_offset(uint64_t offset) {
   this->data()->base_object_offset = offset;
@@ -441,7 +429,6 @@ void LogarithmicAllocator::set_base_object_offset(uint64_t offset) {
 uint64_t LogarithmicAllocator::base_object_offset() const {
   return this->data()->base_object_offset;
 }
-
 
 size_t LogarithmicAllocator::bytes_allocated() const {
   return this->data()->bytes_allocated;
@@ -452,15 +439,13 @@ size_t LogarithmicAllocator::bytes_free() const {
   return data->size - data->bytes_committed;
 }
 
-
 ProcessReadWriteLockGuard LogarithmicAllocator::lock(bool writing) const {
   this->pool->check_size_and_remap();
 
-  ProcessReadWriteLockGuard::Behavior behavior = writing ?
-      ProcessReadWriteLockGuard::Behavior::Write :
-      ProcessReadWriteLockGuard::Behavior::ReadUnlessStolen;
-  ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()),
-      offsetof(Data, data_lock), behavior);
+  ProcessReadWriteLockGuard::Behavior behavior = writing
+      ? ProcessReadWriteLockGuard::Behavior::WRITE
+      : ProcessReadWriteLockGuard::Behavior::READ_UNLESS_STOLEN;
+  ProcessReadWriteLockGuard g(const_cast<Pool*>(this->pool.get()), offsetof(Data, data_lock), behavior);
 
   this->pool->check_size_and_remap();
   if (g.stolen_token()) {
@@ -478,7 +463,6 @@ bool LogarithmicAllocator::is_locked(bool writing) const {
   return this->pool->at<ProcessReadWriteLock>(offsetof(Data, data_lock))->is_locked(writing);
 }
 
-
 LogarithmicAllocator::Data* LogarithmicAllocator::data() {
   return this->pool->at<Data>(0);
 }
@@ -486,7 +470,6 @@ LogarithmicAllocator::Data* LogarithmicAllocator::data() {
 const LogarithmicAllocator::Data* LogarithmicAllocator::data() const {
   return this->pool->at<Data>(0);
 }
-
 
 void LogarithmicAllocator::verify() const {
   auto lock = this->lock(false);
@@ -606,7 +589,7 @@ void LogarithmicAllocator::repair() {
       bytes_allocated += block->allocated.size();
       bytes_committed += size_for_order(order);
 
-    // If it's not allocated, add it to the appropriate free list
+      // If it's not allocated, add it to the appropriate free list
     } else {
       order = block->free.order();
       this->create_free_block(offset, order);
@@ -630,19 +613,17 @@ void LogarithmicAllocator::repair() {
       order = order_for_size(block->allocated.size() + sizeof(AllocatedBlock));
       offset += size_for_order(order);
 
-    // If it's not allocated, try to merge it
+      // If it's not allocated, try to merge it
     } else {
       offset = this->merge_blocks_at(offset);
     }
   }
 }
 
-
 void LogarithmicAllocator::print(FILE* stream) const {
   auto data = this->data();
 
-  fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu8
-      " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
+  fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu8 " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
       data->size.load(), data->initialized.load(),
       data->base_object_offset.load(), data->bytes_allocated.load(),
       data->bytes_committed.load());
@@ -666,15 +647,13 @@ void LogarithmicAllocator::print(FILE* stream) const {
           block->allocated.size() + sizeof(AllocatedBlock)));
     } else {
       uint64_t block_size = size_for_order(block->free.order());
-      fprintf(stream, "  Block-F %" PRIX64 ": prev=%" PRIX64 " next=%" PRIX64
-          " order=%" PRIu8 " size=%" PRIX64 "\n",
+      fprintf(stream, "  Block-F %" PRIX64 ": prev=%" PRIX64 " next=%" PRIX64 " order=%" PRIu8 " size=%" PRIX64 "\n",
           offset, block->free.prev(), block->free.next, block->free.order(),
           block_size);
       offset += block_size;
     }
   }
 }
-
 
 const int8_t LogarithmicAllocator::Data::minimum_order = 4;
 const int8_t LogarithmicAllocator::Data::maximum_order = 57;

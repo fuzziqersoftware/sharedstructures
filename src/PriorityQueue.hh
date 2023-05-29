@@ -10,7 +10,6 @@
 
 namespace sharedstructures {
 
-
 class PriorityQueue {
 public:
   PriorityQueue() = delete;
@@ -64,7 +63,7 @@ private:
     uint64_t array_offset;
 
     QueueBase();
-  };
+  } __attribute__((packed));
 
   QueueBase* queue_base();
   const QueueBase* queue_base() const;
@@ -76,6 +75,5 @@ private:
   void sift_down_locked(uint64_t start_index, uint64_t target_index);
   void sift_up_locked(uint64_t target_index);
 };
-
 
 } // namespace sharedstructures

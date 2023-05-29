@@ -13,14 +13,15 @@ using namespace std;
 
 namespace sharedstructures {
 
-
-PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator) : allocator(allocator) {
+PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator)
+    : allocator(allocator) {
   auto g = this->allocator->lock(true);
   this->base_offset = this->allocator->allocate_object<QueueBase>();
 }
 
-PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator, uint64_t base_offset) :
-    allocator(allocator), base_offset(base_offset) {
+PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator, uint64_t base_offset)
+    : allocator(allocator),
+      base_offset(base_offset) {
   if (!this->base_offset) {
     auto g = this->allocator->lock(false);
     this->base_offset = this->allocator->base_object_offset();
@@ -37,7 +38,6 @@ PriorityQueue::PriorityQueue(shared_ptr<Allocator> allocator, uint64_t base_offs
   }
 }
 
-
 shared_ptr<Allocator> PriorityQueue::get_allocator() const {
   return this->allocator;
 }
@@ -45,7 +45,6 @@ shared_ptr<Allocator> PriorityQueue::get_allocator() const {
 uint64_t PriorityQueue::base() const {
   return this->base_offset;
 }
-
 
 void PriorityQueue::push(const void* data, size_t size) {
   auto g = this->allocator->lock(true);
@@ -96,7 +95,6 @@ void PriorityQueue::push(const string& data) {
   this->push(data.data(), data.size());
 }
 
-
 string PriorityQueue::pop() {
   auto g = this->allocator->lock(true);
   auto p = this->allocator->get_pool();
@@ -145,9 +143,10 @@ size_t PriorityQueue::size() const {
   return this->queue_base()->count;
 }
 
-
-PriorityQueue::QueueBase::QueueBase() : count(0), allocated_count(0), array_offset(0) { }
-
+PriorityQueue::QueueBase::QueueBase()
+    : count(0),
+      allocated_count(0),
+      array_offset(0) {}
 
 PriorityQueue::QueueBase* PriorityQueue::queue_base() {
   return this->allocator->get_pool()->at<QueueBase>(this->base_offset);
@@ -165,7 +164,6 @@ const uint64_t* PriorityQueue::array(const QueueBase* base) const {
   return this->allocator->get_pool()->at<const uint64_t>(base->array_offset);
 }
 
-
 bool PriorityQueue::less_locked(uint64_t a_offset, uint64_t b_offset) const {
   auto p = this->allocator->get_pool();
   uint64_t a_size = this->allocator->block_size(a_offset);
@@ -181,7 +179,6 @@ bool PriorityQueue::less_locked(uint64_t a_offset, uint64_t b_offset) const {
     return (a_size < b_size);
   }
 }
-
 
 void PriorityQueue::sift_down_locked(uint64_t start_index, uint64_t target_index) {
   auto base = this->queue_base();
@@ -213,8 +210,9 @@ void PriorityQueue::sift_up_locked(uint64_t target_index) {
   while (left_child_index < base->count) {
     uint64_t right_child_index = left_child_index + 1;
     uint64_t least_child_index = ((right_child_index < base->count) &&
-        !this->less_locked(array[left_child_index], array[right_child_index])) ?
-          right_child_index : left_child_index;
+                                     !this->less_locked(array[left_child_index], array[right_child_index]))
+        ? right_child_index
+        : left_child_index;
 
     array[target_index] = array[least_child_index];
     target_index = least_child_index;
@@ -225,6 +223,5 @@ void PriorityQueue::sift_up_locked(uint64_t target_index) {
   array[target_index] = displaced_item;
   this->sift_down_locked(original_target_index, target_index);
 }
-
 
 } // namespace sharedstructures
