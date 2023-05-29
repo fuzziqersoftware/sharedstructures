@@ -46,36 +46,26 @@ public:
     NULL_VALUE = 5, // NULL is a pseudo-keyword in C, so we can't use it :|
   };
 
-  // TODO: We really should use std::variant instead of this struct.
-  struct LookupResult {
-    ResultValueType type;
-    std::string as_string;
-    int64_t as_int;
-    double as_double;
-    bool as_bool;
+  using LookupResult = std::variant<
+      // monostate can be used to check for missing keys in CheckRequests. It
+      // is not returned by read functions (they raise out_of_range instead).
+      std::monostate,
+      // String-valued keys
+      std::string,
+      // String-valued keys (this form is never returned by reads, but can be
+      // used to eliminate a copy when writing data that isn't a std::string)
+      std::pair<const void*, size_t>,
+      // Integer-valued keys
+      int64_t,
+      // Double-valued keys
+      double,
+      // Boolean-valued keys
+      bool,
+      // Null-valued keys (this is not the same as the key not existing - a key
+      // can exist and have a null value)
+      nullptr_t>;
 
-    // For legacy reasons, there is no default constructor. It used to be that
-    // the default constructor created a LookupResult with the type Null, when
-    // it instead would make more sense for that to create a LookupResult with
-    // type Missing, but the default constructor's behavior can't be changed
-    // without breaking existing usage. Rather than break existing usage at
-    // runtime by changing the default constructor's result, we break it at
-    // compile time by removing the default constructor.
-    LookupResult(ResultValueType v); // Missing (this is never returned by at())
-    LookupResult(nullptr_t v); // Null
-    LookupResult(bool v); // Bool
-    LookupResult(int64_t v); // Int
-    LookupResult(double v); // Double
-    LookupResult(const char* v); // String
-    LookupResult(const void* v, size_t size); // String
-    LookupResult(const std::string& v); // String
-    LookupResult(std::string&& v); // String
-
-    bool operator==(const LookupResult& other) const;
-    bool operator!=(const LookupResult& other) const;
-
-    std::string str() const;
-  };
+  static std::string string_for_result(const LookupResult& res);
 
   // To do a check-and-set, instantiate one of these and pass it to insert() or
   // erase().

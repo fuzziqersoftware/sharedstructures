@@ -113,13 +113,11 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(104, table->bytes_for_prefix("k", 1));
   expect_eq(2160, table->bytes_for_prefix("", 0)); // The root node has 00-FF
 
-  LookupResult r(PrefixTree::ResultValueType::MISSING);
-  r.type = PrefixTree::ResultValueType::STRING;
-  r.as_string = "value1";
+  LookupResult r("value1");
   expect_eq(r, table->at("key1", 4));
-  r.as_string = "value222";
+  r = "value222";
   expect_eq(r, table->at("key2", 4));
-  r.as_string = "value3";
+  r = "value3";
   expect_eq(r, table->at("key3", 4));
   expect_eq(3, table->size());
   expect_eq(4, table->node_size());
@@ -130,10 +128,10 @@ void run_basic_test(const string& allocator_type) {
     PrefixTreeIterator key4_it = table->find("key4", 4);
     expect_ne(table->end(), key2_it);
     expect_eq("key2", key2_it->first);
-    expect_eq(LookupResult("value222", 8), key2_it->second);
+    expect_eq(LookupResult("value222"), key2_it->second);
     expect_ne(table->end(), key3_it);
     expect_eq("key3", key3_it->first);
-    expect_eq(LookupResult("value3", 6), key3_it->second);
+    expect_eq(LookupResult("value3"), key3_it->second);
     expect_eq(table->end(), key4_it);
 
     expect_eq(key2_it, table->lower_bound("key2", 4));
@@ -154,10 +152,10 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());
 
-  r.as_string = "value1";
+  r = "value1";
   expect_eq(r, table->at("key1", 4));
   expect_key_missing(table, "key2", 4);
-  r.as_string = "value3";
+  r = "value3";
   expect_eq(r, table->at("key3", 4));
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());
@@ -166,10 +164,10 @@ void run_basic_test(const string& allocator_type) {
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());
 
-  r.as_string = "value0";
+  r = "value0";
   expect_eq(r, table->at("key1", 4));
   expect_key_missing(table, "key2", 4);
-  r.as_string = "value3";
+  r = "value3";
   expect_eq(r, table->at("key3", 4));
   expect_eq(2, table->size());
   expect_eq(4, table->node_size());
@@ -248,20 +246,20 @@ void run_conditional_writes_test(const string& allocator_type) {
 
   // Check that conditions on the same key work for various types
   {
-    PrefixTree::CheckRequest check("key1", 4, "value2", 6);
+    PrefixTree::CheckRequest check("key1", 4, "value2");
     expect_eq(false, table->insert("key1", 4, "value1_1", 8, &check));
-    expect_eq(LookupResult("value1", 6), table->at("key1", 4));
+    expect_eq(LookupResult("value1"), table->at("key1", 4));
 
-    check.value.as_string = "value1";
+    check.value = "value1";
     expect_eq(true, table->insert("key1", 4, "value1_1", 8, &check));
-    expect_eq(LookupResult("value1_1", 8), table->at("key1", 4));
+    expect_eq(LookupResult("value1_1"), table->at("key1", 4));
   }
   {
     PrefixTree::CheckRequest check("key2", 4, 8.0);
     expect_eq(false, table->insert("key2", 4, 15.0, &check));
     expect_eq(LookupResult(10.0), table->at("key2", 4));
 
-    check.value.as_double = 10.0;
+    check.value = 10.0;
     expect_eq(true, table->insert("key2", 4, 15.0, &check));
     expect_eq(LookupResult(15.0), table->at("key2", 4));
   }
@@ -270,7 +268,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->insert("key3", 4, false, &check));
     expect_eq(LookupResult(true), table->at("key3", 4));
 
-    check.value.as_bool = true;
+    check.value = true;
     expect_eq(true, table->insert("key3", 4, false, &check));
     expect_eq(LookupResult(false), table->at("key3", 4));
   }
@@ -284,18 +282,18 @@ void run_conditional_writes_test(const string& allocator_type) {
   {
     PrefixTree::CheckRequest check("key3", 4, true);
     expect_eq(false, table->insert("key1", 4, "value1", 6, &check));
-    expect_eq(LookupResult("value1_1", 8), table->at("key1", 4));
+    expect_eq(LookupResult("value1_1"), table->at("key1", 4));
 
-    check.value.as_bool = false;
+    check.value = false;
     expect_eq(true, table->insert("key1", 4, "value1", 6, &check));
-    expect_eq(LookupResult("value1", 6), table->at("key1", 4));
+    expect_eq(LookupResult("value1"), table->at("key1", 4));
   }
   {
-    PrefixTree::CheckRequest check("key1", 4, "value2", 6);
+    PrefixTree::CheckRequest check("key1", 4, "value2");
     expect_eq(false, table->insert("key2", 4, 10.0, &check));
     expect_eq(LookupResult(15.0), table->at("key2", 4));
 
-    check.value.as_string = "value1";
+    check.value = "value1";
     expect_eq(true, table->insert("key2", 4, 10.0, &check));
     expect_eq(LookupResult(10.0), table->at("key2", 4));
   }
@@ -304,7 +302,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->insert("key3", 4, true, &check));
     expect_eq(LookupResult(false), table->at("key3", 4));
 
-    check.value.as_double = 10.0;
+    check.value = 10.0;
     expect_eq(true, table->insert("key3", 4, true, &check));
     expect_eq(LookupResult(true), table->at("key3", 4));
   }
@@ -321,12 +319,12 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key2", 4, PrefixTree::ResultValueType::MISSING);
+    PrefixTree::CheckRequest check("key2", 4);
     expect_eq(false, table->insert("key2", 4, &check));
     expect_eq(false, table->exists("key4", 4));
   }
   {
-    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::MISSING);
+    PrefixTree::CheckRequest check("key4", 4);
     expect_eq(true, table->insert("key4", 4, &check));
     expect_eq(LookupResult(nullptr), table->at("key4", 4));
   }
@@ -339,11 +337,11 @@ void run_conditional_writes_test(const string& allocator_type) {
 
   // Check that conditional deletes work
   {
-    PrefixTree::CheckRequest check("key1", 4, "value2", 6);
+    PrefixTree::CheckRequest check("key1", 4, "value2");
     expect_eq(false, table->erase("key1", 4, &check));
-    expect_eq(LookupResult("value1", 6), table->at("key1", 4));
+    expect_eq(LookupResult("value1"), table->at("key1", 4));
 
-    check.value.as_string = "value1";
+    check.value = "value1";
     expect_eq(true, table->erase("key1", 4, &check));
     expect_eq(false, table->exists("key1", 4));
   }
@@ -352,7 +350,7 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->erase("key2", 4, &check));
     expect_eq(LookupResult(10.0), table->at("key2", 4));
 
-    check.value.as_double = 10.0;
+    check.value = 10.0;
     expect_eq(true, table->erase("key2", 4, &check));
     expect_eq(false, table->exists("key2", 4));
   }
@@ -361,14 +359,14 @@ void run_conditional_writes_test(const string& allocator_type) {
     expect_eq(false, table->erase("key3", 4, &check));
     expect_eq(LookupResult(true), table->at("key3", 4));
 
-    check.value.as_bool = true;
+    check.value = true;
     expect_eq(true, table->erase("key3", 4, &check));
     expect_eq(false, table->exists("key3", 4));
   }
   {
-    // It doesn't make sense to do a MISSING check on the same key for an erase,
+    // It doesn't make sense to do a missing check on the same key for an erase,
     // but w/e - it's convenient for the test and it should work anyway
-    PrefixTree::CheckRequest check("key4", 4, PrefixTree::ResultValueType::MISSING);
+    PrefixTree::CheckRequest check("key4", 4);
     expect_eq(false, table->erase("key4", 4, &check));
     expect_eq(LookupResult(nullptr), table->at("key4", 4));
   }

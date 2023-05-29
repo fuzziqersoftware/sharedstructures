@@ -138,8 +138,16 @@ void run_concurrent_producers_test(const string& allocator_type) {
 
     size_t num_failures = 0;
     while (!child_pids.empty()) {
+      // TODO: There is a fairly rare data race here. It's possible that the
+      // queue will be empty because this process popped all values so far, but
+      // one or more children still have values to produce. In that case, we
+      // should wait a short time for the children to produce the remaining
+      // values. (But we can't unconditionally wait because this test's purpose
+      // is to ensure that readers and writers can both access the queue in an
+      // interleaved manner.)
       try {
         auto data = q->pop();
+        fprintf(stderr, "------ %s\n", data.c_str());
         auto tokens = split(data, '-');
         expect_eq(2, tokens.size());
 

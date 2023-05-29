@@ -168,7 +168,7 @@ int main(int argc, char** argv) {
     auto res = t.at(key_str, key_len);
     uint64_t end = now();
 
-    expect_eq(res.type, PrefixTree::ResultValueType::NULL_VALUE);
+    expect(holds_alternative<nullptr_t>(res));
     get_times.emplace_back(end - start);
   }
 

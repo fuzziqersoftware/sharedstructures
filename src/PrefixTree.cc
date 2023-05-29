@@ -49,80 +49,31 @@ uint64_t PrefixTree::base() const {
   return this->base_offset;
 }
 
-PrefixTree::LookupResult::LookupResult(ResultValueType t) : type(t) {
-  if (t != ResultValueType::MISSING) {
-    throw invalid_argument("type-only constructor should only be used for MISSING objects");
-  }
-}
-PrefixTree::LookupResult::LookupResult(nullptr_t)
-    : type(ResultValueType::NULL_VALUE) {}
-PrefixTree::LookupResult::LookupResult(const char* v)
-    : type(ResultValueType::STRING),
-      as_string(v) {}
-PrefixTree::LookupResult::LookupResult(const void* v, size_t size)
-    : type(ResultValueType::STRING),
-      as_string(reinterpret_cast<const char*>(v), size) {}
-PrefixTree::LookupResult::LookupResult(const string& v)
-    : type(ResultValueType::STRING),
-      as_string(v) {}
-PrefixTree::LookupResult::LookupResult(int64_t v)
-    : type(ResultValueType::INT),
-      as_int(v) {}
-PrefixTree::LookupResult::LookupResult(double v)
-    : type(ResultValueType::DOUBLE),
-      as_double(v) {}
-PrefixTree::LookupResult::LookupResult(bool v)
-    : type(ResultValueType::BOOL),
-      as_bool(v) {}
-
-bool PrefixTree::LookupResult::operator==(const LookupResult& other) const {
-  if (this->type != other.type) {
-    return false;
-  }
-  switch (this->type) {
-    case ResultValueType::STRING:
-      return this->as_string == other.as_string;
-    case ResultValueType::INT:
-      return this->as_int == other.as_int;
-    case ResultValueType::DOUBLE:
-      return this->as_double == other.as_double;
-    case ResultValueType::BOOL:
-      return this->as_bool == other.as_bool;
-    case ResultValueType::MISSING:
-    case ResultValueType::NULL_VALUE:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool PrefixTree::LookupResult::operator!=(const LookupResult& other) const {
-  return !this->operator==(other);
-}
-
-string PrefixTree::LookupResult::str() const {
-  switch (this->type) {
-    case ResultValueType::MISSING:
-      return "<MISSING>";
-    case ResultValueType::STRING:
-      return string_printf("<STRING:%s>", this->as_string.c_str());
-    case ResultValueType::INT:
-      return string_printf("<INT:%" PRId64 ">", this->as_int);
-    case ResultValueType::DOUBLE:
-      return string_printf("<DOUBLE:%lf>", this->as_double);
-    case ResultValueType::BOOL:
-      return string_printf("<BOOL:%d>", this->as_bool);
-    case ResultValueType::NULL_VALUE:
-      return "<NULL_VALUE>";
-    default:
-      return "<UnknownType>";
+string PrefixTree::string_for_result(const LookupResult& res) {
+  if (holds_alternative<monostate>(res)) {
+    return "<MISSING>";
+  } else if (holds_alternative<string>(res)) {
+    return "<STRING:" + format_data_string(get<string>(res)) + ">";
+  } else if (holds_alternative<pair<const void*, size_t>>(res)) {
+    auto& ref = get<pair<const void*, size_t>>(res);
+    return "<STRING-REF:" + format_data_string(ref.first, ref.second) + ">";
+  } else if (holds_alternative<int64_t>(res)) {
+    return string_printf("<INT:%" PRId64 ">", get<int64_t>(res));
+  } else if (holds_alternative<double>(res)) {
+    return string_printf("<DOUBLE:%lg>", get<double>(res));
+  } else if (holds_alternative<bool>(res)) {
+    return string_printf("<BOOL:%s>", get<bool>(res) ? "true" : "false");
+  } else if (holds_alternative<nullptr_t>(res)) {
+    return "<NULL>";
+  } else {
+    return "<__INVALID__>";
   }
 }
 
 PrefixTree::CheckRequest::CheckRequest()
     : key(nullptr),
       key_size(0),
-      value(ResultValueType::MISSING) {}
+      value() {}
 
 bool PrefixTree::insert(
     const void* k, size_t k_size, const void* v, size_t v_size, const CheckRequest* check) {
@@ -382,22 +333,24 @@ bool PrefixTree::insert(const string& k, const CheckRequest* check) {
 }
 
 bool PrefixTree::insert(const void* k, size_t k_size, const LookupResult& r, const CheckRequest* check) {
-  // Just call the appropriate insert function for the result's type (or erase)
-  switch (r.type) {
-    case ResultValueType::MISSING:
-      return this->erase(k, k_size, check);
-    case ResultValueType::STRING:
-      return this->insert(k, k_size, r.as_string.data(), r.as_string.size(), check);
-    case ResultValueType::INT:
-      return this->insert(k, k_size, r.as_int, check);
-    case ResultValueType::DOUBLE:
-      return this->insert(k, k_size, r.as_double, check);
-    case ResultValueType::BOOL:
-      return this->insert(k, k_size, r.as_bool, check);
-    case ResultValueType::NULL_VALUE:
-      return this->insert(k, k_size, check);
-    default:
-      throw invalid_argument("insert with LookupResult of unknown type");
+  if (holds_alternative<monostate>(r)) {
+    return this->erase(k, k_size, check);
+  } else if (holds_alternative<string>(r)) {
+    auto& s = get<string>(r);
+    return this->insert(k, k_size, s.data(), s.size(), check);
+  } else if (holds_alternative<pair<const void*, size_t>>(r)) {
+    auto& d = get<pair<const void*, size_t>>(r);
+    return this->insert(k, k_size, d.first, d.second, check);
+  } else if (holds_alternative<int64_t>(r)) {
+    return this->insert(k, k_size, get<int64_t>(r), check);
+  } else if (holds_alternative<double>(r)) {
+    return this->insert(k, k_size, get<double>(r), check);
+  } else if (holds_alternative<bool>(r)) {
+    return this->insert(k, k_size, get<bool>(r), check);
+  } else if (holds_alternative<nullptr_t>(r)) {
+    return this->insert(k, k_size, check);
+  } else {
+    throw logic_error("invalid value type");
   }
 }
 
@@ -1126,9 +1079,8 @@ PrefixTree::Traversal PrefixTree::traverse(const void* k, size_t s,
 }
 
 bool PrefixTree::execute_check(const CheckRequest& check) const {
-  LookupResult existing_result(ResultValueType::MISSING);
-  uint64_t value_slot_offset =
-      this->traverse(check.key, check.key_size, true, false).value_slot_offset;
+  LookupResult existing_result;
+  uint64_t value_slot_offset = this->traverse(check.key, check.key_size, true, false).value_slot_offset;
   if (value_slot_offset) {
     uint64_t contents = *this->allocator->get_pool()->at<uint64_t>(
         value_slot_offset);
@@ -1157,7 +1109,7 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
   if (!current) {
     Node* node = p->at<Node>(node_offset);
     if (node->value) {
-      return make_pair("", return_value ? this->lookup_result_for_contents(node->value) : LookupResult(ResultValueType::MISSING));
+      return make_pair("", return_value ? this->lookup_result_for_contents(node->value) : LookupResult());
     }
 
     // current is not null - we're continuing iteration, or starting with a prefix
@@ -1264,58 +1216,56 @@ pair<string, PrefixTree::LookupResult> PrefixTree::next_key_value_internal(
     key += (char)slot_id;
   }
 
-  return make_pair(key, return_value ? this->lookup_result_for_contents(value) : LookupResult(ResultValueType::MISSING));
+  return make_pair(key, return_value ? this->lookup_result_for_contents(value) : LookupResult());
 }
 
 PrefixTree::LookupResult PrefixTree::lookup_result_for_contents(uint64_t contents) const {
   switch (this->type_for_contents(contents)) {
     case StoredValueType::SUBNODE:
       throw out_of_range("");
-      break;
 
     case StoredValueType::STRING: {
       uint64_t data_offset = this->value_for_contents(contents);
       if (data_offset) {
-        return LookupResult(this->allocator->get_pool()->at<char>(data_offset),
+        return string(this->allocator->get_pool()->at<char>(data_offset),
             this->allocator->block_size(data_offset));
       }
-      return LookupResult("", 0);
+      return string();
     }
 
     case StoredValueType::SHORT_STRING: {
-      auto res = LookupResult("", 0);
+      char data[8];
       size_t v_size = (contents >> 3) & 0x7;
-      for (uint8_t shift = 56; res.as_string.size() < v_size; shift -= 8) {
-        res.as_string += (char)((contents >> shift) & 0xFF);
+      size_t z = 0;
+      for (uint8_t shift = 56; z < v_size; shift -= 8, z++) {
+        data[z] = (char)((contents >> shift) & 0xFF);
       }
-      return res;
+      data[z] = 0;
+      return string(data, v_size);
     }
 
-    case StoredValueType::INT: {
-      int64_t v = this->int_value_for_contents(contents);
-      return LookupResult(v);
-    }
+    case StoredValueType::INT:
+      return this->int_value_for_contents(contents);
 
     case StoredValueType::LONG_INT: {
       uint64_t num_offset = this->value_for_contents(contents);
-      return LookupResult(*this->allocator->get_pool()->at<int64_t>(
-          num_offset));
+      return *this->allocator->get_pool()->at<int64_t>(num_offset);
     }
 
     case StoredValueType::DOUBLE: {
       uint64_t num_offset = this->value_for_contents(contents);
       if (!num_offset) {
-        return LookupResult(0.0);
+        return 0.0;
       }
-      return LookupResult(*this->allocator->get_pool()->at<double>(num_offset));
+      return *this->allocator->get_pool()->at<double>(num_offset);
     }
 
     case StoredValueType::TRIVIAL: {
       uint64_t trivial_id = this->value_for_contents(contents) >> 3;
       if (trivial_id == 2) {
-        return LookupResult(nullptr);
+        return nullptr;
       }
-      return LookupResult(trivial_id ? true : false);
+      return trivial_id ? true : false;
     }
   }
   throw invalid_argument("slot has unknown type");
@@ -1497,12 +1447,12 @@ PrefixTree::StoredValueType PrefixTree::type_for_contents(uint64_t s) {
 
 PrefixTreeIterator::PrefixTreeIterator(const PrefixTree* tree)
     : tree(tree),
-      current_result("", PrefixTree::ResultValueType::MISSING),
+      current_result(),
       complete(true) {}
 
 PrefixTreeIterator::PrefixTreeIterator(const PrefixTree* tree, const string* location)
     : tree(tree),
-      current_result("", PrefixTree::ResultValueType::MISSING),
+      current_result(),
       complete(false) {
   try {
     if (location) {

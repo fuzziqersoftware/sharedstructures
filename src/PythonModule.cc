@@ -23,23 +23,13 @@
 
 using namespace std;
 
-// Python uses some defined (e.g. PyObject_HEAD) that confuse clang-format, and
-// the object type declarations are formatted slightly unusually, so we disable
-// formatting for this entire file.
-// clang-format off
-
-
-
 using ResultValueType = sharedstructures::PrefixTree::ResultValueType;
 using LookupResult = sharedstructures::PrefixTree::LookupResult;
 
 // TODO: make sure long is supported everywhere int is supported
 
-
 static const char* sharedstructures_doc =
-"sharedstructures: dynamically-sized shared-memory data structures.";
-
-
+    "sharedstructures: dynamically-sized shared-memory data structures.";
 
 // Helper functions
 
@@ -76,124 +66,125 @@ static pair<const char*, size_t> sharedstructures_internal_get_key(
 
 static PyObject* sharedstructures_internal_get_python_object_for_result(
     const sharedstructures::PrefixTree::LookupResult& res) {
-  switch (res.type) {
-    case ResultValueType::MISSING:
-      // This can't happen
-      PyErr_SetString(PyExc_NotImplementedError, "missing result returned");
-      return nullptr;
-
-    case ResultValueType::STRING:
-      if (res.as_string.empty()) {
-        return PyBytes_FromStringAndSize(nullptr, 0);
+  if (holds_alternative<monostate>(res)) {
+    // This can't happen
+    PyErr_SetString(PyExc_NotImplementedError, "missing result returned");
+    return nullptr;
+  } else if (holds_alternative<pair<const void*, size_t>>(res)) {
+    // This also can't happen
+    PyErr_SetString(PyExc_NotImplementedError, "string reference result returned");
+    return nullptr;
+  } else if (holds_alternative<string>(res)) {
+    const string& s = get<string>(res);
+    if (s.empty()) {
+      return PyBytes_FromStringAndSize(nullptr, 0);
+    }
+    switch (s[0]) {
+      // The first byte tells what the format is
+      case 0: // Byte string
+        return PyBytes_FromStringAndSize(s.data() + 1, s.size() - 1);
+      case 1: { // Unaligned unicode string (deprecated)
+        // Note: This type is deprecated because this encoding requires either
+        // an unaligned pointer access (which can cause undefined behavior)
+        // or a second copy of the string data to an aligned address. The
+        // new Unicode string type (3) should be used instead. At the time
+        // this type (1) was deprecated, the Python module no longer generates
+        // values in encoding (1) at all, but we keep the decoder here for
+        // what little backward compatibility there is to be had.
+        string aligned_data = s.substr(1);
+        return PyUnicode_FromWideChar(
+            reinterpret_cast<const wchar_t*>(aligned_data.data()),
+            aligned_data.size() / sizeof(wchar_t));
       }
-      switch (res.as_string[0]) {
-        // The first byte tells what the format is
-        case 0: // Byte string
-          return PyBytes_FromStringAndSize(res.as_string.data() + 1, res.as_string.size() - 1);
-        case 1: { // Unaligned unicode string (deprecated)
-          // Note: This type is deprecated because this encoding requires either
-          // an unaligned pointer access (which can cause undefined behavior)
-          // or a second copy of the string data to an aligned address. The
-          // new Unicode string type (3) should be used instead. At the time
-          // this type (1) was deprecated, the Python module no longer generates
-          // values in encoding (1) at all, but we keep the decoder here for
-          // what little backward compatibility there is to be had.
-          string aligned_data = res.as_string.substr(1);
-          return PyUnicode_FromWideChar(
-              reinterpret_cast<const wchar_t*>(aligned_data.data()),
-              aligned_data.size() / sizeof(wchar_t));
-        }
-        case 2: // Marshalled object
-          return PyMarshal_ReadObjectFromString(
-              const_cast<char*>(res.as_string.data()) + 1,
-              res.as_string.size() - 1);
-        case 3: { // Aligned unicode string
-          if (res.as_string.size() < 2) {
-            PyErr_SetString(PyExc_TypeError, "unicode string data is missing header");
-            return nullptr;
-          }
-          size_t header_bytes = res.as_string[1];
-          if (res.as_string.size() < header_bytes) {
-            PyErr_SetString(PyExc_TypeError, "unicode string data is too short for header");
-            return nullptr;
-          }
-          return PyUnicode_FromWideChar(
-              reinterpret_cast<const wchar_t*>(res.as_string.data() + header_bytes),
-              (res.as_string.size() - header_bytes) / sizeof(wchar_t));
-        }
-        default:
-          PyErr_SetString(PyExc_TypeError, "unknown string format");
+      case 2: // Marshalled object
+        return PyMarshal_ReadObjectFromString(const_cast<char*>(s.data()) + 1, s.size() - 1);
+      case 3: { // Aligned unicode string
+        if (s.size() < 2) {
+          PyErr_SetString(PyExc_TypeError, "unicode string data is missing header");
           return nullptr;
+        }
+        size_t header_bytes = s[1];
+        if (s.size() < header_bytes) {
+          PyErr_SetString(PyExc_TypeError, "unicode string data is too short for header");
+          return nullptr;
+        }
+        return PyUnicode_FromWideChar(
+            reinterpret_cast<const wchar_t*>(s.data() + header_bytes),
+            (s.size() - header_bytes) / sizeof(wchar_t));
       }
-
-    case ResultValueType::INT:
-      return PyLong_FromLongLong(res.as_int);
-
-    case ResultValueType::DOUBLE:
-      return PyFloat_FromDouble(res.as_double);
-
-    case ResultValueType::BOOL: {
-      PyObject* ret = res.as_bool ? Py_True : Py_False;
-      Py_INCREF(ret);
-      return ret;
+      default:
+        PyErr_SetString(PyExc_TypeError, "unknown string format");
+        return nullptr;
     }
 
-    case ResultValueType::NULL_VALUE:
-      Py_INCREF(Py_None);
-      return Py_None;
-  }
+  } else if (holds_alternative<int64_t>(res)) {
+    return PyLong_FromLongLong(get<int64_t>(res));
 
-  PyErr_SetString(PyExc_NotImplementedError, "result has unknown type");
-  return nullptr;
+  } else if (holds_alternative<double>(res)) {
+    return PyFloat_FromDouble(get<double>(res));
+
+  } else if (holds_alternative<bool>(res)) {
+    PyObject* ret = get<bool>(res) ? Py_True : Py_False;
+    Py_INCREF(ret);
+    return ret;
+
+  } else if (holds_alternative<nullptr_t>(res)) {
+    Py_INCREF(Py_None);
+    return Py_None;
+
+  } else {
+    PyErr_SetString(PyExc_NotImplementedError, "result has unknown type");
+    return nullptr;
+  }
 }
 
 static LookupResult sharedstructures_internal_get_result_for_python_object(
     PyObject* o) {
   if (o == Py_None) {
-    return LookupResult(nullptr);
+    return nullptr;
 
   } else if (o == Py_True) {
-    return LookupResult(true);
+    return true;
 
   } else if (o == Py_False) {
-    return LookupResult(false);
+    return false;
 
   } else if (PyFloat_Check(o)) {
     double v = PyFloat_AsDouble(o);
     if (v == -1.0 && PyErr_Occurred()) {
       throw runtime_error("failed to convert python object to LookupResult");
     }
-    return LookupResult(v);
+    return v;
 
   } else if (PyLong_Check(o)) {
     int64_t v = PyLong_AsLongLong(o);
     if (v == -1 && PyErr_Occurred()) {
       throw runtime_error("failed to convert python object to LookupResult");
     }
-    return LookupResult(v);
+    return v;
 
   } else if (PyBytes_Check(o)) {
-    LookupResult res("\x00", 1);
+    string s("\x00", 1);
     char* data;
     Py_ssize_t size;
     if (PyBytes_AsStringAndSize(o, &data, &size) == -1) {
       throw runtime_error("failed to convert python object to LookupResult");
     }
-    res.as_string.append(data, size);
-    return res;
+    s.append(data, size);
+    return std::move(s);
 
   } else if (PyUnicode_Check(o)) {
-    LookupResult res("\x03", 1);
-    res.as_string.push_back(sizeof(wchar_t));
+    string s("\x03", 1);
+    s.push_back(sizeof(wchar_t));
     size_t header_bytes = max<size_t>(sizeof(wchar_t), 2);
     Py_ssize_t count = PyUnicode_GetLength(o);
-    res.as_string.resize(header_bytes + count * sizeof(wchar_t), '\0');
+    s.resize(header_bytes + count * sizeof(wchar_t), '\0');
     Py_ssize_t chars_copied = PyUnicode_AsWideChar(
-        o, reinterpret_cast<wchar_t*>(res.as_string.data() + header_bytes), count);
+        o, reinterpret_cast<wchar_t*>(s.data() + header_bytes), count);
     if (chars_copied != count) {
       throw runtime_error("failed to convert python object to LookupResult");
     }
-    return res;
+    return std::move(s);
 
   } else {
     PyObject* marshalled_obj = PyMarshal_WriteObjectToString(o,
@@ -204,26 +195,23 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
       throw runtime_error("failed to convert python object to LookupResult");
     }
 
-    LookupResult res("\x02", 1);
+    string s("\x02", 1);
     char* data;
     Py_ssize_t size;
     if (PyBytes_AsStringAndSize(marshalled_obj, &data, &size) == -1) {
       Py_DECREF(marshalled_obj);
       throw runtime_error("failed to convert python object to LookupResult");
     }
-    res.as_string.append(data, size);
+    s.append(data, size);
     Py_DECREF(marshalled_obj);
-    return res;
+    return std::move(s);
   }
 }
-
-
-
 
 // HashTable, HashTableIterator, PrefixTree and PrefixTreeIterator definitions
 
 static const char* sharedstructures_HashTable_doc =
-"Shared-memory hash table object.\n\
+    "Shared-memory hash table object.\n\
 \n\
 sharedstructures.HashTable(\n\
     pool_name: str,\n\
@@ -242,15 +230,15 @@ Arguments:\n\
   bits).";
 
 typedef struct {
-  PyObject_HEAD
+  PyObject_HEAD;
   shared_ptr<sharedstructures::HashTable> table;
 } sharedstructures_HashTable;
 
 static const char* sharedstructures_HashTableIterator_doc =
-"Shared-memory hash table iterator.";
+    "Shared-memory hash table iterator.";
 
 typedef struct {
-  PyObject_HEAD
+  PyObject_HEAD;
   sharedstructures_HashTable* table_obj;
   sharedstructures::HashTableIterator it;
   bool return_keys;
@@ -258,7 +246,7 @@ typedef struct {
 } sharedstructures_HashTableIterator;
 
 static const char* sharedstructures_PrefixTree_doc =
-"Shared-memory prefix tree object.\n\
+    "Shared-memory prefix tree object.\n\
 \n\
 sharedstructures.PrefixTree(\n\
     pool_name: str,\n\
@@ -274,15 +262,16 @@ Arguments:\n\
   new PrefixTree's offset.";
 
 typedef struct {
-  PyObject_HEAD
-  shared_ptr<sharedstructures::PrefixTree> table;
+  PyObject_HEAD;
+  shared_ptr<sharedstructures::PrefixTree>
+      table;
 } sharedstructures_PrefixTree;
 
 static const char* sharedstructures_PrefixTreeIterator_doc =
-"Shared-memory prefix tree iterator.";
+    "Shared-memory prefix tree iterator.";
 
 typedef struct {
-  PyObject_HEAD
+  PyObject_HEAD;
   sharedstructures_PrefixTree* tree_obj;
   sharedstructures::PrefixTreeIterator it;
   bool return_keys;
@@ -290,7 +279,7 @@ typedef struct {
 } sharedstructures_PrefixTreeIterator;
 
 static const char* sharedstructures_Queue_doc =
-"Shared-memory doubly-linked list (queue) object.\n\
+    "Shared-memory doubly-linked list (queue) object.\n\
 \n\
 sharedstructures.Queue(\n\
     pool_name: str,\n\
@@ -306,12 +295,13 @@ Arguments:\n\
   offset.";
 
 typedef struct {
-  PyObject_HEAD
-  shared_ptr<sharedstructures::Queue> q;
+  PyObject_HEAD;
+  shared_ptr<sharedstructures::Queue>
+      q;
 } sharedstructures_Queue;
 
 static const char* sharedstructures_PriorityQueue_doc =
-"Shared-memory heap (priority queue) object.\n\
+    "Shared-memory heap (priority queue) object.\n\
 \n\
 sharedstructures.PriorityQueue(\n\
     pool_name: str,\n\
@@ -327,12 +317,13 @@ Arguments:\n\
   to the new PriorityQueue's offset.";
 
 typedef struct {
-  PyObject_HEAD
-  shared_ptr<sharedstructures::PriorityQueue> q;
+  PyObject_HEAD;
+  shared_ptr<sharedstructures::PriorityQueue>
+      q;
 } sharedstructures_PriorityQueue;
 
 static const char* sharedstructures_IntVector_doc =
-"Shared-memory atomic integer array object.\n\
+    "Shared-memory atomic integer array object.\n\
 \n\
 sharedstructures.IntVector(pool_name: str)\n\
 \n\
@@ -340,14 +331,10 @@ Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.";
 
 typedef struct {
-  PyObject_HEAD
-  shared_ptr<sharedstructures::AtomicVector<int64_t>> v;
+  PyObject_HEAD;
+  shared_ptr<sharedstructures::AtomicVector<int64_t>>
+      v;
 } sharedstructures_IntVector;
-
-
-
-
-
 
 // HashTableIterator object method definitions
 
@@ -367,7 +354,7 @@ static PyObject* sharedstructures_HashTableIterator_New(PyTypeObject* type,
   PyObject* return_keys_obj;
   PyObject* return_values_obj;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "OOO", kwarg_names_arg,
-      &self->table_obj, &return_keys_obj, &return_values_obj)) {
+          &self->table_obj, &return_keys_obj, &return_values_obj)) {
     return nullptr;
   }
   if (return_keys_obj == Py_True) {
@@ -465,60 +452,55 @@ static PyObject* sharedstructures_HashTableIterator_Repr(PyObject* py_self) {
 }
 
 static PyTypeObject sharedstructures_HashTableIteratorType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.HashTableIterator",                   // tp_name
-  sizeof(sharedstructures_HashTableIterator),             // tp_basicsize
-  0,                                                      // tp_itemsize
-  (destructor)sharedstructures_HashTableIterator_Dealloc, // tp_dealloc
-  0,                                                      // tp_print
-  0,                                                      // tp_getattr
-  0,                                                      // tp_setattr
-  0,                                                      // tp_compare
-  sharedstructures_HashTableIterator_Repr,                // tp_repr
-  0,                                                      // tp_as_number
-  0,                                                      // tp_as_sequence
-  0,                                                      // tp_as_mapping
-  0,                                                      // tp_hash
-  0,                                                      // tp_call
-  0,                                                      // tp_str
-  0,                                                      // tp_getattro
-  0,                                                      // tp_setattro
-  0,                                                      // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                                     // tp_flag
-  sharedstructures_HashTableIterator_doc,                 // tp_doc
-  0,                                                      // tp_traverse
-  0,                                                      // tp_clear
-  0,                                                      // tp_richcompare
-  0,                                                      // tp_weaklistoffset
-  sharedstructures_HashTableIterator_Iter,                // tp_iter
-  sharedstructures_HashTableIterator_Next,                // tp_iternext
-  0,                                                      // tp_methods
-  0,                                                      // tp_members
-  0,                                                      // tp_getset
-  0,                                                      // tp_base
-  0,                                                      // tp_dict
-  0,                                                      // tp_descr_get
-  0,                                                      // tp_descr_set
-  0,                                                      // tp_dictoffset
-  0,                                                      // tp_init
-  0,                                                      // tp_alloc
-  sharedstructures_HashTableIterator_New,                 // tp_new
-  0,                                                      // tp_free
-  0,                                                      // tp_is_gc
-  0,                                                      // tp_bases
-  0,                                                      // tp_mro
-  0,                                                      // tp_cache
-  0,                                                      // tp_subclasses
-  0,                                                      // tp_weaklist
-  0,                                                      // tp_del
-  0,                                                      // tp_version_tag
-  0,                                                      // tp_finalize
-  0,                                                      // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.HashTableIterator", // tp_name
+    sizeof(sharedstructures_HashTableIterator), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_HashTableIterator_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_HashTableIterator_Repr, // tp_repr
+    0, // tp_as_number
+    0, // tp_as_sequence
+    0, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_HashTableIterator_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    sharedstructures_HashTableIterator_Iter, // tp_iter
+    sharedstructures_HashTableIterator_Next, // tp_iternext
+    0, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_HashTableIterator_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
-
 
 // HashTable object method definitions
 
@@ -539,7 +521,7 @@ static PyObject* sharedstructures_HashTable_New(PyTypeObject* type,
   uint8_t bits = 8;
   const char* allocator_type = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|snb", kwarg_names_arg,
-      &pool_name, &allocator_type, &base_offset, &bits)) {
+          &pool_name, &allocator_type, &base_offset, &bits)) {
     return nullptr;
   }
 
@@ -565,7 +547,7 @@ static void sharedstructures_HashTable_Dealloc(PyObject* obj) {
 }
 
 static const char* sharedstructures_HashTable_verify_doc =
-"Checks the internal state of the shared allocator.\n\
+    "Checks the internal state of the shared allocator.\n\
 \n\
 HashTable.verify() -> bytes | None\n\
 \n\
@@ -668,7 +650,7 @@ static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_clear_doc =
-"Deletes all entries in the table.\n\
+    "Deletes all entries in the table.\n\
 \n\
 HashTable.clear() -> None";
 
@@ -682,7 +664,7 @@ static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_check_and_set_doc =
-"Conditionally sets a value if the check key\'s value matches the check value.\n\
+    "Conditionally sets a value if the check key\'s value matches the check value.\n\
 \n\
 HashTable.check_and_set(\n\
     check_key: bytes,\n\
@@ -709,8 +691,8 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
   Py_ssize_t target_key_size;
   PyObject* target_value_object = nullptr;
   if (!PyArg_ParseTuple(args, "s#Os#|O", &check_key, &check_key_size,
-      &check_value_object, &target_key, &target_key_size,
-      &target_value_object)) {
+          &check_value_object, &target_key, &target_key_size,
+          &target_value_object)) {
     return nullptr;
   }
 
@@ -724,7 +706,7 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
   char* marshalled_check_value_data;
   Py_ssize_t marshalled_check_value_size;
   if (PyBytes_AsStringAndSize(marshalled_check_value_obj,
-      &marshalled_check_value_data, &marshalled_check_value_size) == -1) {
+          &marshalled_check_value_data, &marshalled_check_value_size) == -1) {
     Py_DECREF(marshalled_check_value_obj);
     return nullptr;
   }
@@ -746,7 +728,7 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
     char* marshalled_target_value_data;
     Py_ssize_t marshalled_target_value_size;
     if (PyBytes_AsStringAndSize(marshalled_target_value_obj,
-        &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
+            &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
       Py_DECREF(marshalled_check_value_obj);
       Py_DECREF(marshalled_target_value_obj);
       return nullptr;
@@ -768,7 +750,7 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
 }
 
 static const char* sharedstructures_HashTable_check_missing_and_set_doc =
-"Conditionally sets a value if the check key does not exist.\n\
+    "Conditionally sets a value if the check key does not exist.\n\
 \n\
 HashTable.check_missing_and_set(\n\
     check_key: bytes,\n\
@@ -792,7 +774,7 @@ static PyObject* sharedstructures_HashTable_check_missing_and_set(
   Py_ssize_t target_key_size;
   PyObject* target_value_object = nullptr;
   if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
-      &target_key, &target_key_size, &target_value_object)) {
+          &target_key, &target_key_size, &target_value_object)) {
     return nullptr;
   }
 
@@ -811,7 +793,7 @@ static PyObject* sharedstructures_HashTable_check_missing_and_set(
     char* marshalled_target_value_data;
     Py_ssize_t marshalled_target_value_size;
     if (PyBytes_AsStringAndSize(marshalled_target_value_obj,
-        &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
+            &marshalled_target_value_data, &marshalled_target_value_size) == -1) {
       Py_DECREF(marshalled_target_value_obj);
       return nullptr;
     }
@@ -848,7 +830,7 @@ static PyObject* sharedstructures_HashTable_iter_generic(PyObject* py_self,
 }
 
 static const char* sharedstructures_HashTable_keys_doc =
-"Returns an iterator over all keys in the table.\n\
+    "Returns an iterator over all keys in the table.\n\
 \n\
 HashTable.keys() -> HashTableIterator[bytes]";
 
@@ -857,7 +839,7 @@ static PyObject* sharedstructures_HashTable_keys(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_values_doc =
-"Returns an iterator over all values in the table.\n\
+    "Returns an iterator over all values in the table.\n\
 \n\
 HashTable.values() -> HashTableIterator[Any]";
 
@@ -866,7 +848,7 @@ static PyObject* sharedstructures_HashTable_values(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_items_doc =
-"Returns an iterator over all key/value pairs in the table.\n\
+    "Returns an iterator over all key/value pairs in the table.\n\
 \n\
 HashTable.keys() -> HashTableIterator[tuple[bytes, Any]]";
 
@@ -879,7 +861,7 @@ static PyObject* sharedstructures_HashTable_Iter(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_bits_doc =
-"Returns the hash bucket count factor.\n\
+    "Returns the hash bucket count factor.\n\
 \n\
 HashTable.bits() -> int";
 
@@ -889,7 +871,7 @@ static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.\n\
+    "Returns the size of the underlying shared memory pool.\n\
 \n\
 HashTable.pool_bytes() -> int";
 
@@ -899,7 +881,7 @@ static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.\n\
+    "Returns the amount of free space in the underlying shared memory pool.\n\
 \n\
 HashTable.pool_free_bytes() -> int";
 
@@ -909,7 +891,7 @@ static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.\n\
+    "Returns the amount of allocated space in the underlying shared memory pool.\n\
 \n\
 HashTable.pool_allocated_bytes() -> int";
 
@@ -919,104 +901,89 @@ static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_se
 }
 
 static PyMethodDef sharedstructures_HashTable_methods[] = {
-  {"pool_bytes", (PyCFunction)sharedstructures_HashTable_pool_bytes, METH_NOARGS,
-      sharedstructures_HashTable_pool_bytes_doc},
-  {"pool_free_bytes", (PyCFunction)sharedstructures_HashTable_pool_free_bytes, METH_NOARGS,
-      sharedstructures_HashTable_pool_free_bytes_doc},
-  {"pool_allocated_bytes", (PyCFunction)sharedstructures_HashTable_pool_allocated_bytes, METH_NOARGS,
-      sharedstructures_HashTable_pool_allocated_bytes_doc},
-  {"check_and_set", (PyCFunction)sharedstructures_HashTable_check_and_set, METH_VARARGS,
-      sharedstructures_HashTable_check_and_set_doc},
-  {"check_missing_and_set", (PyCFunction)sharedstructures_HashTable_check_missing_and_set, METH_VARARGS,
-      sharedstructures_HashTable_check_missing_and_set_doc},
-  {"clear", (PyCFunction)sharedstructures_HashTable_clear, METH_NOARGS,
-      sharedstructures_HashTable_clear_doc},
-  {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS,
-      sharedstructures_HashTable_bits_doc},
-  {"keys", (PyCFunction)sharedstructures_HashTable_keys, METH_NOARGS,
-      sharedstructures_HashTable_keys_doc},
-  {"values", (PyCFunction)sharedstructures_HashTable_values, METH_NOARGS,
-      sharedstructures_HashTable_values_doc},
-  {"items", (PyCFunction)sharedstructures_HashTable_items, METH_NOARGS,
-      sharedstructures_HashTable_items_doc},
-  {"verify", (PyCFunction)sharedstructures_HashTable_verify, METH_NOARGS,
-      sharedstructures_HashTable_verify_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"pool_bytes", (PyCFunction)sharedstructures_HashTable_pool_bytes, METH_NOARGS, sharedstructures_HashTable_pool_bytes_doc},
+    {"pool_free_bytes", (PyCFunction)sharedstructures_HashTable_pool_free_bytes, METH_NOARGS, sharedstructures_HashTable_pool_free_bytes_doc},
+    {"pool_allocated_bytes", (PyCFunction)sharedstructures_HashTable_pool_allocated_bytes, METH_NOARGS, sharedstructures_HashTable_pool_allocated_bytes_doc},
+    {"check_and_set", (PyCFunction)sharedstructures_HashTable_check_and_set, METH_VARARGS, sharedstructures_HashTable_check_and_set_doc},
+    {"check_missing_and_set", (PyCFunction)sharedstructures_HashTable_check_missing_and_set, METH_VARARGS, sharedstructures_HashTable_check_missing_and_set_doc},
+    {"clear", (PyCFunction)sharedstructures_HashTable_clear, METH_NOARGS, sharedstructures_HashTable_clear_doc},
+    {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS, sharedstructures_HashTable_bits_doc},
+    {"keys", (PyCFunction)sharedstructures_HashTable_keys, METH_NOARGS, sharedstructures_HashTable_keys_doc},
+    {"values", (PyCFunction)sharedstructures_HashTable_values, METH_NOARGS, sharedstructures_HashTable_values_doc},
+    {"items", (PyCFunction)sharedstructures_HashTable_items, METH_NOARGS, sharedstructures_HashTable_items_doc},
+    {"verify", (PyCFunction)sharedstructures_HashTable_verify, METH_NOARGS, sharedstructures_HashTable_verify_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PySequenceMethods sharedstructures_HashTable_sequencemethods = {
-  sharedstructures_HashTable_Len, // sq_length
-  0, // sq_concat
-  0, // sq_repeat
-  0, // sq_item (we implement GetItem via the mapping protocol instead)
-  0, // sq_slice
-  0, // sq_ass_item (we implement GetItem via the mapping protocol instead)
-  0, // sq_ass_slice
-  sharedstructures_HashTable_In, // sq_contains
-  0, // sq_inplace_concat
-  0, // sq_inplace_repeat
+    sharedstructures_HashTable_Len, // sq_length
+    0, // sq_concat
+    0, // sq_repeat
+    0, // sq_item (we implement GetItem via the mapping protocol instead)
+    0, // sq_slice
+    0, // sq_ass_item (we implement GetItem via the mapping protocol instead)
+    0, // sq_ass_slice
+    sharedstructures_HashTable_In, // sq_contains
+    0, // sq_inplace_concat
+    0, // sq_inplace_repeat
 };
 
 static PyMappingMethods sharedstructures_HashTable_mappingmethods = {
-  sharedstructures_HashTable_Len,
-  sharedstructures_HashTable_GetItem,
-  sharedstructures_HashTable_SetItem,
+    sharedstructures_HashTable_Len,
+    sharedstructures_HashTable_GetItem,
+    sharedstructures_HashTable_SetItem,
 };
 
 static PyTypeObject sharedstructures_HashTableType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.HashTable",                    // tp_name
-  sizeof(sharedstructures_HashTable),              // tp_basicsize
-  0,                                               // tp_itemsize
-  (destructor)sharedstructures_HashTable_Dealloc,  // tp_dealloc
-  0,                                               // tp_print
-  0,                                               // tp_getattr
-  0,                                               // tp_setattr
-  0,                                               // tp_compare
-  sharedstructures_HashTable_Repr,                 // tp_repr
-  0,                                               // tp_as_number
-  &sharedstructures_HashTable_sequencemethods,     // tp_as_sequence
-  &sharedstructures_HashTable_mappingmethods,      // tp_as_mapping
-  0,                                               // tp_hash
-  0,                                               // tp_call
-  0,                                               // tp_str
-  0,                                               // tp_getattro
-  0,                                               // tp_setattro
-  0,                                               // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                              // tp_flag
-  sharedstructures_HashTable_doc,                  // tp_doc
-  0,                                               // tp_traverse
-  0,                                               // tp_clear
-  0,                                               // tp_richcompare
-  0,                                               // tp_weaklistoffset
-  sharedstructures_HashTable_Iter,                 // tp_iter
-  0,                                               // tp_iternext
-  sharedstructures_HashTable_methods,              // tp_methods
-  0,                                               // tp_members
-  0,                                               // tp_getset
-  0,                                               // tp_base
-  0,                                               // tp_dict
-  0,                                               // tp_descr_get
-  0,                                               // tp_descr_set
-  0,                                               // tp_dictoffset
-  0,                                               // tp_init
-  0,                                               // tp_alloc
-  sharedstructures_HashTable_New,                  // tp_new
-  0,                                               // tp_free
-  0,                                               // tp_is_gc
-  0,                                               // tp_bases
-  0,                                               // tp_mro
-  0,                                               // tp_cache
-  0,                                               // tp_subclasses
-  0,                                               // tp_weaklist
-  0,                                               // tp_del
-  0,                                               // tp_version_tag
-  0,                                               // tp_finalize
-  0,                                               // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.HashTable", // tp_name
+    sizeof(sharedstructures_HashTable), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_HashTable_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_HashTable_Repr, // tp_repr
+    0, // tp_as_number
+    &sharedstructures_HashTable_sequencemethods, // tp_as_sequence
+    &sharedstructures_HashTable_mappingmethods, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_HashTable_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    sharedstructures_HashTable_Iter, // tp_iter
+    0, // tp_iternext
+    sharedstructures_HashTable_methods, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_HashTable_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
 
 // PrefixTreeIterator object method definitions
 
@@ -1037,7 +1004,7 @@ static PyObject* sharedstructures_PrefixTreeIterator_New(PyTypeObject* type,
   PyObject* return_values_obj = Py_True;
   PyObject* prefix_obj = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|OOO", kwarg_names_arg,
-      &self->tree_obj, &return_keys_obj, &return_values_obj, &prefix_obj)) {
+          &self->tree_obj, &return_keys_obj, &return_values_obj, &prefix_obj)) {
     return nullptr;
   }
   if (return_keys_obj == Py_True) {
@@ -1141,59 +1108,55 @@ static PyObject* sharedstructures_PrefixTreeIterator_Repr(PyObject* py_self) {
 }
 
 static PyTypeObject sharedstructures_PrefixTreeIteratorType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.PrefixTreeIterator",                   // tp_name
-  sizeof(sharedstructures_PrefixTreeIterator),             // tp_basicsize
-  0,                                                       // tp_itemsize
-  (destructor)sharedstructures_PrefixTreeIterator_Dealloc, // tp_dealloc
-  0,                                                       // tp_print
-  0,                                                       // tp_getattr
-  0,                                                       // tp_setattr
-  0,                                                       // tp_compare
-  sharedstructures_PrefixTreeIterator_Repr,                // tp_repr
-  0,                                                       // tp_as_number
-  0,                                                       // tp_as_sequence
-  0,                                                       // tp_as_mapping
-  0,                                                       // tp_hash
-  0,                                                       // tp_call
-  0,                                                       // tp_str
-  0,                                                       // tp_getattro
-  0,                                                       // tp_setattro
-  0,                                                       // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                                      // tp_flag
-  sharedstructures_PrefixTreeIterator_doc,                 // tp_doc
-  0,                                                       // tp_traverse
-  0,                                                       // tp_clear
-  0,                                                       // tp_richcompare
-  0,                                                       // tp_weaklistoffset
-  sharedstructures_PrefixTreeIterator_Iter,                // tp_iter
-  sharedstructures_PrefixTreeIterator_Next,                // tp_iternext
-  0,                                                       // tp_methods
-  0,                                                       // tp_members
-  0,                                                       // tp_getset
-  0,                                                       // tp_base
-  0,                                                       // tp_dict
-  0,                                                       // tp_descr_get
-  0,                                                       // tp_descr_set
-  0,                                                       // tp_dictoffset
-  0,                                                       // tp_init
-  0,                                                       // tp_alloc
-  sharedstructures_PrefixTreeIterator_New,                 // tp_new
-  0,                                                       // tp_free
-  0,                                                       // tp_is_gc
-  0,                                                       // tp_bases
-  0,                                                       // tp_mro
-  0,                                                       // tp_cache
-  0,                                                       // tp_subclasses
-  0,                                                       // tp_weaklist
-  0,                                                       // tp_del
-  0,                                                       // tp_version_tag
-  0,                                                       // tp_finalize
-  0,                                                       // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.PrefixTreeIterator", // tp_name
+    sizeof(sharedstructures_PrefixTreeIterator), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_PrefixTreeIterator_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_PrefixTreeIterator_Repr, // tp_repr
+    0, // tp_as_number
+    0, // tp_as_sequence
+    0, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_PrefixTreeIterator_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    sharedstructures_PrefixTreeIterator_Iter, // tp_iter
+    sharedstructures_PrefixTreeIterator_Next, // tp_iternext
+    0, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_PrefixTreeIterator_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
 
 // PrefixTree object method definitions
 
@@ -1212,7 +1175,7 @@ static PyObject* sharedstructures_PrefixTree_New(PyTypeObject* type,
   Py_ssize_t base_offset = 0;
   const char* allocator_type = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
-      &pool_name, &allocator_type, &base_offset)) {
+          &pool_name, &allocator_type, &base_offset)) {
     return nullptr;
   }
 
@@ -1237,12 +1200,13 @@ static void sharedstructures_PrefixTree_Dealloc(PyObject* obj) {
 }
 
 static const char* sharedstructures_PrefixTree_verify_doc =
-"Checks the internal state of the shared allocator.\n\
+    "Checks the internal state of the shared allocator.\n\
 \n\
 PrefixTree.verify() -> bytes | None\n\
 \n\
 On success, returns None. Otherwise, returns a bytes object with a description\n\
-of the error.";;
+of the error.";
+;
 
 static PyObject* sharedstructures_PrefixTree_verify(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1392,7 +1356,7 @@ static int sharedstructures_PrefixTree_SetItem(PyObject* py_self, PyObject* key,
   iov[0].iov_base = &format;
   iov[0].iov_len = 1;
   if (PyBytes_AsStringAndSize(marshalled_obj, (char**)(&iov[1].iov_base),
-      (Py_ssize_t*)&iov[1].iov_len) == -1) {
+          (Py_ssize_t*)&iov[1].iov_len) == -1) {
     Py_DECREF(marshalled_obj);
     return -1;
   }
@@ -1413,7 +1377,7 @@ static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_clear_doc =
-"Deletes all entries in the table.\n\
+    "Deletes all entries in the table.\n\
 \n\
 PrefixTree.clear() -> None";
 
@@ -1427,7 +1391,7 @@ static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_incr_doc =
-"Atomically increments a numeric key's value.\n\
+    "Atomically increments a numeric key's value.\n\
 \n\
 PrefixTree.incr(key: bytes, delta: int | float) -> int | float\n\
 \n\
@@ -1484,7 +1448,7 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
 }
 
 static const char* sharedstructures_PrefixTree_check_and_set_doc =
-"Conditionally sets a value if the check key\'s value matches the check value.\n\
+    "Conditionally sets a value if the check key\'s value matches the check value.\n\
 \n\
 PrefixTree.check_and_set(\n\
     check_key: bytes,\n\
@@ -1511,15 +1475,15 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(
   Py_ssize_t target_key_size;
   PyObject* target_value_object = nullptr;
   if (!PyArg_ParseTuple(args, "s#Os#|O", &check_key, &check_key_size,
-      &check_value_object, &target_key, &target_key_size,
-      &target_value_object)) {
+          &check_value_object, &target_key, &target_key_size,
+          &target_value_object)) {
     return nullptr;
   }
 
   bool written;
   try {
-    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size, ResultValueType::MISSING);
-    check.value = sharedstructures_internal_get_result_for_python_object(check_value_object);
+    sharedstructures::PrefixTree::CheckRequest check(
+        check_key, check_key_size, sharedstructures_internal_get_result_for_python_object(check_value_object));
     if (target_value_object) {
       auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
       written = self->table->insert(target_key, target_key_size, target_value, &check);
@@ -1536,7 +1500,7 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(
 }
 
 static const char* sharedstructures_PrefixTree_check_missing_and_set_doc =
-"Conditionally sets a value if the check key does not exist.\n\
+    "Conditionally sets a value if the check key does not exist.\n\
 \n\
 PrefixTree.check_missing_and_set(\n\
     check_key: bytes,\n\
@@ -1560,14 +1524,13 @@ static PyObject* sharedstructures_PrefixTree_check_missing_and_set(
   Py_ssize_t target_key_size;
   PyObject* target_value_object = nullptr;
   if (!PyArg_ParseTuple(args, "s#s#|O", &check_key, &check_key_size,
-      &target_key, &target_key_size, &target_value_object)) {
+          &target_key, &target_key_size, &target_value_object)) {
     return nullptr;
   }
 
   bool written;
   try {
-    sharedstructures::PrefixTree::CheckRequest check(
-        check_key, check_key_size, ResultValueType::MISSING);
+    sharedstructures::PrefixTree::CheckRequest check(check_key, check_key_size);
     if (target_value_object) {
       auto target_value = sharedstructures_internal_get_result_for_python_object(target_value_object);
       written = self->table->insert(target_key, target_key_size, target_value, &check);
@@ -1591,10 +1554,10 @@ static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
   PyObject* args = nullptr;
   if (prefix) {
     args = Py_BuildValue("OOOO", self, return_keys ? Py_True : Py_False,
-      return_values ? Py_True : Py_False, prefix);
+        return_values ? Py_True : Py_False, prefix);
   } else {
     args = Py_BuildValue("OOO", self, return_keys ? Py_True : Py_False,
-      return_values ? Py_True : Py_False);
+        return_values ? Py_True : Py_False);
   }
   if (!args) {
     return nullptr;
@@ -1608,7 +1571,7 @@ static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
 }
 
 static const char* sharedstructures_PrefixTree_keys_doc =
-"Returns an iterator over all keys in the tree.\n\
+    "Returns an iterator over all keys in the tree.\n\
 \n\
 PrefixTree.keys() -> PrefixTreeIterator[bytes]";
 
@@ -1617,7 +1580,7 @@ static PyObject* sharedstructures_PrefixTree_keys(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_keys_from_doc =
-"Returns an iterator over all keys in the tree, starting at the given key or\n\
+    "Returns an iterator over all keys in the tree, starting at the given key or\n\
 prefix.\n\
 \n\
 PrefixTree.keys_from(prefix: bytes) -> PrefixTreeIterator[bytes]";
@@ -1628,7 +1591,7 @@ static PyObject* sharedstructures_PrefixTree_keys_from(PyObject* py_self,
 }
 
 static const char* sharedstructures_PrefixTree_values_doc =
-"Returns an iterator over all values in the tree.\n\
+    "Returns an iterator over all values in the tree.\n\
 \n\
 PrefixTree.values() -> PrefixTreeIterator[Any]";
 
@@ -1637,7 +1600,7 @@ static PyObject* sharedstructures_PrefixTree_values(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_values_from_doc =
-"Returns an iterator over all values in the tree, starting at the given key or\n\
+    "Returns an iterator over all values in the tree, starting at the given key or\n\
 prefix.\n\
 \n\
 PrefixTree.values_from(prefix: bytes) -> PrefixTreeIterator[Any]";
@@ -1648,7 +1611,7 @@ static PyObject* sharedstructures_PrefixTree_values_from(PyObject* py_self,
 }
 
 static const char* sharedstructures_PrefixTree_items_doc =
-"Returns an iterator over all key/value pairs in the tree.\n\
+    "Returns an iterator over all key/value pairs in the tree.\n\
 \n\
 PrefixTree.items() -> PrefixTreeIterator[tuple[bytes, Any]]";
 
@@ -1657,7 +1620,7 @@ static PyObject* sharedstructures_PrefixTree_items(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_items_from_doc =
-"Returns an iterator over all items in the tree, starting at the given key or\n\
+    "Returns an iterator over all items in the tree, starting at the given key or\n\
 prefix.\n\
 \n\
 PrefixTree.items_from(prefix: bytes) -> PrefixTreeIterator[tuple[bytes, Any]]";
@@ -1672,7 +1635,7 @@ static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_bytes_for_prefix_doc =
-"Returns the size of the subtree rooted at the given prefix.\n\
+    "Returns the size of the subtree rooted at the given prefix.\n\
 \n\
 PrefixTree.bytes_for_prefix(prefix: bytes) -> int\n\
 \n\
@@ -1692,7 +1655,7 @@ static PyObject* sharedstructures_PrefixTree_bytes_for_prefix(
 }
 
 static const char* sharedstructures_PrefixTree_nodes_for_prefix_doc =
-"Returns the number of nodes in the subtree rooted at the given prefix.\n\
+    "Returns the number of nodes in the subtree rooted at the given prefix.\n\
 \n\
 PrefixTree.nodes_for_prefix(prefix: bytes) -> int";
 
@@ -1710,7 +1673,7 @@ static PyObject* sharedstructures_PrefixTree_nodes_for_prefix(
 }
 
 static const char* sharedstructures_PrefixTree_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.\n\
+    "Returns the size of the underlying shared memory pool.\n\
 \n\
 PrefixTree.pool_bytes() -> int";
 
@@ -1720,7 +1683,7 @@ static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.\n\
+    "Returns the amount of free space in the underlying shared memory pool.\n\
 \n\
 PrefixTree.pool_free_bytes() -> int";
 
@@ -1730,7 +1693,7 @@ static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) 
 }
 
 static const char* sharedstructures_PrefixTree_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.\n\
+    "Returns the amount of allocated space in the underlying shared memory pool.\n\
 \n\
 PrefixTree.pool_allocated_bytes() -> int";
 
@@ -1740,115 +1703,94 @@ static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_s
 }
 
 static PyMethodDef sharedstructures_PrefixTree_methods[] = {
-  {"bytes_for_prefix", (PyCFunction)sharedstructures_PrefixTree_bytes_for_prefix, METH_VARARGS,
-      sharedstructures_PrefixTree_bytes_for_prefix_doc},
-  {"nodes_for_prefix", (PyCFunction)sharedstructures_PrefixTree_nodes_for_prefix, METH_VARARGS,
-      sharedstructures_PrefixTree_nodes_for_prefix_doc},
-  {"pool_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_bytes, METH_NOARGS,
-      sharedstructures_PrefixTree_pool_bytes_doc},
-  {"pool_free_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_free_bytes, METH_NOARGS,
-      sharedstructures_PrefixTree_pool_free_bytes_doc},
-  {"pool_allocated_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_allocated_bytes, METH_NOARGS,
-      sharedstructures_PrefixTree_pool_allocated_bytes_doc},
-  {"incr", (PyCFunction)sharedstructures_PrefixTree_incr, METH_VARARGS,
-      sharedstructures_PrefixTree_incr_doc},
-  {"check_and_set", (PyCFunction)sharedstructures_PrefixTree_check_and_set, METH_VARARGS,
-      sharedstructures_PrefixTree_check_and_set_doc},
-  {"check_missing_and_set", (PyCFunction)sharedstructures_PrefixTree_check_missing_and_set, METH_VARARGS,
-      sharedstructures_PrefixTree_check_missing_and_set_doc},
-  {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS,
-      sharedstructures_PrefixTree_clear_doc},
-  {"keys", (PyCFunction)sharedstructures_PrefixTree_keys, METH_NOARGS,
-      sharedstructures_PrefixTree_keys_doc},
-  {"keys_from", (PyCFunction)sharedstructures_PrefixTree_keys_from, METH_O,
-      sharedstructures_PrefixTree_keys_from_doc},
-  {"values", (PyCFunction)sharedstructures_PrefixTree_values, METH_NOARGS,
-      sharedstructures_PrefixTree_values_doc},
-  {"values_from", (PyCFunction)sharedstructures_PrefixTree_values_from, METH_O,
-      sharedstructures_PrefixTree_values_from_doc},
-  {"items", (PyCFunction)sharedstructures_PrefixTree_items, METH_NOARGS,
-      sharedstructures_PrefixTree_items_doc},
-  {"items_from", (PyCFunction)sharedstructures_PrefixTree_items_from, METH_O,
-      sharedstructures_PrefixTree_items_from_doc},
-  {"verify", (PyCFunction)sharedstructures_PrefixTree_verify, METH_NOARGS,
-      sharedstructures_PrefixTree_verify_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"bytes_for_prefix", (PyCFunction)sharedstructures_PrefixTree_bytes_for_prefix, METH_VARARGS, sharedstructures_PrefixTree_bytes_for_prefix_doc},
+    {"nodes_for_prefix", (PyCFunction)sharedstructures_PrefixTree_nodes_for_prefix, METH_VARARGS, sharedstructures_PrefixTree_nodes_for_prefix_doc},
+    {"pool_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_bytes, METH_NOARGS, sharedstructures_PrefixTree_pool_bytes_doc},
+    {"pool_free_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_free_bytes, METH_NOARGS, sharedstructures_PrefixTree_pool_free_bytes_doc},
+    {"pool_allocated_bytes", (PyCFunction)sharedstructures_PrefixTree_pool_allocated_bytes, METH_NOARGS, sharedstructures_PrefixTree_pool_allocated_bytes_doc},
+    {"incr", (PyCFunction)sharedstructures_PrefixTree_incr, METH_VARARGS, sharedstructures_PrefixTree_incr_doc},
+    {"check_and_set", (PyCFunction)sharedstructures_PrefixTree_check_and_set, METH_VARARGS, sharedstructures_PrefixTree_check_and_set_doc},
+    {"check_missing_and_set", (PyCFunction)sharedstructures_PrefixTree_check_missing_and_set, METH_VARARGS, sharedstructures_PrefixTree_check_missing_and_set_doc},
+    {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS, sharedstructures_PrefixTree_clear_doc},
+    {"keys", (PyCFunction)sharedstructures_PrefixTree_keys, METH_NOARGS, sharedstructures_PrefixTree_keys_doc},
+    {"keys_from", (PyCFunction)sharedstructures_PrefixTree_keys_from, METH_O, sharedstructures_PrefixTree_keys_from_doc},
+    {"values", (PyCFunction)sharedstructures_PrefixTree_values, METH_NOARGS, sharedstructures_PrefixTree_values_doc},
+    {"values_from", (PyCFunction)sharedstructures_PrefixTree_values_from, METH_O, sharedstructures_PrefixTree_values_from_doc},
+    {"items", (PyCFunction)sharedstructures_PrefixTree_items, METH_NOARGS, sharedstructures_PrefixTree_items_doc},
+    {"items_from", (PyCFunction)sharedstructures_PrefixTree_items_from, METH_O, sharedstructures_PrefixTree_items_from_doc},
+    {"verify", (PyCFunction)sharedstructures_PrefixTree_verify, METH_NOARGS, sharedstructures_PrefixTree_verify_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PySequenceMethods sharedstructures_PrefixTree_sequencemethods = {
-  sharedstructures_PrefixTree_Len, // sq_length
-  0, // sq_concat
-  0, // sq_repeat
-  0, // sq_item (we implement GetItem via the mapping protocol instead)
-  0, // sq_slice
-  0, // sq_ass_item (we implement GetItem via the mapping protocol instead)
-  0, // sq_ass_slice
-  sharedstructures_PrefixTree_In, // sq_contains
-  0, // sq_inplace_concat
-  0, // sq_inplace_repeat
+    sharedstructures_PrefixTree_Len, // sq_length
+    0, // sq_concat
+    0, // sq_repeat
+    0, // sq_item (we implement GetItem via the mapping protocol instead)
+    0, // sq_slice
+    0, // sq_ass_item (we implement GetItem via the mapping protocol instead)
+    0, // sq_ass_slice
+    sharedstructures_PrefixTree_In, // sq_contains
+    0, // sq_inplace_concat
+    0, // sq_inplace_repeat
 };
 
 static PyMappingMethods sharedstructures_PrefixTree_mappingmethods = {
-  sharedstructures_PrefixTree_Len,
-  sharedstructures_PrefixTree_GetItem,
-  sharedstructures_PrefixTree_SetItem,
+    sharedstructures_PrefixTree_Len,
+    sharedstructures_PrefixTree_GetItem,
+    sharedstructures_PrefixTree_SetItem,
 };
 
 static PyTypeObject sharedstructures_PrefixTreeType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.PrefixTree",                   // tp_name
-  sizeof(sharedstructures_PrefixTree),             // tp_basicsize
-  0,                                               // tp_itemsize
-  (destructor)sharedstructures_PrefixTree_Dealloc, // tp_dealloc
-  0,                                               // tp_print
-  0,                                               // tp_getattr
-  0,                                               // tp_setattr
-  0,                                               // tp_compare
-  sharedstructures_PrefixTree_Repr,                // tp_repr
-  0,                                               // tp_as_number
-  &sharedstructures_PrefixTree_sequencemethods,    // tp_as_sequence
-  &sharedstructures_PrefixTree_mappingmethods,     // tp_as_mapping
-  0,                                               // tp_hash
-  0,                                               // tp_call
-  0,                                               // tp_str
-  0,                                               // tp_getattro
-  0,                                               // tp_setattro
-  0,                                               // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                              // tp_flag
-  sharedstructures_PrefixTree_doc,                 // tp_doc
-  0,                                               // tp_traverse
-  0,                                               // tp_clear
-  0,                                               // tp_richcompare
-  0,                                               // tp_weaklistoffset
-  sharedstructures_PrefixTree_Iter,                // tp_iter
-  0,                                               // tp_iternext
-  sharedstructures_PrefixTree_methods,             // tp_methods
-  0,                                               // tp_members
-  0,                                               // tp_getset
-  0,                                               // tp_base
-  0,                                               // tp_dict
-  0,                                               // tp_descr_get
-  0,                                               // tp_descr_set
-  0,                                               // tp_dictoffset
-  0,                                               // tp_init
-  0,                                               // tp_alloc
-  sharedstructures_PrefixTree_New,                 // tp_new
-  0,                                               // tp_free
-  0,                                               // tp_is_gc
-  0,                                               // tp_bases
-  0,                                               // tp_mro
-  0,                                               // tp_cache
-  0,                                               // tp_subclasses
-  0,                                               // tp_weaklist
-  0,                                               // tp_del
-  0,                                               // tp_version_tag
-  0,                                               // tp_finalize
-  0,                                               // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.PrefixTree", // tp_name
+    sizeof(sharedstructures_PrefixTree), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_PrefixTree_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_PrefixTree_Repr, // tp_repr
+    0, // tp_as_number
+    &sharedstructures_PrefixTree_sequencemethods, // tp_as_sequence
+    &sharedstructures_PrefixTree_mappingmethods, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_PrefixTree_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    sharedstructures_PrefixTree_Iter, // tp_iter
+    0, // tp_iternext
+    sharedstructures_PrefixTree_methods, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_PrefixTree_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
-
 
 // Queue object method definitions
 
@@ -1867,7 +1809,7 @@ static PyObject* sharedstructures_Queue_New(PyTypeObject* type,
   Py_ssize_t base_offset = 0;
   const char* allocator_type = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
-      &pool_name, &allocator_type, &base_offset)) {
+          &pool_name, &allocator_type, &base_offset)) {
     return nullptr;
   }
 
@@ -1924,7 +1866,7 @@ static PyObject* sharedstructures_Queue_pop(bool front, PyObject* py_self,
     }
     if (raw) {
       return PyBytes_FromStringAndSize(const_cast<char*>(item.data()),
-        item.size());
+          item.size());
     } else {
       return PyMarshal_ReadObjectFromString(const_cast<char*>(item.data()),
           item.size());
@@ -1936,7 +1878,7 @@ static PyObject* sharedstructures_Queue_pop(bool front, PyObject* py_self,
 }
 
 static const char* sharedstructures_Queue_pop_front_doc =
-"Removes and returns the item at the front of the queue.\n\
+    "Removes and returns the item at the front of the queue.\n\
 \n\
 Queue.pop_front(raw: bool = False) -> Any\n\
 \n\
@@ -1949,7 +1891,7 @@ static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self,
 }
 
 static const char* sharedstructures_Queue_pop_back_doc =
-"Removes and returns the item at the back of the queue.\n\
+    "Removes and returns the item at the back of the queue.\n\
 \n\
 Queue.pop_back(raw: bool = False) -> bytes\n\
 \n\
@@ -1970,7 +1912,7 @@ static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
   PyObject* item;
   bool raw = false;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|b", kwarg_names_arg, &item,
-      &raw)) {
+          &raw)) {
     return nullptr;
   }
 
@@ -2013,7 +1955,7 @@ static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
 }
 
 static const char* sharedstructures_Queue_push_front_doc =
-"Appends the given item to the front of the queue.\n\
+    "Appends the given item to the front of the queue.\n\
 \n\
 Queue.push_front(item: Any, raw: bool = False) -> None\n\
 \n\
@@ -2026,7 +1968,7 @@ static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
 }
 
 static const char* sharedstructures_Queue_push_back_doc =
-"Appends the given item to the back of the queue.\n\
+    "Appends the given item to the back of the queue.\n\
 \n\
 Queue.push_back(item: Any, raw: bool = False) -> None\n\
 \n\
@@ -2039,7 +1981,7 @@ static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
 }
 
 static const char* sharedstructures_Queue_bytes_doc =
-"Returns the number of bytes used by objects in the queue.\n\
+    "Returns the number of bytes used by objects in the queue.\n\
 \n\
 Queue.bytes() -> int\n\
 \n\
@@ -2051,7 +1993,7 @@ static PyObject* sharedstructures_Queue_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_Queue_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.\n\
+    "Returns the size of the underlying shared memory pool.\n\
 \n\
 Queue.pool_bytes() -> int";
 
@@ -2061,7 +2003,7 @@ static PyObject* sharedstructures_Queue_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_Queue_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.\n\
+    "Returns the amount of free space in the underlying shared memory pool.\n\
 \n\
 Queue.pool_free_bytes() -> int";
 
@@ -2071,7 +2013,7 @@ static PyObject* sharedstructures_Queue_pool_free_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_Queue_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.\n\
+    "Returns the amount of allocated space in the underlying shared memory pool.\n\
 \n\
 Queue.pool_allocated_bytes() -> int";
 
@@ -2081,101 +2023,84 @@ static PyObject* sharedstructures_Queue_pool_allocated_bytes(PyObject* py_self) 
 }
 
 static PyMethodDef sharedstructures_Queue_methods[] = {
-  {"pool_bytes", (PyCFunction)sharedstructures_Queue_pool_bytes, METH_NOARGS,
-      sharedstructures_Queue_pool_bytes_doc},
-  {"pool_free_bytes", (PyCFunction)sharedstructures_Queue_pool_free_bytes, METH_NOARGS,
-      sharedstructures_Queue_pool_free_bytes_doc},
-  {"pool_allocated_bytes", (PyCFunction)sharedstructures_Queue_pool_allocated_bytes, METH_NOARGS,
-      sharedstructures_Queue_pool_allocated_bytes_doc},
-  {"bytes", (PyCFunction)sharedstructures_Queue_bytes, METH_NOARGS,
-      sharedstructures_Queue_bytes_doc},
-  {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_pop_front_doc},
-  {"pop_back", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_pop_back_doc},
-  {"push_front", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_push_front_doc},
-  {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_push_back_doc},
-  {"popleft", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_pop_front_doc},
-  {"pop", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_pop_back_doc},
-  {"appendleft", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_push_front_doc},
-  {"append", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS,
-      sharedstructures_Queue_push_back_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"pool_bytes", (PyCFunction)sharedstructures_Queue_pool_bytes, METH_NOARGS, sharedstructures_Queue_pool_bytes_doc},
+    {"pool_free_bytes", (PyCFunction)sharedstructures_Queue_pool_free_bytes, METH_NOARGS, sharedstructures_Queue_pool_free_bytes_doc},
+    {"pool_allocated_bytes", (PyCFunction)sharedstructures_Queue_pool_allocated_bytes, METH_NOARGS, sharedstructures_Queue_pool_allocated_bytes_doc},
+    {"bytes", (PyCFunction)sharedstructures_Queue_bytes, METH_NOARGS, sharedstructures_Queue_bytes_doc},
+    {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_pop_front_doc},
+    {"pop_back", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_pop_back_doc},
+    {"push_front", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_push_front_doc},
+    {"push_back", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_push_back_doc},
+    {"popleft", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_pop_front_doc},
+    {"pop", (PyCFunction)sharedstructures_Queue_pop_back, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_pop_back_doc},
+    {"appendleft", (PyCFunction)sharedstructures_Queue_push_front, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_push_front_doc},
+    {"append", (PyCFunction)sharedstructures_Queue_push_back, METH_VARARGS | METH_KEYWORDS, sharedstructures_Queue_push_back_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PySequenceMethods sharedstructures_Queue_sequencemethods = {
-  sharedstructures_Queue_Len, // sq_length
-  0, // sq_concat
-  0, // sq_repeat
-  0, // sq_item
-  0, // sq_slice
-  0, // sq_ass_item
-  0, // sq_ass_slice
-  0, // sq_contains
-  0, // sq_inplace_concat
-  0, // sq_inplace_repeat
+    sharedstructures_Queue_Len, // sq_length
+    0, // sq_concat
+    0, // sq_repeat
+    0, // sq_item
+    0, // sq_slice
+    0, // sq_ass_item
+    0, // sq_ass_slice
+    0, // sq_contains
+    0, // sq_inplace_concat
+    0, // sq_inplace_repeat
 };
 
 static PyTypeObject sharedstructures_QueueType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.Queue",                        // tp_name
-  sizeof(sharedstructures_Queue),                  // tp_basicsize
-  0,                                               // tp_itemsize
-  (destructor)sharedstructures_Queue_Dealloc,      // tp_dealloc
-  0,                                               // tp_print
-  0,                                               // tp_getattr
-  0,                                               // tp_setattr
-  0,                                               // tp_compare
-  sharedstructures_Queue_Repr,                     // tp_repr
-  0,                                               // tp_as_number
-  &sharedstructures_Queue_sequencemethods,         // tp_as_sequence
-  0,                                               // tp_as_mapping
-  0,                                               // tp_hash
-  0,                                               // tp_call
-  0,                                               // tp_str
-  0,                                               // tp_getattro
-  0,                                               // tp_setattro
-  0,                                               // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                              // tp_flag
-  sharedstructures_Queue_doc,                      // tp_doc
-  0,                                               // tp_traverse
-  0,                                               // tp_clear
-  0,                                               // tp_richcompare
-  0,                                               // tp_weaklistoffset
-  0,                                               // tp_iter
-  0,                                               // tp_iternext
-  sharedstructures_Queue_methods,                  // tp_methods
-  0,                                               // tp_members
-  0,                                               // tp_getset
-  0,                                               // tp_base
-  0,                                               // tp_dict
-  0,                                               // tp_descr_get
-  0,                                               // tp_descr_set
-  0,                                               // tp_dictoffset
-  0,                                               // tp_init
-  0,                                               // tp_alloc
-  sharedstructures_Queue_New,                      // tp_new
-  0,                                               // tp_free
-  0,                                               // tp_is_gc
-  0,                                               // tp_bases
-  0,                                               // tp_mro
-  0,                                               // tp_cache
-  0,                                               // tp_subclasses
-  0,                                               // tp_weaklist
-  0,                                               // tp_del
-  0,                                               // tp_version_tag
-  0,                                               // tp_finalize
-  0,                                               // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.Queue", // tp_name
+    sizeof(sharedstructures_Queue), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_Queue_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_Queue_Repr, // tp_repr
+    0, // tp_as_number
+    &sharedstructures_Queue_sequencemethods, // tp_as_sequence
+    0, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_Queue_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    0, // tp_iter
+    0, // tp_iternext
+    sharedstructures_Queue_methods, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_Queue_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
-
 
 // PriorityQueue object method definitions
 
@@ -2194,7 +2119,7 @@ static PyObject* sharedstructures_PriorityQueue_New(PyTypeObject* type,
   Py_ssize_t base_offset = 0;
   const char* allocator_type = nullptr;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s|sn", kwarg_names_arg,
-      &pool_name, &allocator_type, &base_offset)) {
+          &pool_name, &allocator_type, &base_offset)) {
     return nullptr;
   }
 
@@ -2232,7 +2157,7 @@ static Py_ssize_t sharedstructures_PriorityQueue_Len(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PriorityQueue_pop_doc =
-"Removes and returns the minimum item in the queue.\n\
+    "Removes and returns the minimum item in the queue.\n\
 \n\
 PriorityQueue.pop() -> bytes";
 
@@ -2249,7 +2174,7 @@ static PyObject* sharedstructures_PriorityQueue_pop(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PriorityQueue_push_doc =
-"Adds the given item to the queue.\n\
+    "Adds the given item to the queue.\n\
 \n\
 PriorityQueue.push(item: bytes) -> None";
 
@@ -2269,7 +2194,7 @@ static PyObject* sharedstructures_PriorityQueue_push(PyObject* py_self,
 }
 
 static const char* sharedstructures_PriorityQueue_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.\n\
+    "Returns the size of the underlying shared memory pool.\n\
 \n\
 PriorityQueue.pool_bytes() -> int";
 
@@ -2279,7 +2204,7 @@ static PyObject* sharedstructures_PriorityQueue_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PriorityQueue_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.\n\
+    "Returns the amount of free space in the underlying shared memory pool.\n\
 \n\
 PriorityQueue.pool_free_bytes() -> int";
 
@@ -2289,7 +2214,7 @@ static PyObject* sharedstructures_PriorityQueue_pool_free_bytes(PyObject* py_sel
 }
 
 static const char* sharedstructures_PriorityQueue_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.\n\
+    "Returns the amount of allocated space in the underlying shared memory pool.\n\
 \n\
 PriorityQueue.pool_allocated_bytes() -> int";
 
@@ -2299,87 +2224,77 @@ static PyObject* sharedstructures_PriorityQueue_pool_allocated_bytes(PyObject* p
 }
 
 static PyMethodDef sharedstructures_PriorityQueue_methods[] = {
-  {"pool_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_bytes, METH_NOARGS,
-      sharedstructures_PriorityQueue_pool_bytes_doc},
-  {"pool_free_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_free_bytes, METH_NOARGS,
-      sharedstructures_PriorityQueue_pool_free_bytes_doc},
-  {"pool_allocated_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_allocated_bytes, METH_NOARGS,
-      sharedstructures_PriorityQueue_pool_allocated_bytes_doc},
-  {"pop", (PyCFunction)sharedstructures_PriorityQueue_pop, METH_NOARGS,
-      sharedstructures_PriorityQueue_pop_doc},
-  {"push", (PyCFunction)sharedstructures_PriorityQueue_push, METH_VARARGS,
-      sharedstructures_PriorityQueue_push_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"pool_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_bytes, METH_NOARGS, sharedstructures_PriorityQueue_pool_bytes_doc},
+    {"pool_free_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_free_bytes, METH_NOARGS, sharedstructures_PriorityQueue_pool_free_bytes_doc},
+    {"pool_allocated_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_allocated_bytes, METH_NOARGS, sharedstructures_PriorityQueue_pool_allocated_bytes_doc},
+    {"pop", (PyCFunction)sharedstructures_PriorityQueue_pop, METH_NOARGS, sharedstructures_PriorityQueue_pop_doc},
+    {"push", (PyCFunction)sharedstructures_PriorityQueue_push, METH_VARARGS, sharedstructures_PriorityQueue_push_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PySequenceMethods sharedstructures_PriorityQueue_sequencemethods = {
-  sharedstructures_PriorityQueue_Len, // sq_length
-  0, // sq_concat
-  0, // sq_repeat
-  0, // sq_item
-  0, // sq_slice
-  0, // sq_ass_item
-  0, // sq_ass_slice
-  0, // sq_contains
-  0, // sq_inplace_concat
-  0, // sq_inplace_repeat
+    sharedstructures_PriorityQueue_Len, // sq_length
+    0, // sq_concat
+    0, // sq_repeat
+    0, // sq_item
+    0, // sq_slice
+    0, // sq_ass_item
+    0, // sq_ass_slice
+    0, // sq_contains
+    0, // sq_inplace_concat
+    0, // sq_inplace_repeat
 };
 
 static PyTypeObject sharedstructures_PriorityQueueType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.PriorityQueue",                   // tp_name
-  sizeof(sharedstructures_PriorityQueue),             // tp_basicsize
-  0,                                                  // tp_itemsize
-  (destructor)sharedstructures_PriorityQueue_Dealloc, // tp_dealloc
-  0,                                                  // tp_print
-  0,                                                  // tp_getattr
-  0,                                                  // tp_setattr
-  0,                                                  // tp_compare
-  sharedstructures_PriorityQueue_Repr,                // tp_repr
-  0,                                                  // tp_as_number
-  &sharedstructures_PriorityQueue_sequencemethods,    // tp_as_sequence
-  0,                                                  // tp_as_mapping
-  0,                                                  // tp_hash
-  0,                                                  // tp_call
-  0,                                                  // tp_str
-  0,                                                  // tp_getattro
-  0,                                                  // tp_setattro
-  0,                                                  // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                                 // tp_flag
-  sharedstructures_PriorityQueue_doc,                 // tp_doc
-  0,                                                  // tp_traverse
-  0,                                                  // tp_clear
-  0,                                                  // tp_richcompare
-  0,                                                  // tp_weaklistoffset
-  0,                                                  // tp_iter
-  0,                                                  // tp_iternext
-  sharedstructures_PriorityQueue_methods,             // tp_methods
-  0,                                                  // tp_members
-  0,                                                  // tp_getset
-  0,                                                  // tp_base
-  0,                                                  // tp_dict
-  0,                                                  // tp_descr_get
-  0,                                                  // tp_descr_set
-  0,                                                  // tp_dictoffset
-  0,                                                  // tp_init
-  0,                                                  // tp_alloc
-  sharedstructures_PriorityQueue_New,                 // tp_new
-  0,                                                  // tp_free
-  0,                                                  // tp_is_gc
-  0,                                                  // tp_bases
-  0,                                                  // tp_mro
-  0,                                                  // tp_cache
-  0,                                                  // tp_subclasses
-  0,                                                  // tp_weaklist
-  0,                                                  // tp_del
-  0,                                                  // tp_version_tag
-  0,                                                  // tp_finalize
-  0,                                                  // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.PriorityQueue", // tp_name
+    sizeof(sharedstructures_PriorityQueue), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_PriorityQueue_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_PriorityQueue_Repr, // tp_repr
+    0, // tp_as_number
+    &sharedstructures_PriorityQueue_sequencemethods, // tp_as_sequence
+    0, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_PriorityQueue_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    0, // tp_iter
+    0, // tp_iternext
+    sharedstructures_PriorityQueue_methods, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_PriorityQueue_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
-
 
 // IntVector object method definitions
 
@@ -2396,7 +2311,7 @@ static PyObject* sharedstructures_IntVector_New(PyTypeObject* type,
   static char** kwarg_names_arg = const_cast<char**>(kwarg_names);
   const char* pool_name;
   if (!PyArg_ParseTupleAndKeywords(args, kwargs, "s", kwarg_names_arg,
-      &pool_name)) {
+          &pool_name)) {
     return nullptr;
   }
 
@@ -2433,7 +2348,7 @@ static Py_ssize_t sharedstructures_IntVector_Len(PyObject* py_self) {
 }
 
 static const char* sharedstructures_IntVector_expand_doc =
-"Expands the vector's length.\n\
+    "Expands the vector's length.\n\
 \n\
 IntVector.expand(new_size: int) -> None\n\
 \n\
@@ -2462,7 +2377,7 @@ static PyObject* sharedstructures_IntVector_expand(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_load_doc =
-"Gets a value from the vector.\n\
+    "Gets a value from the vector.\n\
 \n\
 IntVector.load(index: int) -> int";
 
@@ -2484,7 +2399,7 @@ static PyObject* sharedstructures_IntVector_load(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_store_doc =
-"Sets a value in the vector.\n\
+    "Sets a value in the vector.\n\
 \n\
 IntVector.store(index: int, value: int) -> None\n\
 \n\
@@ -2512,7 +2427,7 @@ static PyObject* sharedstructures_IntVector_store(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_exchange_doc =
-"Atomically sets a value in the array and returns the overwritten value.\n\
+    "Atomically sets a value in the array and returns the overwritten value.\n\
 \n\
 IntVector.exchange(index: int, new_value: int) -> int";
 
@@ -2536,7 +2451,7 @@ static PyObject* sharedstructures_IntVector_exchange(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_compare_exchange_doc =
-"Atomically compares the stored value in the array and overwrites it if equal.\n\
+    "Atomically compares the stored value in the array and overwrites it if equal.\n\
 \n\
 IntVector.compare_exchange(\n\
     index: int, expected_value: int, new_value: int) -> int\n\
@@ -2564,7 +2479,7 @@ static PyObject* sharedstructures_IntVector_compare_exchange(
 }
 
 static const char* sharedstructures_IntVector_add_doc =
-"Atomically adds to a value in the array. Returns the original value.\n\
+    "Atomically adds to a value in the array. Returns the original value.\n\
 \n\
 IntVector.add(index: int, delta: int) -> int";
 
@@ -2588,7 +2503,7 @@ static PyObject* sharedstructures_IntVector_add(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_subtract_doc =
-"Atomically subtracts from a value in the array. Returns the original value.\n\
+    "Atomically subtracts from a value in the array. Returns the original value.\n\
 \n\
 IntVector.subtract(index: int, delta: int) -> int";
 
@@ -2612,7 +2527,7 @@ static PyObject* sharedstructures_IntVector_subtract(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_bitwise_and_doc =
-"Atomically ands a value with a value in the array. Returns the original value.\n\
+    "Atomically ands a value with a value in the array. Returns the original value.\n\
 \n\
 IntVector.bitwise_and(index: int, mask: int) -> int";
 
@@ -2636,7 +2551,7 @@ static PyObject* sharedstructures_IntVector_bitwise_and(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_bitwise_or_doc =
-"Atomically ors a value with a value in the array. Returns the original value.\n\
+    "Atomically ors a value with a value in the array. Returns the original value.\n\
 \n\
 IntVector.bitwise_or(index: int, mask: int) -> int";
 
@@ -2660,7 +2575,7 @@ static PyObject* sharedstructures_IntVector_bitwise_or(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_bitwise_xor_doc =
-"Atomically xors a value with a value in the array. Returns the original value.\n\
+    "Atomically xors a value with a value in the array. Returns the original value.\n\
 \n\
 IntVector.bitwise_xor(index: int, mask: int) -> int";
 
@@ -2684,7 +2599,7 @@ static PyObject* sharedstructures_IntVector_bitwise_xor(PyObject* py_self,
 }
 
 static const char* sharedstructures_IntVector_load_bit_doc =
-"Atomically reads a bit from the array. The array is composed of 64-bit\n\
+    "Atomically reads a bit from the array. The array is composed of 64-bit\n\
 integers, so if index is in the range 0-63, it wil lread from the first\n\
 integer; the range 64-127 corresponds to the second, and so on.\n\
 \n\
@@ -2713,7 +2628,7 @@ static PyObject* sharedstructures_IntVector_load_bit(
 }
 
 static const char* sharedstructures_IntVector_set_bit_doc =
-"Atomically sets a bit in the array. The bit_index parameter has the same\n\
+    "Atomically sets a bit in the array. The bit_index parameter has the same\n\
 meaning as in load_bit.\n\
 \n\
 IntVector.set_bit(bit_index: int, value: bool) -> None";
@@ -2740,7 +2655,7 @@ static PyObject* sharedstructures_IntVector_set_bit(
 }
 
 static const char* sharedstructures_IntVector_toggle_bit_doc =
-"Atomically flips a bit in the array. The bit_index parameter has the same\n\
+    "Atomically flips a bit in the array. The bit_index parameter has the same\n\
 meaning as in load_bit. Returns the new value of the bit.\n\
 \n\
 IntVector.toggle_bit(bit_index: int) -> bool";
@@ -2768,7 +2683,7 @@ static PyObject* sharedstructures_IntVector_toggle_bit(
 }
 
 static const char* sharedstructures_IntVector_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.\n\
+    "Returns the size of the underlying shared memory pool.\n\
 \n\
 IntVector.pool_bytes() -> int";
 
@@ -2778,110 +2693,91 @@ static PyObject* sharedstructures_IntVector_pool_bytes(PyObject* py_self) {
 }
 
 static PyMethodDef sharedstructures_IntVector_methods[] = {
-  {"pool_bytes", (PyCFunction)sharedstructures_IntVector_pool_bytes, METH_NOARGS,
-      sharedstructures_IntVector_pool_bytes_doc},
-  {"expand", (PyCFunction)sharedstructures_IntVector_expand, METH_VARARGS,
-      sharedstructures_IntVector_expand_doc},
-  {"load", (PyCFunction)sharedstructures_IntVector_load, METH_VARARGS,
-      sharedstructures_IntVector_load_doc},
-  {"store", (PyCFunction)sharedstructures_IntVector_store, METH_VARARGS,
-      sharedstructures_IntVector_store_doc},
-  {"exchange", (PyCFunction)sharedstructures_IntVector_exchange, METH_VARARGS,
-      sharedstructures_IntVector_exchange_doc},
-  {"compare_exchange", (PyCFunction)sharedstructures_IntVector_compare_exchange, METH_VARARGS,
-      sharedstructures_IntVector_compare_exchange_doc},
-  {"add", (PyCFunction)sharedstructures_IntVector_add, METH_VARARGS,
-      sharedstructures_IntVector_add_doc},
-  {"subtract", (PyCFunction)sharedstructures_IntVector_subtract, METH_VARARGS,
-      sharedstructures_IntVector_subtract_doc},
-  {"bitwise_and", (PyCFunction)sharedstructures_IntVector_bitwise_and, METH_VARARGS,
-      sharedstructures_IntVector_bitwise_and_doc},
-  {"bitwise_or", (PyCFunction)sharedstructures_IntVector_bitwise_or, METH_VARARGS,
-      sharedstructures_IntVector_bitwise_or_doc},
-  {"bitwise_xor", (PyCFunction)sharedstructures_IntVector_bitwise_xor, METH_VARARGS,
-      sharedstructures_IntVector_bitwise_xor_doc},
-  {"load_bit", (PyCFunction)sharedstructures_IntVector_load_bit, METH_VARARGS,
-      sharedstructures_IntVector_load_bit_doc},
-  {"set_bit", (PyCFunction)sharedstructures_IntVector_set_bit, METH_VARARGS,
-      sharedstructures_IntVector_set_bit_doc},
-  {"toggle_bit", (PyCFunction)sharedstructures_IntVector_toggle_bit, METH_VARARGS,
-      sharedstructures_IntVector_toggle_bit_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"pool_bytes", (PyCFunction)sharedstructures_IntVector_pool_bytes, METH_NOARGS, sharedstructures_IntVector_pool_bytes_doc},
+    {"expand", (PyCFunction)sharedstructures_IntVector_expand, METH_VARARGS, sharedstructures_IntVector_expand_doc},
+    {"load", (PyCFunction)sharedstructures_IntVector_load, METH_VARARGS, sharedstructures_IntVector_load_doc},
+    {"store", (PyCFunction)sharedstructures_IntVector_store, METH_VARARGS, sharedstructures_IntVector_store_doc},
+    {"exchange", (PyCFunction)sharedstructures_IntVector_exchange, METH_VARARGS, sharedstructures_IntVector_exchange_doc},
+    {"compare_exchange", (PyCFunction)sharedstructures_IntVector_compare_exchange, METH_VARARGS, sharedstructures_IntVector_compare_exchange_doc},
+    {"add", (PyCFunction)sharedstructures_IntVector_add, METH_VARARGS, sharedstructures_IntVector_add_doc},
+    {"subtract", (PyCFunction)sharedstructures_IntVector_subtract, METH_VARARGS, sharedstructures_IntVector_subtract_doc},
+    {"bitwise_and", (PyCFunction)sharedstructures_IntVector_bitwise_and, METH_VARARGS, sharedstructures_IntVector_bitwise_and_doc},
+    {"bitwise_or", (PyCFunction)sharedstructures_IntVector_bitwise_or, METH_VARARGS, sharedstructures_IntVector_bitwise_or_doc},
+    {"bitwise_xor", (PyCFunction)sharedstructures_IntVector_bitwise_xor, METH_VARARGS, sharedstructures_IntVector_bitwise_xor_doc},
+    {"load_bit", (PyCFunction)sharedstructures_IntVector_load_bit, METH_VARARGS, sharedstructures_IntVector_load_bit_doc},
+    {"set_bit", (PyCFunction)sharedstructures_IntVector_set_bit, METH_VARARGS, sharedstructures_IntVector_set_bit_doc},
+    {"toggle_bit", (PyCFunction)sharedstructures_IntVector_toggle_bit, METH_VARARGS, sharedstructures_IntVector_toggle_bit_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
 
 static PySequenceMethods sharedstructures_IntVector_sequencemethods = {
-  sharedstructures_IntVector_Len, // sq_length
-  0, // sq_concat
-  0, // sq_repeat
-  0, // sq_item
-  0, // sq_slice
-  0, // sq_ass_item
-  0, // sq_ass_slice
-  0, // sq_contains
-  0, // sq_inplace_concat
-  0, // sq_inplace_repeat
+    sharedstructures_IntVector_Len, // sq_length
+    0, // sq_concat
+    0, // sq_repeat
+    0, // sq_item
+    0, // sq_slice
+    0, // sq_ass_item
+    0, // sq_ass_slice
+    0, // sq_contains
+    0, // sq_inplace_concat
+    0, // sq_inplace_repeat
 };
 
 static PyTypeObject sharedstructures_IntVectorType = {
-  PyVarObject_HEAD_INIT(nullptr, 0)
-  "sharedstructures.IntVector",                    // tp_name
-  sizeof(sharedstructures_IntVector),              // tp_basicsize
-  0,                                               // tp_itemsize
-  (destructor)sharedstructures_IntVector_Dealloc,  // tp_dealloc
-  0,                                               // tp_print
-  0,                                               // tp_getattr
-  0,                                               // tp_setattr
-  0,                                               // tp_compare
-  sharedstructures_IntVector_Repr,                 // tp_repr
-  0,                                               // tp_as_number
-  &sharedstructures_IntVector_sequencemethods,     // tp_as_sequence
-  0,                                               // tp_as_mapping
-  0,                                               // tp_hash
-  0,                                               // tp_call
-  0,                                               // tp_str
-  0,                                               // tp_getattro
-  0,                                               // tp_setattro
-  0,                                               // tp_as_buffer
-  Py_TPFLAGS_DEFAULT,                              // tp_flag
-  sharedstructures_IntVector_doc,                  // tp_doc
-  0,                                               // tp_traverse
-  0,                                               // tp_clear
-  0,                                               // tp_richcompare
-  0,                                               // tp_weaklistoffset
-  0,                                               // tp_iter
-  0,                                               // tp_iternext
-  sharedstructures_IntVector_methods,              // tp_methods
-  0,                                               // tp_members
-  0,                                               // tp_getset
-  0,                                               // tp_base
-  0,                                               // tp_dict
-  0,                                               // tp_descr_get
-  0,                                               // tp_descr_set
-  0,                                               // tp_dictoffset
-  0,                                               // tp_init
-  0,                                               // tp_alloc
-  sharedstructures_IntVector_New,                  // tp_new
-  0,                                               // tp_free
-  0,                                               // tp_is_gc
-  0,                                               // tp_bases
-  0,                                               // tp_mro
-  0,                                               // tp_cache
-  0,                                               // tp_subclasses
-  0,                                               // tp_weaklist
-  0,                                               // tp_del
-  0,                                               // tp_version_tag
-  0,                                               // tp_finalize
-  0,                                               // tp_vectorcall
+    PyVarObject_HEAD_INIT(nullptr, 0) "sharedstructures.IntVector", // tp_name
+    sizeof(sharedstructures_IntVector), // tp_basicsize
+    0, // tp_itemsize
+    (destructor)sharedstructures_IntVector_Dealloc, // tp_dealloc
+    0, // tp_print
+    0, // tp_getattr
+    0, // tp_setattr
+    0, // tp_compare
+    sharedstructures_IntVector_Repr, // tp_repr
+    0, // tp_as_number
+    &sharedstructures_IntVector_sequencemethods, // tp_as_sequence
+    0, // tp_as_mapping
+    0, // tp_hash
+    0, // tp_call
+    0, // tp_str
+    0, // tp_getattro
+    0, // tp_setattro
+    0, // tp_as_buffer
+    Py_TPFLAGS_DEFAULT, // tp_flag
+    sharedstructures_IntVector_doc, // tp_doc
+    0, // tp_traverse
+    0, // tp_clear
+    0, // tp_richcompare
+    0, // tp_weaklistoffset
+    0, // tp_iter
+    0, // tp_iternext
+    sharedstructures_IntVector_methods, // tp_methods
+    0, // tp_members
+    0, // tp_getset
+    0, // tp_base
+    0, // tp_dict
+    0, // tp_descr_get
+    0, // tp_descr_set
+    0, // tp_dictoffset
+    0, // tp_init
+    0, // tp_alloc
+    sharedstructures_IntVector_New, // tp_new
+    0, // tp_free
+    0, // tp_is_gc
+    0, // tp_bases
+    0, // tp_mro
+    0, // tp_cache
+    0, // tp_subclasses
+    0, // tp_weaklist
+    0, // tp_del
+    0, // tp_version_tag
+    0, // tp_finalize
+    0, // tp_vectorcall
 };
-
-
-
-
 
 // Module-level names
 
 static const char* sharedstructures_delete_pool_doc =
-"Delete a shared pool (of any type).\n\
+    "Delete a shared pool (of any type).\n\
 \n\
 delete_pool(pool_name: str) -> bool\n\
 \n\
@@ -2907,26 +2803,23 @@ static PyObject* sharedstructures_delete_pool(PyObject*, PyObject* args) {
 }
 
 static PyMethodDef sharedstructures_methods[] = {
-  {"delete_pool", sharedstructures_delete_pool, METH_VARARGS,
-      sharedstructures_delete_pool_doc},
-  {nullptr, nullptr, 0, nullptr},
+    {"delete_pool", sharedstructures_delete_pool, METH_VARARGS,
+        sharedstructures_delete_pool_doc},
+    {nullptr, nullptr, 0, nullptr},
 };
-
-
-
 
 // Initialization
 
 static struct PyModuleDef sharedstructures_module_def = {
-  PyModuleDef_HEAD_INIT,
-  "sharedstructures",       // m_name
-  sharedstructures_doc,     // m_doc
-  -1,                       // m_size
-  sharedstructures_methods, // m_methods
-  nullptr,                  // m_reload
-  nullptr,                  // m_traverse
-  nullptr,                  // m_clear
-  nullptr,                  // m_free
+    PyModuleDef_HEAD_INIT,
+    "sharedstructures", // m_name
+    sharedstructures_doc, // m_doc
+    -1, // m_size
+    sharedstructures_methods, // m_methods
+    nullptr, // m_reload
+    nullptr, // m_traverse
+    nullptr, // m_clear
+    nullptr, // m_free
 };
 
 static PyObject* sharedstructures_module_init() {
