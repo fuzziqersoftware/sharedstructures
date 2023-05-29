@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import time
+from typing import Any, Callable, Mapping
 
 import sharedstructures
 
@@ -9,11 +10,11 @@ POOL_NAME_PREFIX = "PrefixTreeTest-py-pool-"
 ALLOCATOR_TYPES = ("simple", "logarithmic")
 
 
-def get_current_process_lsof():
+def get_current_process_lsof() -> bytes:
     return subprocess.check_output(["lsof", "-p", str(os.getpid())])
 
 
-def expect_key_missing(table, k):
+def expect_key_missing(table: sharedstructures.PrefixTree, k: bytes) -> None:
     try:
         table[k]
         assert False, "table[%r] didn't raise" % k
@@ -21,7 +22,7 @@ def expect_key_missing(table, k):
         pass
 
 
-def verify_state(expected, table):
+def verify_state(expected: Mapping[bytes, Any], table: sharedstructures.PrefixTree):
     assert len(expected) == len(table)
     for k, v in expected.items():
         assert table[k] == v, "%r (table) != %r (expected)" % (table[k], v)
@@ -30,34 +31,47 @@ def verify_state(expected, table):
     verify_allocator(table)
 
 
-def verify_allocator(table):
+def verify_allocator(table: sharedstructures.PrefixTree):
     ret = table.verify()
     assert ret is None, ret.decode("utf-8")
 
 
-def run_basic_test(allocator_type):
-    print("-- [%s] basic" % allocator_type)
+def run_test_and_check_lsof(
+    fn: Callable[[sharedstructures.PrefixTree, str], None],
+    allocator_type: str,
+) -> None:
     before_lsof_count = len(get_current_process_lsof().splitlines())
-
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
 
-    def insert_both(e, t, k, v):
-        t[k] = v
-        e[k] = v
+    fn(table, allocator_type)
 
-    def delete_both(e, t, k):
-        del t[k]
-        del e[k]
+    del table  # This should unmap the shared memory pool and close the fd
+    sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
+    # Make sure we didn't leak an fd
+    assert before_lsof_count == len(get_current_process_lsof().splitlines())
+
+
+def run_basic_test(table: sharedstructures.PrefixTree, allocator_type: str) -> None:
+    print("-- [%s] basic" % (allocator_type,))
+
+    expected: dict[bytes, Any] = {}
+
+    def insert_both(k: bytes, v: Any) -> None:
+        table[k] = v
+        expected[k] = v
+
+    def delete_both(k: bytes) -> None:
+        del table[k]
+        del expected[k]
 
     verify_state(expected, table)
-    insert_both(expected, table, b"key1", b"value1")
+    insert_both(b"key1", b"value1")
     verify_state(expected, table)
-    insert_both(expected, table, b"key2", b"value2")
+    insert_both(b"key2", b"value2")
     verify_state(expected, table)
-    insert_both(expected, table, b"key3", b"value3")
+    insert_both(b"key3", b"value3")
     verify_state(expected, table)
 
     assert [b"key2", b"key3"] == list(table.keys_from(b"key2"))
@@ -71,7 +85,7 @@ def run_basic_test(allocator_type):
     assert [] == list(table.keys_from(b"key4"))
     assert [] == list(table.items_from(b"key4"))
 
-    delete_both(expected, table, b"key2")
+    delete_both(b"key2")
     verify_state(expected, table)
     try:
         del table[b"key2"]
@@ -80,93 +94,87 @@ def run_basic_test(allocator_type):
         pass
     verify_state(expected, table)
 
-    insert_both(expected, table, b"key1", b"value0")
+    insert_both(b"key1", b"value0")
     verify_state(expected, table)
-    delete_both(expected, table, b"key1")
+    delete_both(b"key1")
     verify_state(expected, table)
-    delete_both(expected, table, b"key3")
+    delete_both(b"key3")
     verify_state(expected, table)
 
     assert {} == expected
 
-    del table  # This should unmap the shared memory pool and close the fd
-    sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
-    # Make sure we didn't leak an fd
-    assert before_lsof_count == len(get_current_process_lsof().splitlines())
-
-
-def run_conditional_writes_test(allocator_type):
+def run_conditional_writes_test(allocator_type: str) -> None:
     print("-- [%s] conditional writes" % allocator_type)
 
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
+    expected: dict[bytes, Any] = {}
 
-    def insert_both(e, t, k, v):
-        t[k] = v
-        e[k] = v
+    def insert_both(k: bytes, v: Any) -> None:
+        table[k] = v
+        expected[k] = v
 
-    def delete_both(e, t, k):
-        del t[k]
-        del e[k]
-
-    def conditional_insert_both(e, t, check_k, check_v, target_k, target_v, written):
-        if t.check_and_set(check_k, check_v, target_k, target_v):
-            e[target_k] = target_v
+    def conditional_insert_both(
+        check_k: bytes, check_v: Any, target_k: bytes, target_v: Any, written: bool
+    ) -> None:
+        if table.check_and_set(check_k, check_v, target_k, target_v):
+            expected[target_k] = target_v
             assert written
         else:
             assert not written
 
-    def conditional_missing_insert_both(e, t, check_k, target_k, target_v, written):
-        if t.check_missing_and_set(check_k, target_k, target_v):
-            e[target_k] = target_v
+    def conditional_missing_insert_both(
+        check_k: bytes, target_k: bytes, target_v: Any, written: bool
+    ) -> None:
+        if table.check_missing_and_set(check_k, target_k, target_v):
+            expected[target_k] = target_v
             assert written
         else:
             assert not written
 
-    def conditional_delete_both(e, t, check_k, check_v, target_k, written):
-        if t.check_and_set(check_k, check_v, target_k):
-            del e[target_k]
+    def conditional_delete_both(
+        check_k: bytes, check_v: Any, target_k: bytes, written: bool
+    ) -> None:
+        if table.check_and_set(check_k, check_v, target_k):
+            del expected[target_k]
             assert written
         else:
             assert not written
 
-    def conditional_missing_delete_both(e, t, check_k, target_k, written):
-        if t.check_missing_and_set(check_k, target_k):
-            del e[target_k]
+    def conditional_missing_delete_both(
+        check_k: bytes, target_k: bytes, written: bool
+    ) -> None:
+        if table.check_missing_and_set(check_k, target_k):
+            del expected[target_k]
             assert written
         else:
             assert not written
 
     verify_state(expected, table)
 
-    insert_both(expected, table, b"key1", b"value1")
+    insert_both(b"key1", b"value1")
     verify_state(expected, table)
-    insert_both(expected, table, b"key2", 10.0)
+    insert_both(b"key2", 10.0)
     verify_state(expected, table)
-    insert_both(expected, table, b"key3", True)
+    insert_both(b"key3", True)
     verify_state(expected, table)
 
     # Check that conditions on the same key work for various types
-    conditional_insert_both(
-        expected, table, b"key1", b"value2", b"key1", b"value1_1", False
-    )
+    conditional_insert_both(b"key1", b"value2", b"key1", b"value1_1", False)
     verify_state(expected, table)
-    conditional_insert_both(
-        expected, table, b"key1", b"value1", b"key1", b"value1_1", True
-    )
+    conditional_insert_both(b"key1", b"value1", b"key1", b"value1_1", True)
     verify_state(expected, table)
 
-    conditional_insert_both(expected, table, b"key2", 8.0, b"key2", 15.0, False)
+    conditional_insert_both(b"key2", 8.0, b"key2", 15.0, False)
     verify_state(expected, table)
-    conditional_insert_both(expected, table, b"key2", 10.0, b"key2", 15.0, True)
+    conditional_insert_both(b"key2", 10.0, b"key2", 15.0, True)
     verify_state(expected, table)
 
-    conditional_insert_both(expected, table, b"key3", False, b"key3", False, False)
+    conditional_insert_both(b"key3", False, b"key3", False, False)
     verify_state(expected, table)
-    conditional_insert_both(expected, table, b"key3", True, b"key3", False, True)
+    conditional_insert_both(b"key3", True, b"key3", False, True)
     verify_state(expected, table)
 
     # Now:
@@ -175,19 +183,19 @@ def run_conditional_writes_test(allocator_type):
     # key3 = False
 
     # Check that conditions on other keys work
-    conditional_insert_both(expected, table, b"key3", True, b"key1", b"value1", False)
+    conditional_insert_both(b"key3", True, b"key1", b"value1", False)
     verify_state(expected, table)
-    conditional_insert_both(expected, table, b"key3", False, b"key1", b"value1", True)
-    verify_state(expected, table)
-
-    conditional_insert_both(expected, table, b"key1", b"value2", b"key2", 10.0, False)
-    verify_state(expected, table)
-    conditional_insert_both(expected, table, b"key1", b"value1", b"key2", 10.0, True)
+    conditional_insert_both(b"key3", False, b"key1", b"value1", True)
     verify_state(expected, table)
 
-    conditional_insert_both(expected, table, b"key2", 20.0, b"key3", True, False)
+    conditional_insert_both(b"key1", b"value2", b"key2", 10.0, False)
     verify_state(expected, table)
-    conditional_insert_both(expected, table, b"key2", 10.0, b"key3", True, True)
+    conditional_insert_both(b"key1", b"value1", b"key2", 10.0, True)
+    verify_state(expected, table)
+
+    conditional_insert_both(b"key2", 20.0, b"key3", True, False)
+    verify_state(expected, table)
+    conditional_insert_both(b"key2", 10.0, b"key3", True, True)
     verify_state(expected, table)
 
     # Now:
@@ -196,11 +204,11 @@ def run_conditional_writes_test(allocator_type):
     # key3 = True
 
     # Check that Missing conditions work
-    conditional_insert_both(expected, table, b"key4", None, b"key4", None, False)
+    conditional_insert_both(b"key4", None, b"key4", None, False)
     verify_state(expected, table)
-    conditional_missing_insert_both(expected, table, b"key2", b"key4", None, False)
+    conditional_missing_insert_both(b"key2", b"key4", None, False)
     verify_state(expected, table)
-    conditional_missing_insert_both(expected, table, b"key4", b"key4", None, True)
+    conditional_missing_insert_both(b"key4", b"key4", None, True)
     verify_state(expected, table)
 
     # Now:
@@ -210,43 +218,43 @@ def run_conditional_writes_test(allocator_type):
     # key4 = None
 
     # Check that conditional deletes work
-    conditional_delete_both(expected, table, b"key1", b"value2", b"key1", False)
+    conditional_delete_both(b"key1", b"value2", b"key1", False)
     verify_state(expected, table)
-    conditional_delete_both(expected, table, b"key1", b"value1", b"key1", True)
-    verify_state(expected, table)
-
-    conditional_delete_both(expected, table, b"key2", 20.0, b"key2", False)
-    verify_state(expected, table)
-    conditional_delete_both(expected, table, b"key2", 10.0, b"key2", True)
+    conditional_delete_both(b"key1", b"value1", b"key1", True)
     verify_state(expected, table)
 
-    conditional_delete_both(expected, table, b"key3", False, b"key3", False)
+    conditional_delete_both(b"key2", 20.0, b"key2", False)
     verify_state(expected, table)
-    conditional_delete_both(expected, table, b"key3", True, b"key3", True)
+    conditional_delete_both(b"key2", 10.0, b"key2", True)
     verify_state(expected, table)
 
-    conditional_missing_delete_both(expected, table, b"key4", b"key4", False)
+    conditional_delete_both(b"key3", False, b"key3", False)
     verify_state(expected, table)
-    conditional_delete_both(expected, table, b"key4", None, b"key4", True)
+    conditional_delete_both(b"key3", True, b"key3", True)
     verify_state(expected, table)
-    conditional_missing_delete_both(expected, table, b"key4", b"key4", False)
+
+    conditional_missing_delete_both(b"key4", b"key4", False)
+    verify_state(expected, table)
+    conditional_delete_both(b"key4", None, b"key4", True)
+    verify_state(expected, table)
+    conditional_missing_delete_both(b"key4", b"key4", False)
     verify_state(expected, table)
 
     assert expected == {}
 
 
-def run_reorganization_test(allocator_type):
+def run_reorganization_test(allocator_type: str) -> None:
     print("-- [%s] reorganization" % allocator_type)
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
+    expected: dict[bytes, bytes] = {}
 
-    def insert_both(k):
+    def insert_both(k: bytes) -> None:
         table[k] = k
         expected[k] = k
 
-    def delete_both(k):
+    def delete_both(k: bytes) -> None:
         del table[k]
         del expected[k]
 
@@ -287,20 +295,16 @@ def run_reorganization_test(allocator_type):
     verify_state(expected, table)
 
 
-def run_types_test(allocator_type):
+def run_types_test(allocator_type: str) -> None:
     print("-- [%s] types" % allocator_type)
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
+    expected: dict[bytes, Any] = {}
 
-    def insert_both(k, v):
+    def insert_both(k: bytes, v: Any) -> None:
         table[k] = v
         expected[k] = v
-
-    def delete_both(k):
-        del table[k]
-        del expected[k]
 
     verify_state(expected, table)
     insert_both(b"key-string", b"value-string")
@@ -337,20 +341,16 @@ def run_types_test(allocator_type):
     verify_state(expected, table)
 
 
-def run_complex_types_test(allocator_type):
+def run_complex_types_test(allocator_type: str) -> None:
     print("-- [%s] complex types" % allocator_type)
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
+    expected: dict[bytes, Any] = {}
 
-    def insert_both(k, v):
+    def insert_both(k: bytes, v: Any):
         table[k] = v
         expected[k] = v
-
-    def delete_both(k):
-        del table[k]
-        del expected[k]
 
     verify_state(expected, table)
     insert_both(b"key-list-empty", [])
@@ -375,20 +375,11 @@ def run_complex_types_test(allocator_type):
     verify_state(expected, table)
 
 
-def run_incr_test(allocator_type):
+def run_incr_test(allocator_type: str):
     print("-- [%s] incr" % allocator_type)
     table = sharedstructures.PrefixTree(
         POOL_NAME_PREFIX + allocator_type, allocator_type
     )
-    expected = {}
-
-    def insert_both(k, v):
-        table[k] = v
-        expected[k] = v
-
-    def delete_both(k):
-        del table[k]
-        del expected[k]
 
     assert 0 == len(table)
     table[b"key-int"] = 10
@@ -398,12 +389,12 @@ def run_incr_test(allocator_type):
 
     # Giving garbage to incr() should cause a TypeError
     try:
-        table.incr(b"key-missing", b"not a number, lolz")
+        table.incr(b"key-missing", b"not a number, lolz")  # type: ignore
         assert False
     except TypeError:
         pass
     try:
-        table.incr(b"key-missing", {"still": "not", "a": "number"})
+        table.incr(b"key-missing", {"still": "not", "a": "number"})  # type: ignore
         assert False
     except TypeError:
         pass
@@ -487,7 +478,7 @@ def run_incr_test(allocator_type):
     assert len(table) == 0
 
 
-def run_concurrent_readers_test(allocator_type):
+def run_concurrent_readers_test(allocator_type: str) -> None:
     print("-- [%s] concurrent readers" % allocator_type)
 
     table = sharedstructures.PrefixTree(
@@ -495,7 +486,7 @@ def run_concurrent_readers_test(allocator_type):
     )
     del table
 
-    child_pids = set()
+    child_pids: set[int] = set()
     while (len(child_pids) < 8) and (0 not in child_pids):
         child_pids.add(os.fork())
 
@@ -555,11 +546,11 @@ def run_concurrent_readers_test(allocator_type):
         assert 0 == num_failures
 
 
-def main():
+def main() -> int:
     try:
         for allocator_type in ALLOCATOR_TYPES:
             sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
-            run_basic_test(allocator_type)
+            run_test_and_check_lsof(run_basic_test, allocator_type)
             run_conditional_writes_test(allocator_type)
             run_reorganization_test(allocator_type)
             run_types_test(allocator_type)

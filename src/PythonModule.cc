@@ -37,9 +37,7 @@ using LookupResult = sharedstructures::PrefixTree::LookupResult;
 
 
 static const char* sharedstructures_doc =
-"Dynamically-sized shared-memory data structure module.\n\
-\n\
-This module provides the HashTable, PrefixTree, Queue, PriorityQueue, and IntVector classes.";
+"sharedstructures: dynamically-sized shared-memory data structures.";
 
 
 
@@ -227,7 +225,11 @@ static LookupResult sharedstructures_internal_get_result_for_python_object(
 static const char* sharedstructures_HashTable_doc =
 "Shared-memory hash table object.\n\
 \n\
-sharedstructures.HashTable(pool_name[, allocator_type[, base_offset[, bits]]])\n\
+sharedstructures.HashTable(\n\
+    pool_name: str,\n\
+    allocator_type: str = 'simple',\n\
+    base_offset: int = 0,\n\
+    bits: int = 8)\n\
 \n\
 Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.\n\
@@ -258,7 +260,10 @@ typedef struct {
 static const char* sharedstructures_PrefixTree_doc =
 "Shared-memory prefix tree object.\n\
 \n\
-sharedstructures.PrefixTree(pool_name[, allocator_type[, base_offset]])\n\
+sharedstructures.PrefixTree(\n\
+    pool_name: str,\n\
+    allocator_type: str = 'simple',\n\
+    base_offset: int = 0)\n\
 \n\
 Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.\n\
@@ -287,7 +292,10 @@ typedef struct {
 static const char* sharedstructures_Queue_doc =
 "Shared-memory doubly-linked list (queue) object.\n\
 \n\
-sharedstructures.Queue(pool_name[, allocator_type[, base_offset]])\n\
+sharedstructures.Queue(\n\
+    pool_name: str,\n\
+    allocator_type: str = 'simple',\n\
+    base_offset: int = 0)\n\
 \n\
 Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.\n\
@@ -305,7 +313,10 @@ typedef struct {
 static const char* sharedstructures_PriorityQueue_doc =
 "Shared-memory heap (priority queue) object.\n\
 \n\
-sharedstructures.PriorityQueue(pool_name[, allocator_type[, base_offset]])\n\
+sharedstructures.PriorityQueue(\n\
+    pool_name: str,\n\
+    allocator_type: str = 'simple',\n\
+    base_offset: int = 0)\n\
 \n\
 Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.\n\
@@ -323,7 +334,7 @@ typedef struct {
 static const char* sharedstructures_IntVector_doc =
 "Shared-memory atomic integer array object.\n\
 \n\
-sharedstructures.IntVector(pool_name)\n\
+sharedstructures.IntVector(pool_name: str)\n\
 \n\
 Arguments:\n\
 - pool_name: the name of the shared-memory pool to operate on.";
@@ -556,6 +567,8 @@ static void sharedstructures_HashTable_Dealloc(PyObject* obj) {
 static const char* sharedstructures_HashTable_verify_doc =
 "Checks the internal state of the shared allocator.\n\
 \n\
+HashTable.verify() -> bytes | None\n\
+\n\
 On success, returns None. Otherwise, returns a bytes object with a description\n\
 of the error.";
 
@@ -655,7 +668,9 @@ static PyObject* sharedstructures_HashTable_Repr(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_clear_doc =
-"Deletes all entries in the table.";
+"Deletes all entries in the table.\n\
+\n\
+HashTable.clear() -> None";
 
 static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -669,8 +684,11 @@ static PyObject* sharedstructures_HashTable_clear(PyObject* py_self) {
 static const char* sharedstructures_HashTable_check_and_set_doc =
 "Conditionally sets a value if the check key\'s value matches the check value.\n\
 \n\
-HashTable.check_and_set(check_key, check_value, target_key[, target_value])\n\
-  -> bool\n\
+HashTable.check_and_set(\n\
+    check_key: bytes,\n\
+    check_value: Any,\n\
+    target_key: bytes,\n\
+    target_value: Any = MISSING) -> bool\n\
 \n\
 Atomically checks if check_key exists and if its value matches check_value. If\n\
 so, sets target_key to target_value. If target_value is not given, deletes\n\
@@ -752,7 +770,10 @@ static PyObject* sharedstructures_HashTable_check_and_set(PyObject* py_self,
 static const char* sharedstructures_HashTable_check_missing_and_set_doc =
 "Conditionally sets a value if the check key does not exist.\n\
 \n\
-HashTable.check_missing_and_set(check_key, target_key[, target_value]) -> bool\n\
+HashTable.check_missing_and_set(\n\
+    check_key: bytes,\n\
+    target_key: bytes,\n\
+    target_value: Any = MISSING) -> bool\n\
 \n\
 Atomically checks if check_key exists. If it doesn't exist, sets target_key to\n\
 target_value. If target_value is not given, deletes target_key instead.\n\
@@ -826,33 +847,41 @@ static PyObject* sharedstructures_HashTable_iter_generic(PyObject* py_self,
   return it;
 }
 
-static const char* sharedstructures_HashTable_iterkeys_doc =
-"Returns an iterator over all keys in the table.";
+static const char* sharedstructures_HashTable_keys_doc =
+"Returns an iterator over all keys in the table.\n\
+\n\
+HashTable.keys() -> HashTableIterator[bytes]";
 
-static PyObject* sharedstructures_HashTable_iterkeys(PyObject* py_self) {
+static PyObject* sharedstructures_HashTable_keys(PyObject* py_self) {
   return sharedstructures_HashTable_iter_generic(py_self, true, false);
 }
 
-static const char* sharedstructures_HashTable_itervalues_doc =
-"Returns an iterator over all values in the table.";
+static const char* sharedstructures_HashTable_values_doc =
+"Returns an iterator over all values in the table.\n\
+\n\
+HashTable.values() -> HashTableIterator[Any]";
 
-static PyObject* sharedstructures_HashTable_itervalues(PyObject* py_self) {
+static PyObject* sharedstructures_HashTable_values(PyObject* py_self) {
   return sharedstructures_HashTable_iter_generic(py_self, false, true);
 }
 
-static const char* sharedstructures_HashTable_iteritems_doc =
-"Returns an iterator over all key/value pairs in the table.";
+static const char* sharedstructures_HashTable_items_doc =
+"Returns an iterator over all key/value pairs in the table.\n\
+\n\
+HashTable.keys() -> HashTableIterator[tuple[bytes, Any]]";
 
-static PyObject* sharedstructures_HashTable_iteritems(PyObject* py_self) {
+static PyObject* sharedstructures_HashTable_items(PyObject* py_self) {
   return sharedstructures_HashTable_iter_generic(py_self, true, true);
 }
 
 static PyObject* sharedstructures_HashTable_Iter(PyObject* py_self) {
-  return sharedstructures_HashTable_iterkeys(py_self);
+  return sharedstructures_HashTable_keys(py_self);
 }
 
 static const char* sharedstructures_HashTable_bits_doc =
-"Returns the hash bucket count factor.";
+"Returns the hash bucket count factor.\n\
+\n\
+HashTable.bits() -> int";
 
 static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -860,7 +889,9 @@ static PyObject* sharedstructures_HashTable_bits(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.";
+"Returns the size of the underlying shared memory pool.\n\
+\n\
+HashTable.pool_bytes() -> int";
 
 static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -868,7 +899,9 @@ static PyObject* sharedstructures_HashTable_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.";
+"Returns the amount of free space in the underlying shared memory pool.\n\
+\n\
+HashTable.pool_free_bytes() -> int";
 
 static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -876,7 +909,9 @@ static PyObject* sharedstructures_HashTable_pool_free_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_HashTable_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.";
+"Returns the amount of allocated space in the underlying shared memory pool.\n\
+\n\
+HashTable.pool_allocated_bytes() -> int";
 
 static PyObject* sharedstructures_HashTable_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_HashTable* self = (sharedstructures_HashTable*)py_self;
@@ -898,18 +933,12 @@ static PyMethodDef sharedstructures_HashTable_methods[] = {
       sharedstructures_HashTable_clear_doc},
   {"bits", (PyCFunction)sharedstructures_HashTable_bits, METH_NOARGS,
       sharedstructures_HashTable_bits_doc},
-  {"iterkeys", (PyCFunction)sharedstructures_HashTable_iterkeys, METH_NOARGS,
-      sharedstructures_HashTable_iterkeys_doc},
-  {"keys", (PyCFunction)sharedstructures_HashTable_iterkeys, METH_NOARGS,
-      sharedstructures_HashTable_iterkeys_doc},
-  {"itervalues", (PyCFunction)sharedstructures_HashTable_itervalues, METH_NOARGS,
-      sharedstructures_HashTable_itervalues_doc},
-  {"values", (PyCFunction)sharedstructures_HashTable_itervalues, METH_NOARGS,
-      sharedstructures_HashTable_itervalues_doc},
-  {"iteritems", (PyCFunction)sharedstructures_HashTable_iteritems, METH_NOARGS,
-      sharedstructures_HashTable_iteritems_doc},
-  {"items", (PyCFunction)sharedstructures_HashTable_iteritems, METH_NOARGS,
-      sharedstructures_HashTable_iteritems_doc},
+  {"keys", (PyCFunction)sharedstructures_HashTable_keys, METH_NOARGS,
+      sharedstructures_HashTable_keys_doc},
+  {"values", (PyCFunction)sharedstructures_HashTable_values, METH_NOARGS,
+      sharedstructures_HashTable_values_doc},
+  {"items", (PyCFunction)sharedstructures_HashTable_items, METH_NOARGS,
+      sharedstructures_HashTable_items_doc},
   {"verify", (PyCFunction)sharedstructures_HashTable_verify, METH_NOARGS,
       sharedstructures_HashTable_verify_doc},
   {nullptr, nullptr, 0, nullptr},
@@ -1208,7 +1237,12 @@ static void sharedstructures_PrefixTree_Dealloc(PyObject* obj) {
 }
 
 static const char* sharedstructures_PrefixTree_verify_doc =
-    sharedstructures_HashTable_verify_doc;
+"Checks the internal state of the shared allocator.\n\
+\n\
+PrefixTree.verify() -> bytes | None\n\
+\n\
+On success, returns None. Otherwise, returns a bytes object with a description\n\
+of the error.";;
 
 static PyObject* sharedstructures_PrefixTree_verify(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1379,7 +1413,9 @@ static PyObject* sharedstructures_PrefixTree_Repr(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_clear_doc =
-"Deletes all entries in the table.";
+"Deletes all entries in the table.\n\
+\n\
+PrefixTree.clear() -> None";
 
 static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1393,7 +1429,7 @@ static PyObject* sharedstructures_PrefixTree_clear(PyObject* py_self) {
 static const char* sharedstructures_PrefixTree_incr_doc =
 "Atomically increments a numeric key's value.\n\
 \n\
-PrefixTree.incr(key, delta) -> int or float\n\
+PrefixTree.incr(key: bytes, delta: int | float) -> int | float\n\
 \n\
 delta must match the type of key's value (incr can't increment an int by a float\n\
 or vice-versa). If the key doesn't exist, creates it with the value of delta.\n\
@@ -1450,8 +1486,11 @@ static PyObject* sharedstructures_PrefixTree_incr(PyObject* py_self,
 static const char* sharedstructures_PrefixTree_check_and_set_doc =
 "Conditionally sets a value if the check key\'s value matches the check value.\n\
 \n\
-PrefixTree.check_and_set(check_key, check_value, target_key[, target_value])\n\
-  -> bool\n\
+PrefixTree.check_and_set(\n\
+    check_key: bytes,\n\
+    check_value: Any,\n\
+    target_key: bytes,\n\
+    target_value: Any = MISSING) -> bool\n\
 \n\
 Atomically checks if check_key exists and if its value matches check_value. If\n\
 so, sets target_key to target_value. If target_value is not given, deletes\n\
@@ -1499,7 +1538,10 @@ static PyObject* sharedstructures_PrefixTree_check_and_set(
 static const char* sharedstructures_PrefixTree_check_missing_and_set_doc =
 "Conditionally sets a value if the check key does not exist.\n\
 \n\
-PrefixTree.check_missing_and_set(check_key, target_key[, target_value]) -> bool\n\
+PrefixTree.check_missing_and_set(\n\
+    check_key: bytes,\n\
+    target_key: bytes,\n\
+    target_value: Any = MISSING) -> bool\n\
 \n\
 Atomically checks if check_key exists. If it doesn't exist, sets target_key to\n\
 target_value. If target_value is not given, deletes target_key instead.\n\
@@ -1565,45 +1607,60 @@ static PyObject* sharedstructures_PrefixTree_iter_generic(PyObject* py_self,
   return it;
 }
 
-static const char* sharedstructures_PrefixTree_iterkeys_doc =
-"Returns an iterator over all keys in the table.";
+static const char* sharedstructures_PrefixTree_keys_doc =
+"Returns an iterator over all keys in the tree.\n\
+\n\
+PrefixTree.keys() -> PrefixTreeIterator[bytes]";
 
-static PyObject* sharedstructures_PrefixTree_iterkeys(PyObject* py_self) {
+static PyObject* sharedstructures_PrefixTree_keys(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, false);
 }
 
 static const char* sharedstructures_PrefixTree_keys_from_doc =
-"Returns an iterator over all keys in the table, starting at the given key or prefix.";
+"Returns an iterator over all keys in the tree, starting at the given key or\n\
+prefix.\n\
+\n\
+PrefixTree.keys_from(prefix: bytes) -> PrefixTreeIterator[bytes]";
 
 static PyObject* sharedstructures_PrefixTree_keys_from(PyObject* py_self,
     PyObject* prefix) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, false, prefix);
 }
 
-static const char* sharedstructures_PrefixTree_itervalues_doc =
-"Returns an iterator over all values in the table.";
+static const char* sharedstructures_PrefixTree_values_doc =
+"Returns an iterator over all values in the tree.\n\
+\n\
+PrefixTree.values() -> PrefixTreeIterator[Any]";
 
-static PyObject* sharedstructures_PrefixTree_itervalues(PyObject* py_self) {
+static PyObject* sharedstructures_PrefixTree_values(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, false, true);
 }
 
 static const char* sharedstructures_PrefixTree_values_from_doc =
-"Returns an iterator over all values in the table, starting at the given key or prefix.";
+"Returns an iterator over all values in the tree, starting at the given key or\n\
+prefix.\n\
+\n\
+PrefixTree.values_from(prefix: bytes) -> PrefixTreeIterator[Any]";
 
 static PyObject* sharedstructures_PrefixTree_values_from(PyObject* py_self,
     PyObject* prefix) {
   return sharedstructures_PrefixTree_iter_generic(py_self, false, true, prefix);
 }
 
-static const char* sharedstructures_PrefixTree_iteritems_doc =
-"Returns an iterator over all key/value pairs in the table.";
+static const char* sharedstructures_PrefixTree_items_doc =
+"Returns an iterator over all key/value pairs in the tree.\n\
+\n\
+PrefixTree.items() -> PrefixTreeIterator[tuple[bytes, Any]]";
 
-static PyObject* sharedstructures_PrefixTree_iteritems(PyObject* py_self) {
+static PyObject* sharedstructures_PrefixTree_items(PyObject* py_self) {
   return sharedstructures_PrefixTree_iter_generic(py_self, true, true);
 }
 
 static const char* sharedstructures_PrefixTree_items_from_doc =
-"Returns an iterator over all items in the table, starting at the given key or prefix.";
+"Returns an iterator over all items in the tree, starting at the given key or\n\
+prefix.\n\
+\n\
+PrefixTree.items_from(prefix: bytes) -> PrefixTreeIterator[tuple[bytes, Any]]";
 
 static PyObject* sharedstructures_PrefixTree_items_from(PyObject* py_self,
     PyObject* prefix) {
@@ -1611,11 +1668,13 @@ static PyObject* sharedstructures_PrefixTree_items_from(PyObject* py_self,
 }
 
 static PyObject* sharedstructures_PrefixTree_Iter(PyObject* py_self) {
-  return sharedstructures_PrefixTree_iterkeys(py_self);
+  return sharedstructures_PrefixTree_keys(py_self);
 }
 
 static const char* sharedstructures_PrefixTree_bytes_for_prefix_doc =
 "Returns the size of the subtree rooted at the given prefix.\n\
+\n\
+PrefixTree.bytes_for_prefix(prefix: bytes) -> int\n\
 \n\
 This includes tree node overhead, but does not include allocator overhead.";
 
@@ -1633,7 +1692,9 @@ static PyObject* sharedstructures_PrefixTree_bytes_for_prefix(
 }
 
 static const char* sharedstructures_PrefixTree_nodes_for_prefix_doc =
-"Returns the number of nodes in the subtree rooted at the given prefix.";
+"Returns the number of nodes in the subtree rooted at the given prefix.\n\
+\n\
+PrefixTree.nodes_for_prefix(prefix: bytes) -> int";
 
 static PyObject* sharedstructures_PrefixTree_nodes_for_prefix(
     PyObject* py_self, PyObject* args) {
@@ -1649,7 +1710,9 @@ static PyObject* sharedstructures_PrefixTree_nodes_for_prefix(
 }
 
 static const char* sharedstructures_PrefixTree_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.";
+"Returns the size of the underlying shared memory pool.\n\
+\n\
+PrefixTree.pool_bytes() -> int";
 
 static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1657,7 +1720,9 @@ static PyObject* sharedstructures_PrefixTree_pool_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_PrefixTree_pool_free_bytes_doc =
-"Returns the amount of free space in the underlying shared memory pool.";
+"Returns the amount of free space in the underlying shared memory pool.\n\
+\n\
+PrefixTree.pool_free_bytes() -> int";
 
 static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1665,7 +1730,9 @@ static PyObject* sharedstructures_PrefixTree_pool_free_bytes(PyObject* py_self) 
 }
 
 static const char* sharedstructures_PrefixTree_pool_allocated_bytes_doc =
-"Returns the amount of allocated space in the underlying shared memory pool.";
+"Returns the amount of allocated space in the underlying shared memory pool.\n\
+\n\
+PrefixTree.pool_allocated_bytes() -> int";
 
 static PyObject* sharedstructures_PrefixTree_pool_allocated_bytes(PyObject* py_self) {
   sharedstructures_PrefixTree* self = (sharedstructures_PrefixTree*)py_self;
@@ -1691,22 +1758,16 @@ static PyMethodDef sharedstructures_PrefixTree_methods[] = {
       sharedstructures_PrefixTree_check_missing_and_set_doc},
   {"clear", (PyCFunction)sharedstructures_PrefixTree_clear, METH_NOARGS,
       sharedstructures_PrefixTree_clear_doc},
-  {"iterkeys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,
-      sharedstructures_PrefixTree_iterkeys_doc},
-  {"keys", (PyCFunction)sharedstructures_PrefixTree_iterkeys, METH_NOARGS,
-      sharedstructures_PrefixTree_iterkeys_doc},
+  {"keys", (PyCFunction)sharedstructures_PrefixTree_keys, METH_NOARGS,
+      sharedstructures_PrefixTree_keys_doc},
   {"keys_from", (PyCFunction)sharedstructures_PrefixTree_keys_from, METH_O,
       sharedstructures_PrefixTree_keys_from_doc},
-  {"itervalues", (PyCFunction)sharedstructures_PrefixTree_itervalues, METH_NOARGS,
-      sharedstructures_PrefixTree_itervalues_doc},
-  {"values", (PyCFunction)sharedstructures_PrefixTree_itervalues, METH_NOARGS,
-      sharedstructures_PrefixTree_itervalues_doc},
+  {"values", (PyCFunction)sharedstructures_PrefixTree_values, METH_NOARGS,
+      sharedstructures_PrefixTree_values_doc},
   {"values_from", (PyCFunction)sharedstructures_PrefixTree_values_from, METH_O,
       sharedstructures_PrefixTree_values_from_doc},
-  {"iteritems", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
-      sharedstructures_PrefixTree_iteritems_doc},
-  {"items", (PyCFunction)sharedstructures_PrefixTree_iteritems, METH_NOARGS,
-      sharedstructures_PrefixTree_iteritems_doc},
+  {"items", (PyCFunction)sharedstructures_PrefixTree_items, METH_NOARGS,
+      sharedstructures_PrefixTree_items_doc},
   {"items_from", (PyCFunction)sharedstructures_PrefixTree_items_from, METH_O,
       sharedstructures_PrefixTree_items_from_doc},
   {"verify", (PyCFunction)sharedstructures_PrefixTree_verify, METH_NOARGS,
@@ -1877,7 +1938,10 @@ static PyObject* sharedstructures_Queue_pop(bool front, PyObject* py_self,
 static const char* sharedstructures_Queue_pop_front_doc =
 "Removes and returns the item at the front of the queue.\n\
 \n\
-Queue.pop_front() -> bytes";
+Queue.pop_front(raw: bool = False) -> Any\n\
+\n\
+Raises IndexError if the queue is empty.\n\
+If raw is true, returns the item as a bytes object (without decoding it).";
 
 static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self,
     PyObject* args, PyObject* kwargs) {
@@ -1887,7 +1951,10 @@ static PyObject* sharedstructures_Queue_pop_front(PyObject* py_self,
 static const char* sharedstructures_Queue_pop_back_doc =
 "Removes and returns the item at the back of the queue.\n\
 \n\
-Queue.pop_back() -> bytes";
+Queue.pop_back(raw: bool = False) -> bytes\n\
+\n\
+Raises IndexError if the queue is empty.\n\
+If raw is true, returns the item as a bytes object (without decoding it).";
 
 static PyObject* sharedstructures_Queue_pop_back(PyObject* py_self,
     PyObject* args, PyObject* kwargs) {
@@ -1948,10 +2015,10 @@ static PyObject* sharedstructures_Queue_push(bool front, PyObject* py_self,
 static const char* sharedstructures_Queue_push_front_doc =
 "Appends the given item to the front of the queue.\n\
 \n\
-If raw=True is given, only bytes objects are accepted, and no serialization is\n\
-performed. This is usually necessary for interoperating with other languages.\n\
+Queue.push_front(item: Any, raw: bool = False) -> None\n\
 \n\
-Queue.push_front(item, raw=False) -> None";
+If raw is True, only bytes objects are accepted, and no serialization is\n\
+performed. This is usually necessary for interoperating with other languages.";
 
 static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
     PyObject* args, PyObject* kwargs) {
@@ -1961,10 +2028,10 @@ static PyObject* sharedstructures_Queue_push_front(PyObject* py_self,
 static const char* sharedstructures_Queue_push_back_doc =
 "Appends the given item to the back of the queue.\n\
 \n\
-If raw=True is given, only bytes objects are accepted, and no serialization is\n\
-performed. This is usually necessary for interoperating with other languages.\n\
+Queue.push_back(item: Any, raw: bool = False) -> None\n\
 \n\
-Queue.push_back(item, raw=False) -> None";
+If raw is True, only bytes objects are accepted, and no serialization is\n\
+performed. This is usually necessary for interoperating with other languages.";
 
 static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
     PyObject* args, PyObject* kwargs) {
@@ -1974,9 +2041,9 @@ static PyObject* sharedstructures_Queue_push_back(PyObject* py_self,
 static const char* sharedstructures_Queue_bytes_doc =
 "Returns the number of bytes used by objects in the queue.\n\
 \n\
-Does not include bytes used by allocator or structure overhead.\n\
+Queue.bytes() -> int\n\
 \n\
-Queue.bytes() -> int";
+Does not include bytes used by allocator or structure overhead.";
 
 static PyObject* sharedstructures_Queue_bytes(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
@@ -1984,16 +2051,42 @@ static PyObject* sharedstructures_Queue_bytes(PyObject* py_self) {
 }
 
 static const char* sharedstructures_Queue_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.";
+"Returns the size of the underlying shared memory pool.\n\
+\n\
+Queue.pool_bytes() -> int";
 
 static PyObject* sharedstructures_Queue_pool_bytes(PyObject* py_self) {
   sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
   return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
 }
 
+static const char* sharedstructures_Queue_pool_free_bytes_doc =
+"Returns the amount of free space in the underlying shared memory pool.\n\
+\n\
+Queue.pool_free_bytes() -> int";
+
+static PyObject* sharedstructures_Queue_pool_free_bytes(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  return PyLong_FromSize_t(self->q->get_allocator()->bytes_free());
+}
+
+static const char* sharedstructures_Queue_pool_allocated_bytes_doc =
+"Returns the amount of allocated space in the underlying shared memory pool.\n\
+\n\
+Queue.pool_allocated_bytes() -> int";
+
+static PyObject* sharedstructures_Queue_pool_allocated_bytes(PyObject* py_self) {
+  sharedstructures_Queue* self = (sharedstructures_Queue*)py_self;
+  return PyLong_FromSize_t(self->q->get_allocator()->bytes_allocated());
+}
+
 static PyMethodDef sharedstructures_Queue_methods[] = {
   {"pool_bytes", (PyCFunction)sharedstructures_Queue_pool_bytes, METH_NOARGS,
       sharedstructures_Queue_pool_bytes_doc},
+  {"pool_free_bytes", (PyCFunction)sharedstructures_Queue_pool_free_bytes, METH_NOARGS,
+      sharedstructures_Queue_pool_free_bytes_doc},
+  {"pool_allocated_bytes", (PyCFunction)sharedstructures_Queue_pool_allocated_bytes, METH_NOARGS,
+      sharedstructures_Queue_pool_allocated_bytes_doc},
   {"bytes", (PyCFunction)sharedstructures_Queue_bytes, METH_NOARGS,
       sharedstructures_Queue_bytes_doc},
   {"pop_front", (PyCFunction)sharedstructures_Queue_pop_front, METH_VARARGS | METH_KEYWORDS,
@@ -2141,7 +2234,7 @@ static Py_ssize_t sharedstructures_PriorityQueue_Len(PyObject* py_self) {
 static const char* sharedstructures_PriorityQueue_pop_doc =
 "Removes and returns the minimum item in the queue.\n\
 \n\
-PriorityQueue.pop_front() -> bytes";
+PriorityQueue.pop() -> bytes";
 
 static PyObject* sharedstructures_PriorityQueue_pop(PyObject* py_self) {
   sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
@@ -2158,7 +2251,7 @@ static PyObject* sharedstructures_PriorityQueue_pop(PyObject* py_self) {
 static const char* sharedstructures_PriorityQueue_push_doc =
 "Adds the given item to the queue.\n\
 \n\
-PriorityQueue.push(item) -> None";
+PriorityQueue.push(item: bytes) -> None";
 
 static PyObject* sharedstructures_PriorityQueue_push(PyObject* py_self,
     PyObject* args) {
@@ -2176,16 +2269,42 @@ static PyObject* sharedstructures_PriorityQueue_push(PyObject* py_self,
 }
 
 static const char* sharedstructures_PriorityQueue_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.";
+"Returns the size of the underlying shared memory pool.\n\
+\n\
+PriorityQueue.pool_bytes() -> int";
 
 static PyObject* sharedstructures_PriorityQueue_pool_bytes(PyObject* py_self) {
   sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
   return PyLong_FromSize_t(self->q->get_allocator()->get_pool()->size());
 }
 
+static const char* sharedstructures_PriorityQueue_pool_free_bytes_doc =
+"Returns the amount of free space in the underlying shared memory pool.\n\
+\n\
+PriorityQueue.pool_free_bytes() -> int";
+
+static PyObject* sharedstructures_PriorityQueue_pool_free_bytes(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+  return PyLong_FromSize_t(self->q->get_allocator()->bytes_free());
+}
+
+static const char* sharedstructures_PriorityQueue_pool_allocated_bytes_doc =
+"Returns the amount of allocated space in the underlying shared memory pool.\n\
+\n\
+PriorityQueue.pool_allocated_bytes() -> int";
+
+static PyObject* sharedstructures_PriorityQueue_pool_allocated_bytes(PyObject* py_self) {
+  sharedstructures_PriorityQueue* self = (sharedstructures_PriorityQueue*)py_self;
+  return PyLong_FromSize_t(self->q->get_allocator()->bytes_allocated());
+}
+
 static PyMethodDef sharedstructures_PriorityQueue_methods[] = {
   {"pool_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_bytes, METH_NOARGS,
       sharedstructures_PriorityQueue_pool_bytes_doc},
+  {"pool_free_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_free_bytes, METH_NOARGS,
+      sharedstructures_PriorityQueue_pool_free_bytes_doc},
+  {"pool_allocated_bytes", (PyCFunction)sharedstructures_PriorityQueue_pool_allocated_bytes, METH_NOARGS,
+      sharedstructures_PriorityQueue_pool_allocated_bytes_doc},
   {"pop", (PyCFunction)sharedstructures_PriorityQueue_pop, METH_NOARGS,
       sharedstructures_PriorityQueue_pop_doc},
   {"push", (PyCFunction)sharedstructures_PriorityQueue_push, METH_VARARGS,
@@ -2316,7 +2435,7 @@ static Py_ssize_t sharedstructures_IntVector_Len(PyObject* py_self) {
 static const char* sharedstructures_IntVector_expand_doc =
 "Expands the vector's length.\n\
 \n\
-IntVector.expand(new_size) -> None\n\
+IntVector.expand(new_size: int) -> None\n\
 \n\
 The newly-allocated integers will have values of 0.\n\
 \n\
@@ -2345,7 +2464,7 @@ static PyObject* sharedstructures_IntVector_expand(PyObject* py_self,
 static const char* sharedstructures_IntVector_load_doc =
 "Gets a value from the vector.\n\
 \n\
-IntVector.load(index) -> int";
+IntVector.load(index: int) -> int";
 
 static PyObject* sharedstructures_IntVector_load(PyObject* py_self,
     PyObject* args) {
@@ -2367,7 +2486,10 @@ static PyObject* sharedstructures_IntVector_load(PyObject* py_self,
 static const char* sharedstructures_IntVector_store_doc =
 "Sets a value in the vector.\n\
 \n\
-IntVector.store(index, value) -> None";
+IntVector.store(index: int, value: int) -> None\n\
+\n\
+Stored values are 64-bit signed integers. If the value is outside of the range\n\
+for that type, it silently overflows (or underflows).";
 
 static PyObject* sharedstructures_IntVector_store(PyObject* py_self,
     PyObject* args) {
@@ -2392,7 +2514,7 @@ static PyObject* sharedstructures_IntVector_store(PyObject* py_self,
 static const char* sharedstructures_IntVector_exchange_doc =
 "Atomically sets a value in the array and returns the overwritten value.\n\
 \n\
-IntVector.exchange(index, new_value) -> int";
+IntVector.exchange(index: int, new_value: int) -> int";
 
 static PyObject* sharedstructures_IntVector_exchange(PyObject* py_self,
     PyObject* args) {
@@ -2416,7 +2538,8 @@ static PyObject* sharedstructures_IntVector_exchange(PyObject* py_self,
 static const char* sharedstructures_IntVector_compare_exchange_doc =
 "Atomically compares the stored value in the array and overwrites it if equal.\n\
 \n\
-IntVector.compare_exchange(index, expected_value, new_value) -> int\n\
+IntVector.compare_exchange(\n\
+    index: int, expected_value: int, new_value: int) -> int\n\
 \n\
 Returns the value that was stored in the array before the operation. If the\n\
 returned value is equal to expected_value, the exchange was performed.";
@@ -2443,7 +2566,7 @@ static PyObject* sharedstructures_IntVector_compare_exchange(
 static const char* sharedstructures_IntVector_add_doc =
 "Atomically adds to a value in the array. Returns the original value.\n\
 \n\
-IntVector.add(index, delta) -> int";
+IntVector.add(index: int, delta: int) -> int";
 
 static PyObject* sharedstructures_IntVector_add(PyObject* py_self,
     PyObject* args) {
@@ -2467,7 +2590,7 @@ static PyObject* sharedstructures_IntVector_add(PyObject* py_self,
 static const char* sharedstructures_IntVector_subtract_doc =
 "Atomically subtracts from a value in the array. Returns the original value.\n\
 \n\
-IntVector.subtract(index, delta) -> int";
+IntVector.subtract(index: int, delta: int) -> int";
 
 static PyObject* sharedstructures_IntVector_subtract(PyObject* py_self,
     PyObject* args) {
@@ -2491,7 +2614,7 @@ static PyObject* sharedstructures_IntVector_subtract(PyObject* py_self,
 static const char* sharedstructures_IntVector_bitwise_and_doc =
 "Atomically ands a value with a value in the array. Returns the original value.\n\
 \n\
-IntVector.bitwise_and(index, mask) -> int";
+IntVector.bitwise_and(index: int, mask: int) -> int";
 
 static PyObject* sharedstructures_IntVector_bitwise_and(PyObject* py_self,
     PyObject* args) {
@@ -2515,7 +2638,7 @@ static PyObject* sharedstructures_IntVector_bitwise_and(PyObject* py_self,
 static const char* sharedstructures_IntVector_bitwise_or_doc =
 "Atomically ors a value with a value in the array. Returns the original value.\n\
 \n\
-IntVector.bitwise_or(index, mask) -> int";
+IntVector.bitwise_or(index: int, mask: int) -> int";
 
 static PyObject* sharedstructures_IntVector_bitwise_or(PyObject* py_self,
     PyObject* args) {
@@ -2539,7 +2662,7 @@ static PyObject* sharedstructures_IntVector_bitwise_or(PyObject* py_self,
 static const char* sharedstructures_IntVector_bitwise_xor_doc =
 "Atomically xors a value with a value in the array. Returns the original value.\n\
 \n\
-IntVector.bitwise_xor(index, mask) -> int";
+IntVector.bitwise_xor(index: int, mask: int) -> int";
 
 static PyObject* sharedstructures_IntVector_bitwise_xor(PyObject* py_self,
     PyObject* args) {
@@ -2565,7 +2688,7 @@ static const char* sharedstructures_IntVector_load_bit_doc =
 integers, so if index is in the range 0-63, it wil lread from the first\n\
 integer; the range 64-127 corresponds to the second, and so on.\n\
 \n\
-IntVector.load_bit(index) -> bool";
+IntVector.load_bit(bit_index: int) -> bool";
 
 static PyObject* sharedstructures_IntVector_load_bit(
     PyObject* py_self, PyObject* args) {
@@ -2590,10 +2713,10 @@ static PyObject* sharedstructures_IntVector_load_bit(
 }
 
 static const char* sharedstructures_IntVector_set_bit_doc =
-"Atomically sets a bit in the array. The index parameter has the same meaning\n\
-as in load_bit.\n\
+"Atomically sets a bit in the array. The bit_index parameter has the same\n\
+meaning as in load_bit.\n\
 \n\
-IntVector.set_bit(index, value) -> None";
+IntVector.set_bit(bit_index: int, value: bool) -> None";
 
 static PyObject* sharedstructures_IntVector_set_bit(
     PyObject* py_self, PyObject* args) {
@@ -2617,10 +2740,10 @@ static PyObject* sharedstructures_IntVector_set_bit(
 }
 
 static const char* sharedstructures_IntVector_toggle_bit_doc =
-"Atomically flips a bit in the array. The index parameter has the same meaning\n\
-as in load_bit. Returns the new value of the bit.\n\
+"Atomically flips a bit in the array. The bit_index parameter has the same\n\
+meaning as in load_bit. Returns the new value of the bit.\n\
 \n\
-IntVector.toggle_bit(index) -> bool";
+IntVector.toggle_bit(bit_index: int) -> bool";
 
 static PyObject* sharedstructures_IntVector_toggle_bit(
     PyObject* py_self, PyObject* args) {
@@ -2645,7 +2768,9 @@ static PyObject* sharedstructures_IntVector_toggle_bit(
 }
 
 static const char* sharedstructures_IntVector_pool_bytes_doc =
-"Returns the size of the underlying shared memory pool.";
+"Returns the size of the underlying shared memory pool.\n\
+\n\
+IntVector.pool_bytes() -> int";
 
 static PyObject* sharedstructures_IntVector_pool_bytes(PyObject* py_self) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
@@ -2755,6 +2880,13 @@ static PyTypeObject sharedstructures_IntVectorType = {
 
 // Module-level names
 
+static const char* sharedstructures_delete_pool_doc =
+"Delete a shared pool (of any type).\n\
+\n\
+delete_pool(pool_name: str) -> bool\n\
+\n\
+Returns True if the pool was deleted.";
+
 static PyObject* sharedstructures_delete_pool(PyObject*, PyObject* args) {
   const char* pool_name;
   if (!PyArg_ParseTuple(args, "s", &pool_name)) {
@@ -2776,7 +2908,7 @@ static PyObject* sharedstructures_delete_pool(PyObject*, PyObject* args) {
 
 static PyMethodDef sharedstructures_methods[] = {
   {"delete_pool", sharedstructures_delete_pool, METH_VARARGS,
-      "Delete a shared pool (of any type)."},
+      sharedstructures_delete_pool_doc},
   {nullptr, nullptr, 0, nullptr},
 };
 

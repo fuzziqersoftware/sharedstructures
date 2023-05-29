@@ -9,11 +9,11 @@ POOL_NAME_PREFIX = "PriorityQueueTest-py-pool-"
 ALLOCATOR_TYPES = ("simple", "logarithmic")
 
 
-def get_current_process_lsof():
+def get_current_process_lsof() -> bytes:
     return subprocess.check_output(["lsof", "-p", str(os.getpid())])
 
 
-def run_basic_test(allocator_type):
+def run_basic_test(allocator_type: str) -> None:
     print("-- [%s] basic" % allocator_type)
     before_lsof_count = len(get_current_process_lsof().splitlines())
 
@@ -52,7 +52,7 @@ def run_basic_test(allocator_type):
     assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
-def run_concurrent_producers_test(allocator_type):
+def run_concurrent_producers_test(allocator_type: str) -> None:
     print("-- [%s] concurrent producers" % allocator_type)
 
     # Create the pool before forking to avoid creation races
@@ -61,7 +61,7 @@ def run_concurrent_producers_test(allocator_type):
     )
     del q
 
-    child_pids = set()
+    child_pids: set[int] = set()
     while (len(child_pids) < 8) and (0 not in child_pids):
         child_pids.add(os.fork())
 
@@ -115,7 +115,7 @@ def run_concurrent_producers_test(allocator_type):
         assert 0 == num_failures
 
 
-def run_concurrent_consumers_test(allocator_type):
+def run_concurrent_consumers_test(allocator_type: str) -> None:
     print("-- [%s] concurrent consumers" % allocator_type)
 
     # Initialize the queue before forking children
@@ -124,7 +124,7 @@ def run_concurrent_consumers_test(allocator_type):
     )
     del q
 
-    child_pids = set()
+    child_pids: set[int] = set()
     while (len(child_pids) < 8) and (0 not in child_pids):
         child_pids.add(os.fork())
 
@@ -182,7 +182,7 @@ def run_concurrent_consumers_test(allocator_type):
         assert 0 == num_failures
 
 
-def main():
+def main() -> int:
     try:
         for allocator_type in ALLOCATOR_TYPES:
             sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)

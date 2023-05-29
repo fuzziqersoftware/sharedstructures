@@ -7,11 +7,11 @@ import sharedstructures
 POOL_NAME = "IntVectorTest-py-pool"
 
 
-def get_current_process_lsof():
+def get_current_process_lsof() -> bytes:
     return subprocess.check_output(["lsof", "-p", str(os.getpid())])
 
 
-def run_basic_test():
+def run_basic_test() -> None:
     print("-- basic")
     before_lsof_count = len(get_current_process_lsof().splitlines())
 
@@ -110,7 +110,7 @@ def run_basic_test():
     assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
-def main():
+def main() -> int:
     try:
         sharedstructures.delete_pool(POOL_NAME)
         run_basic_test()

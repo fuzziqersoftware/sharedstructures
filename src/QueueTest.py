@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import time
+from typing import Any
 
 import sharedstructures
 
@@ -9,25 +10,27 @@ POOL_NAME_PREFIX = "QueueTest-py-pool-"
 ALLOCATOR_TYPES = ("simple", "logarithmic")
 
 
-def get_current_process_lsof():
+def get_current_process_lsof() -> bytes:
     return subprocess.check_output(["lsof", "-p", str(os.getpid())])
 
 
-def q_push(q, front, item, raw=False):
+def q_push(
+    q: sharedstructures.Queue, front: bool, item: Any, raw: bool = False
+) -> None:
     if front:
         q.push_front(item, raw=raw)
     else:
         q.push_back(item, raw=raw)
 
 
-def q_pop(q, front, raw=False):
+def q_pop(q: sharedstructures.Queue, front: bool, raw: bool = False) -> Any:
     if front:
         return q.pop_front(raw=raw)
     else:
         return q.pop_back(raw=raw)
 
 
-def run_basic_test(allocator_type):
+def run_basic_test(allocator_type: str) -> None:
     print("-- [%s] basic" % allocator_type)
     before_lsof_count = len(get_current_process_lsof().splitlines())
 
@@ -35,7 +38,7 @@ def run_basic_test(allocator_type):
     assert len(q) == 0
     assert q.bytes() == 0
 
-    def test_queue(q, reverse):
+    for reverse in (False, True):
         print(
             "-- [%s]   %s queue operation"
             % (allocator_type, "reverse" if reverse else "forward")
@@ -58,7 +61,7 @@ def run_basic_test(allocator_type):
         assert 3 == len(q)
         assert 47 == q_pop(q, not reverse)
         assert 2 == len(q)
-        assert None == q_pop(q, not reverse)
+        assert q_pop(q, not reverse) is None
         assert 1 == len(q)
         assert (None, False, True, 37, 2.0, ["lol", "hax"], {1: 2}) == q_pop(
             q, not reverse
@@ -71,10 +74,7 @@ def run_basic_test(allocator_type):
         except IndexError:
             pass
 
-    test_queue(q, False)
-    test_queue(q, True)
-
-    def test_stack(q, front):
+    for front in (False, True):
         print(
             "-- [%s]   %s stack operation"
             % (allocator_type, "front" if front else "back")
@@ -93,7 +93,7 @@ def run_basic_test(allocator_type):
 
         assert (None, False, True, 37, 2.0, ["lol", "hax"], {1: 2}) == q_pop(q, front)
         assert 4 == len(q)
-        assert None == q_pop(q, front)
+        assert q_pop(q, front) is None
         assert 3 == len(q)
         assert 47 == q_pop(q, front)
         assert 2 == len(q)
@@ -108,9 +108,6 @@ def run_basic_test(allocator_type):
         except IndexError:
             pass
 
-    test_stack(q, False)
-    test_stack(q, True)
-
     del q  # this should unmap the shared memory pool and close the fd
     sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
@@ -118,7 +115,7 @@ def run_basic_test(allocator_type):
     assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
-def run_raw_test(allocator_type):
+def run_raw_test(allocator_type: str) -> None:
     print("-- [%s] basic" % allocator_type)
     before_lsof_count = len(get_current_process_lsof().splitlines())
 
@@ -126,7 +123,7 @@ def run_raw_test(allocator_type):
     assert len(q) == 0
     assert q.bytes() == 0
 
-    def test_queue(q, reverse):
+    for reverse in (False, True):
         print(
             "-- [%s]   %s queue operation"
             % (allocator_type, "reverse" if reverse else "forward")
@@ -159,10 +156,7 @@ def run_raw_test(allocator_type):
         except IndexError:
             pass
 
-    test_queue(q, False)
-    test_queue(q, True)
-
-    def test_stack(q, front):
+    for front in (False, True):
         print(
             "-- [%s]   %s stack operation"
             % (allocator_type, "front" if front else "back")
@@ -195,9 +189,6 @@ def run_raw_test(allocator_type):
         except IndexError:
             pass
 
-    test_stack(q, False)
-    test_stack(q, True)
-
     del q  # this should unmap the shared memory pool and close the fd
     sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
 
@@ -205,14 +196,14 @@ def run_raw_test(allocator_type):
     assert before_lsof_count == len(get_current_process_lsof().splitlines())
 
 
-def run_concurrent_producers_test(allocator_type):
+def run_concurrent_producers_test(allocator_type: str) -> None:
     print("-- [%s] concurrent producers" % allocator_type)
 
     # initialize the queue before forking children
     q = sharedstructures.Queue(POOL_NAME_PREFIX + allocator_type, allocator_type)
     del q
 
-    child_pids = set()
+    child_pids: set[int] = set()
     while (len(child_pids) < 8) and (0 not in child_pids):
         child_pids.add(os.fork())
 
@@ -262,14 +253,14 @@ def run_concurrent_producers_test(allocator_type):
         assert 0 == num_failures
 
 
-def run_concurrent_consumers_test(allocator_type):
+def run_concurrent_consumers_test(allocator_type: str) -> None:
     print("-- [%s] concurrent consumers" % allocator_type)
 
     # initialize the queue before forking children
     q = sharedstructures.Queue(POOL_NAME_PREFIX + allocator_type, allocator_type)
     del q
 
-    child_pids = set()
+    child_pids: set[int] = set()
     while (len(child_pids) < 8) and (0 not in child_pids):
         child_pids.add(os.fork())
 
@@ -323,7 +314,7 @@ def run_concurrent_consumers_test(allocator_type):
         assert 0 == num_failures
 
 
-def main():
+def main() -> int:
     try:
         for allocator_type in ALLOCATOR_TYPES:
             sharedstructures.delete_pool(POOL_NAME_PREFIX + allocator_type)
