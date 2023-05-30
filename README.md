@@ -31,9 +31,9 @@ Data structure objects can be used on top of an Allocator or Pool object. See ex
 - Integers
 - Floating-point numbers
 - Boolean values
-- Null (this is not the same as the key not existing - a key can exist and have a Null value)
+- Null (this is not the same as the key not existing - a key can exist and have a null value)
 
-Both HashTable and PrefixTree support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations are supported in both languages.
+Both HashTable and PrefixTree support getting and setting individual keys, iteration over all or part of the map, conditional writes (check-and-set, check-and-delete), and atomic increments. Note that atomic increments on HashTables are supported only in C++ and not in Python, but all other operations (including atomic increments on PrefixTrees) are supported in both languages.
 
 ### Array/list types
 
@@ -51,7 +51,7 @@ In the C++ examples below, you'll see Pool and LogarithmicAllocator objects; the
 
 ### Mapping types
 
-Hash tables have a number of unimplemented convenience features; for example, the bucket count cannot be changed without rebuilding the entire table manually. For sharing mappings/dictionaries, usually you should use a prefix tree instead.
+Hash tables have a number of unimplemented convenience features; for example, the bucket count cannot be changed without rebuilding the entire table manually. For sharing mappings/dictionaries, most use cases should use a prefix tree instead.
 
 The following C++ code opens a prefix tree object, creating it if it doesn't exist:
 
@@ -66,25 +66,26 @@ The following C++ code opens a prefix tree object, creating it if it doesn't exi
     std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
     std::shared_ptr<PrefixTree> tree(new PrefixTree(alloc, 0));
 
-    // note: k1, k2, etc. are all std::string
-    tree->insert(k1, v1);  // insert or overwrite a value
-    PrefixTree::LookupResult v2 = tree->at(k2);  // retrieve a value
-    bool was_erased = tree->erase(k3);  // delete a value
-    bool key_exists = tree->exists(k4);  // check if a key exists
-    size_t count = tree->size();  // get the number of key-value pairs
+    // Note: k1, k2, etc. are all std::string
+    tree->insert(k1, v1);  // Insert or overwrite a value
+    PrefixTree::LookupResult v2 = tree->at(k2);  // Retrieve a value
+    bool was_erased = tree->erase(k3);  // Delete a value
+    bool key_exists = tree->exists(k4);  // Check if a key exists
+    size_t count = tree->size();  // Get the number of key-value pairs
 
 See PrefixTree.hh for more details on how to use the tree object. The HashTable interface is similar.
 
-Python usage is a bit more intuitive - sharedstructures.PrefixTree objects behave mostly like dicts (but read the "Python wrapper" section below):
+Python usage is more intuitive - sharedstructures.PrefixTree objects behave mostly like dicts (but read the "Python wrapper semantics" section below):
 
     import sharedstructures
 
     tree = sharedstructures.PrefixTree(filename, 'logarithmic', 0)
 
-    tree[k1] = v1   # insert or overwrite a value
-    v2 = tree[k2]   # retrieve a value
-    del tree[k3]    # delete a value
-    if k4 in tree:  # check if a key exists
+    tree[k1] = v1  # Insert or overwrite a value
+    v2 = tree[k2]  # Retrieve a value
+    del tree[k3]  # Delete a value
+    key_exists = (k4 in tree)  # Check if a key exists
+    num_keys = len(tree)  # Get the number of key-value pairs
 
 ### Queues
 
@@ -101,17 +102,17 @@ In C++, you can add std::string objects and raw pointer/size pairs to the queue,
     std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
     std::shared_ptr<Queue> q(new Queue(alloc, 0));
 
-    // add items to the queue
+    // Add items to the queue
     q->push_back(item1);  // (std::string)
     q->push_back(item1_data, item1_size);  // (const void*, size_t)
     q->push_front(item2);  // (std::string)
     q->push_front(item2_data, item2_size);  // (const void*, size_t)
 
-    // remove items from the queue (throws std::out_of_range if empty)
+    // Remove items from the queue (throws std::out_of_range if empty)
     std::string item3 = q->pop_back();
     std::string item4 = q->pop_front();
 
-    // get the number of items in the queue
+    // Get the number of items in the queue
     size_t count = q->size();
 
 In Python, the wrapper will transparently marshal and unmarshal values passed to and from Queues. However, this means that you can't easily pass values to and from programs written in other languages. To bypass the serialize/deserialize steps (and therefore only be allowed to pass/return bytes objects in Python), use raw=True. Python usage looks like this:
@@ -120,15 +121,15 @@ In Python, the wrapper will transparently marshal and unmarshal values passed to
 
     q = sharedstructures.Queue(filename, 'logarithmic', 0)
 
-    # add items to the queue
+    # Add items to the queue
     q.push_back(item1)  # or q.append(item1); use raw=True to skip serialization
     q.push_front(item2)  # or q.appendleft(item2); use raw=True to skip serialization
 
-    # remove items from the queue (raises IndexError if empty)
+    # Remove items from the queue (raises IndexError if empty)
     item3 = q.pop_back()  # or q.pop(); use raw=True to skip deserialization
     item4 = q.pop_front()  # or q.popleft(); use raw=True to skip deserialization
 
-    # get the number of items in the queue
+    # Get the number of items in the queue
     num_items = len(q)
 
 ### Priority queues
@@ -146,14 +147,14 @@ In C++, you can add std::string objects and pointer/size pairs to the queue, but
     std::shared_ptr<Allocator> alloc(new LogarithmicAllocator(pool));
     std::shared_ptr<PriorityQueue> q(new PriorityQueue(alloc, 0));
 
-    // add items to the queue
+    // Add items to the queue
     q->push(item1);  // std::string
     q->push(item1_data, item1_size);  // (void*, size_t)
 
-    // pop the minimum item from the queue (throws std::out_of_range if empty)
+    // Remove and return the minimum item from the queue (throws std::out_of_range if empty)
     std::string item3 = q->pop();
 
-    // get the number of items in the queue
+    // Get the number of items in the queue
     size_t count = q->size();
 
 Unlike Queue, you can't add arbitrary Python objects to a PriorityQueue; the Python module only accepts and returns bytes objects. Use it like this:
@@ -162,44 +163,47 @@ Unlike Queue, you can't add arbitrary Python objects to a PriorityQueue; the Pyt
 
     q = sharedstructures.PriorityQueue(filename, 'logarithmic', 0)
 
-    # add items to the queue (items must be bytes objects)
+    # Add items to the queue (items must be bytes objects)
     q.push(item1)
     q.push(item2)
 
-    # remove items from the queue (raises IndexError if empty)
+    # Remove items from the queue (raises IndexError if empty)
     item3 = q.pop()
 
-    # get the number of items in the queue
+    # Get the number of items in the queue
     num_items = len(q)
 
 Usually the priority should be an ordered, constant-width field at the beginning of each item. For example, to use a 64-bit integer priority, prepend the return value of `struct.pack(">Q", priority)` to each item, and manually strip it from items returned by `.pop()`.
 
-### Atomic integer vectors
+### Atomic and integer vectors
 
-Unlike the other data structures, atomic integer vectors do not use an underlying allocator; instead, they manage memory in the pool internally. This means that an AtomicIntegerVector cannot share a pool with any other data structures.
+Unlike the other data structures, atomic vectors do not use an underlying allocator; instead, they manage memory in the pool internally. This means that an AtomicVector or IntVector cannot share a pool with any other data structures.
 
-The following C++ code opens an atomic integer vector object, creating it if it doesn't exist. Note that you have to call `.expand()` at least once on a newly-created vector, since new vectors have no fields by default.
+The following C++ code opens an atomic vector object, creating it if it doesn't exist. Note that you have to call `.expand()` at least once on a newly-created vector, since new vectors have no fields by default.
 
     #include <memory>
     #include <sharedstructures/Pool.hh>
-    #include <sharedstructures/IntVector.hh>
+    #include <sharedstructures/AtomicVector.hh>
 
     using namespace sharedstructures;
 
     std::shared_ptr<Pool> pool(new Pool(filename));
-    std::shared_ptr<IntVector> v(new IntVector(pool));
+    std::shared_ptr<AtomicVector<uint64_t>> v(new AtomicVector<uint64_t>(pool));
 
-    v->expand(new_count);  // add fields to the vector
-    size_t count = v->size();  // get the number of fields in the vector
-    int64_t value = v->load(index);  // retrieve a value
-    v->store(index, value);  // overwrite a value
-    int64_t old_value = v->exchange(index, new_value);  // swap a value
-    int64_t old_value = v->compare_exchange(index, expected_value, new_value);  // compare and swap a value
-    int64_t old_value = v->fetch_add(index, delta);  // add to a value
-    int64_t old_value = v->fetch_sub(index, delta);  // subtract from a value
-    int64_t old_value = v->fetch_and(index, mask);  // bitwise-and a value
-    int64_t old_value = v->fetch_or(index, mask);  // bitwise-or a value
-    int64_t old_value = v->fetch_xor(index, mask);  // bitwise-xor a value
+    v->expand(new_count);  // Add fields to the vector
+    size_t count = v->size();  // Get the number of fields in the vector
+    int64_t value = v->load(index);  // Retrieve a value
+    v->store(index, value);  // Overwrite a value
+    int64_t old_value = v->exchange(index, new_value);  // Swap a value
+    int64_t old_value = v->compare_exchange(index, expected_value, new_value);  // Compare and swap a value
+    int64_t old_value = v->fetch_add(index, delta);  // Add to a value
+    int64_t old_value = v->fetch_sub(index, delta);  // Subtract from a value
+    int64_t old_value = v->fetch_and(index, mask);  // Bitwise-and a value
+    int64_t old_value = v->fetch_or(index, mask);  // Bitwise-or a value
+    int64_t old_value = v->fetch_xor(index, mask);  // Bitwise-xor a value
+    bool value = v->load_bit(bit_index);  // Read a single bit
+    v->store_bit(bit_index, value);  // Write a single bit
+    bool original_value = v->xor_bit(bit_index);  // Flip a single bit (and return the old value)
 
 The Python interface for IntVector is similar to the C++ interface:
 
@@ -207,17 +211,20 @@ The Python interface for IntVector is similar to the C++ interface:
 
     v = sharedstructures.IntVector(filename)
 
-    v.expand(new_count)  # add fields to the vector
-    count = len(v)  # get the number of fields in the vector
-    value = v.load(index)  # retrieve a value
-    v.store(index, value)  # overwrite a value
-    old_value = v.exchange(index, new_value)  # swap a value
-    old_value = v.compare_exchange(index, expected_value, new_value)  # compare and swap a value
-    old_value = v.add(index, delta)  # add to a value
-    old_value = v.subtract(index, delta)  # subtract from a value
-    old_value = v.bitwise_and(index, mask)  # bitwise-and a value
-    old_value = v.bitwise_or(index, mask)  # bitwise-or a value
-    old_value = v.bitwise_xor(index, mask)  # bitwise-xor a value
+    v.expand(new_count)  # Add fields to the vector
+    count = len(v)  # Get the number of fields in the vector
+    value = v.load(index)  # Retrieve a value
+    v.store(index, value)  # Overwrite a value
+    old_value = v.exchange(index, new_value)  # Swap a value
+    old_value = v.compare_exchange(index, expected_value, new_value)  # Compare and swap a value
+    old_value = v.add(index, delta)  # Add to a value
+    old_value = v.subtract(index, delta)  # Subtract from a value
+    old_value = v.bitwise_and(index, mask)  # Bitwise-and a value
+    old_value = v.bitwise_or(index, mask)  # Bitwise-or a value
+    old_value = v.bitwise_xor(index, mask)  # Bitwise-xor a value
+    value = v.load_bit(bit_index)  # Read a single bit
+    v.store_bit(bit_index, value)  # Write a single bit
+    original_value = v.xor_bit(bit_index)  # Flip a single bit (and return the old value)
 
 ## Interfaces and objects
 
@@ -250,7 +257,7 @@ For HashTables, PrefixTrees, and Queues (but not PriorityQueues), the Python wra
 There are a few quirks to watch out for:
 - With HashTable and PrefixTree, modifying complex values in-place will silently fail because `t[k]` returns a copy of the value at `k`, since it's generally not safe to directly modify values without holding the pool lock. Statements like `t[k1] = {}; t[k1][k2] = 17` won't work - after doing this, `t[k1]` will still be an empty dictionary.
 - With HashTable and PrefixTree, strings and numeric values *can* be modified "in-place" because Python implements this using separate load and store operations - so `t[k] += 1` works, but is vulnerable to data races when multiple processes are accessing the structure. PrefixTree supports atomic increments on numeric keys by using `t.incr(k, delta)`.
-- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.items())`. This may not produce a consistent snapshot though; see "iteration semantics" above.
+- HashTable and PrefixTree aren't subclasses of dict. They can be converted to (non-shared) dicts by doing `dict(t.items())`. This may not produce a consistent snapshot though; see "Mapping iteration semantics" above.
 - Queue, PriorityQueue, and IntVector aren't subclasses of list. Unlike the mapping types, there's no easy way to convert them to non-shared lists since they aren't iterable.
 
 ## Thread safety
@@ -259,20 +266,20 @@ The allocators are not thread-safe by default, but they include a global read-wr
 
     {
       auto g = allocator->lock(false); // false = read lock
-      // now the pool cannot be expanded or remapped within this process, and
+      // Now the pool cannot be expanded or remapped within this process, and
       // it's safe to read from the pool
     }
-    // now it's no longer safe to read from or write to the pool
+    // Now it's no longer safe to read from or write to the pool
 
     {
       auto g = allocator->lock(true); // true = write lock
-      // now the pool cannot be read or written by any other thread (even in
-      // other processes) and it's safe to call allocator->allocate,
-      // allocator->free, etc.
+      // Now the pool cannot be read or written by any other thread (even in
+      // other processes) and it's safe to call allocator->allocate(),
+      // allocator->free(), etc.
     }
-    // now it's no longer safe to read from or write to the pool
+    // Now it's no longer safe to read from or write to the pool
 
-HashTable, PrefixTree, Queue, and PriorityQueue use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default.
+HashTable, PrefixTree, Queue, and PriorityQueue use this global lock when they call the allocator or read from the tree, and are therefore thread-safe by default. AtomicVector (and IntVector) do not use an allocator and have no need for these locks.
 
 sharedstructures objects are not necessarily thread-safe within a process because one thread may remap the view of the shared memory segment while another thread attempts to access it. It's recommended for each thread that needs access to a Pool to have its own Pool object for this reason.
 
@@ -284,7 +291,7 @@ Currently, the lock wait algorithm will check periodically if the process holdin
 
 HashTable and PriorityQueue are not necessarily consistent in case of a crash, though this will be fixed in the future. For now, be wary of using a HashTable or PriorityQueue if a process crashed while operating on it.
 
-PrefixTree and Queue are always consistent and doesn't need any extra repairs after a crash. However, some memory in the pool may be leaked if a process crashes while operating on the structure, and there may be some extra (empty) nodes left over. These nodes won't be visible to reads, and in the case of PrefixTree, the empty nodes will be deleted or reused when a write operation next touches them.
+PrefixTree, Queue, AtomicVector, and IntVector are always consistent and don't need any extra repairs after a crash. However, some memory in the pool may be leaked if a process crashes while operating on the structure, and there may be some extra (empty) allocated objects left over. These objects won't be visible to reads, and in the case of PrefixTree, the empty nodes will be deleted or reused when a write operation next touches them.
 
 ## Time complexity
 
@@ -346,24 +353,24 @@ Priority queues are binary heaps, which have logarithmic complexity for most ope
     PriorityQueue::clear:             O(queue length) + (queue length) frees
     PriorityQueue::size:              O(1)
 
-Atomic int vector performance probably can't be improved from its current state.
+Atomic vector (IntVector in Python) performance can't be improved much from its current state.
 
-    IntVector::expand:            O(1) + several system calls
-    IntVector::size:              O(1)
-    IntVector::load:              O(1)
-    IntVector::store:             O(1)
-    IntVector::exchange:          O(1)
-    IntVector::compare_exchange:  O(1)
-    IntVector::fetch_add:         O(1)
-    IntVector::fetch_sub:         O(1)
-    IntVector::fetch_and:         O(1)
-    IntVector::fetch_or:          O(1)
-    IntVector::fetch_xor:         O(1)
+    AtomicVector::expand:            O(1) + several system calls
+    AtomicVector::size:              O(1)
+    AtomicVector::load:              O(1)
+    AtomicVector::store:             O(1)
+    AtomicVector::exchange:          O(1)
+    AtomicVector::compare_exchange:  O(1)
+    AtomicVector::fetch_add:         O(1)
+    AtomicVector::fetch_sub:         O(1)
+    AtomicVector::fetch_and:         O(1)
+    AtomicVector::fetch_or:          O(1)
+    AtomicVector::fetch_xor:         O(1)
 
 ## Future work
 
 There's a lot to do here.
-- Use a more efficient locking strategy. Currently we use spinlocks.
+- Use a more efficient locking strategy. Currently we use spinlocks with some heuristics.
 - Make hash tables and priority queues always consistent for crash recovery.
 - Make hash tables support more hash functions.
 - Make hash tables support dynamic expansion (rehashing).
