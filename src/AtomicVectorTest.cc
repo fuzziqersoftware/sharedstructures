@@ -134,7 +134,7 @@ void run_basic_test() {
     v->store(x, 0);
   }
   for (size_t x = 0; x < 320; x++) {
-    v->set_bit(x * 2, true);
+    v->store_bit(x * 2, true);
   }
   for (size_t x = 0; x < 640; x++) {
     expect_eq(!(x & 1), v->load_bit(x));
@@ -143,13 +143,13 @@ void run_basic_test() {
     expect_eq(0xAAAAAAAAAAAAAAAA, static_cast<uint64_t>(v->load(x)));
   }
   for (size_t x = 0; x < 160; x++) {
-    v->set_bit(x * 4, false);
+    v->store_bit(x * 4, false);
   }
   for (size_t x = 0; x < 10; x++) {
     expect_eq(0x2222222222222222, static_cast<uint64_t>(v->load(x)));
   }
   for (size_t x = 0; x < 320; x++) {
-    expect_eq(!(x & 1), v->toggle_bit(x * 2));
+    expect_eq(!(x & 1), v->xor_bit(x * 2));
   }
   for (size_t x = 0; x < 10; x++) {
     expect_eq(0x8888888888888888, static_cast<uint64_t>(v->load(x)));

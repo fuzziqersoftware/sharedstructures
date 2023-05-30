@@ -2627,13 +2627,13 @@ static PyObject* sharedstructures_IntVector_load_bit(
   return ret;
 }
 
-static const char* sharedstructures_IntVector_set_bit_doc =
+static const char* sharedstructures_IntVector_store_bit_doc =
     "Atomically sets a bit in the array. The bit_index parameter has the same\n\
 meaning as in load_bit.\n\
 \n\
-IntVector.set_bit(bit_index: int, value: bool) -> None";
+IntVector.store_bit(bit_index: int, value: bool) -> None";
 
-static PyObject* sharedstructures_IntVector_set_bit(
+static PyObject* sharedstructures_IntVector_store_bit(
     PyObject* py_self, PyObject* args) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
 
@@ -2644,7 +2644,7 @@ static PyObject* sharedstructures_IntVector_set_bit(
   }
 
   try {
-    self->v->set_bit(index, value);
+    self->v->store_bit(index, value);
   } catch (const out_of_range&) {
     PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
     return nullptr;
@@ -2654,13 +2654,13 @@ static PyObject* sharedstructures_IntVector_set_bit(
   return Py_None;
 }
 
-static const char* sharedstructures_IntVector_toggle_bit_doc =
+static const char* sharedstructures_IntVector_xor_bit_doc =
     "Atomically flips a bit in the array. The bit_index parameter has the same\n\
 meaning as in load_bit. Returns the new value of the bit.\n\
 \n\
-IntVector.toggle_bit(bit_index: int) -> bool";
+IntVector.xor_bit(bit_index: int) -> bool";
 
-static PyObject* sharedstructures_IntVector_toggle_bit(
+static PyObject* sharedstructures_IntVector_xor_bit(
     PyObject* py_self, PyObject* args) {
   sharedstructures_IntVector* self = (sharedstructures_IntVector*)py_self;
 
@@ -2671,7 +2671,7 @@ static PyObject* sharedstructures_IntVector_toggle_bit(
 
   bool result;
   try {
-    result = self->v->toggle_bit(index);
+    result = self->v->xor_bit(index);
   } catch (const out_of_range&) {
     PyErr_SetString(PyExc_IndexError, "IntVector index out of range");
     return nullptr;
@@ -2705,8 +2705,8 @@ static PyMethodDef sharedstructures_IntVector_methods[] = {
     {"bitwise_or", (PyCFunction)sharedstructures_IntVector_bitwise_or, METH_VARARGS, sharedstructures_IntVector_bitwise_or_doc},
     {"bitwise_xor", (PyCFunction)sharedstructures_IntVector_bitwise_xor, METH_VARARGS, sharedstructures_IntVector_bitwise_xor_doc},
     {"load_bit", (PyCFunction)sharedstructures_IntVector_load_bit, METH_VARARGS, sharedstructures_IntVector_load_bit_doc},
-    {"set_bit", (PyCFunction)sharedstructures_IntVector_set_bit, METH_VARARGS, sharedstructures_IntVector_set_bit_doc},
-    {"toggle_bit", (PyCFunction)sharedstructures_IntVector_toggle_bit, METH_VARARGS, sharedstructures_IntVector_toggle_bit_doc},
+    {"store_bit", (PyCFunction)sharedstructures_IntVector_store_bit, METH_VARARGS, sharedstructures_IntVector_store_bit_doc},
+    {"xor_bit", (PyCFunction)sharedstructures_IntVector_xor_bit, METH_VARARGS, sharedstructures_IntVector_xor_bit_doc},
     {nullptr, nullptr, 0, nullptr},
 };
 

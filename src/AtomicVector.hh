@@ -96,7 +96,7 @@ public:
   bool load_bit(size_t bit_index) {
     return (this->load(bit_index / this->bits) & this->mask_for_bit_index(bit_index));
   }
-  bool set_bit(size_t bit_index, bool v) {
+  bool store_bit(size_t bit_index, bool v) {
     T mask = this->mask_for_bit_index(bit_index);
     if (v) {
       return this->fetch_or(bit_index / this->bits, mask) & mask;
@@ -104,7 +104,7 @@ public:
       return this->fetch_and(bit_index / this->bits, ~mask) & mask;
     }
   }
-  bool toggle_bit(size_t bit_index) {
+  bool xor_bit(size_t bit_index) {
     T mask = this->mask_for_bit_index(bit_index);
     return !(this->fetch_xor(bit_index / this->bits, mask) & mask);
   }

@@ -89,17 +89,17 @@ def run_basic_test() -> None:
     for x in range(10):
         v.store(x, 0)
     for x in range(320):
-        v.set_bit(x * 2, True)
+        v.store_bit(x * 2, True)
     for x in range(640):
         assert v.load_bit(x) == (not (x & 1))
     for x in range(10):
         assert v.load(x) == -0x5555555555555556
     for x in range(160):
-        v.set_bit(x * 4, False)
+        v.store_bit(x * 4, False)
     for x in range(10):
         assert v.load(x) == 0x2222222222222222
     for x in range(320):
-        assert v.toggle_bit(x * 2) == (not (x & 1))
+        assert v.xor_bit(x * 2) == (not (x & 1))
     for x in range(10):
         assert v.load(x) == -0x7777777777777778
 
