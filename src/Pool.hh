@@ -187,8 +187,8 @@ public:
   static bool delete_pool(const std::string& name, bool file = true);
 
 private:
-  struct Data {
-    std::atomic<uint64_t> size;
+  struct alignas(8) Data {
+    alignas(8) std::atomic<uint64_t> size;
   } __attribute__((packed));
 
   std::string name;

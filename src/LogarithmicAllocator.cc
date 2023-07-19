@@ -623,7 +623,7 @@ void LogarithmicAllocator::repair() {
 void LogarithmicAllocator::print(FILE* stream) const {
   auto data = this->data();
 
-  fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu8 " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
+  fprintf(stream, "LogarithmicAllocator: size=%" PRIX64 " init=%" PRIu64 " base=%" PRIX64 " alloc=%" PRIX64 " commit=%" PRIX64 "\n",
       data->size.load(), data->initialized.load(),
       data->base_object_offset.load(), data->bytes_allocated.load(),
       data->bytes_committed.load());

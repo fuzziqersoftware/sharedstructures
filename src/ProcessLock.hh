@@ -7,16 +7,18 @@
 
 namespace sharedstructures {
 
-struct ProcessLock {
-  std::atomic<int32_t> lock;
-  int32_t __force_alignment__;
+struct alignas(8) ProcessLock {
+  alignas(4) std::atomic<int32_t> lock;
+  // This field exists just to take up space, since most structs expect
+  // 8-byte-aligned members.
+  alignas(4) int32_t __unused__;
 
   bool is_locked() const;
 } __attribute__((packed));
 
-struct ProcessReadWriteLock {
-  std::atomic<int32_t> write_lock;
-  std::atomic<int32_t> reader_tokens[NUM_READER_SLOTS];
+struct alignas(8) ProcessReadWriteLock {
+  alignas(4) std::atomic<int32_t> write_lock;
+  alignas(4) std::atomic<int32_t> reader_tokens[NUM_READER_SLOTS];
 
   bool is_locked(bool writing) const;
   size_t reader_count() const;

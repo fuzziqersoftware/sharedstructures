@@ -40,20 +40,18 @@ public:
   virtual void verify() const;
 
 private:
-  struct Data {
-    std::atomic<uint64_t> size; // This is part of the Pool structure
-
-    std::atomic<uint8_t> initialized;
-    uint8_t unused[7];
+  struct alignas(8) Data {
+    alignas(8) std::atomic<uint64_t> size; // This is part of the Pool structure
+    alignas(8) std::atomic<uint64_t> initialized;
 
     ProcessReadWriteLock data_lock;
 
-    std::atomic<uint64_t> base_object_offset;
-    std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
-    std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
+    alignas(8) std::atomic<uint64_t> base_object_offset;
+    alignas(8) std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
+    alignas(8) std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
 
-    std::atomic<uint64_t> head;
-    std::atomic<uint64_t> tail;
+    alignas(8) std::atomic<uint64_t> head;
+    alignas(8) std::atomic<uint64_t> tail;
 
     uint8_t arena[0];
   } __attribute__((packed));

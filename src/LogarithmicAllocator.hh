@@ -31,24 +31,22 @@ public:
   void print(FILE* stream) const;
 
 private:
-  struct Data {
-    std::atomic<uint64_t> size; // This is part of the Pool structure
-
-    std::atomic<uint8_t> initialized;
-    uint8_t unused[7];
+  struct alignas(8) Data {
+    alignas(8) std::atomic<uint64_t> size; // This is part of the Pool structure
+    alignas(8) std::atomic<uint64_t> initialized;
 
     ProcessReadWriteLock data_lock;
 
-    std::atomic<uint64_t> base_object_offset;
-    std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
-    std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
+    alignas(8) std::atomic<uint64_t> base_object_offset;
+    alignas(8) std::atomic<uint64_t> bytes_allocated; // Sum of allocated block sizes
+    alignas(8) std::atomic<uint64_t> bytes_committed; // Same as above, + the block structs
 
     // Minimum order is 4 (0x10) and maximum order is 57 (0x0200000000000000),
     // for a total of 54 orders
     static const int8_t minimum_order;
     static const int8_t maximum_order;
-    std::atomic<uint64_t> free_head[54];
-    std::atomic<uint64_t> free_tail[54];
+    alignas(8) std::atomic<uint64_t> free_head[54];
+    alignas(8) std::atomic<uint64_t> free_tail[54];
 
     uint8_t arena[0];
   } __attribute__((packed));
@@ -56,25 +54,25 @@ private:
   Data* data();
   const Data* data() const;
 
-  struct FreeBlock {
+  struct alignas(8) FreeBlock {
     // High bit: allocated (must be 0); next 6 bits: order; rest: prev ptr
-    uint64_t prev_order_allocated;
-    uint64_t next;
+    alignas(8) uint64_t prev_order_allocated;
+    alignas(8) uint64_t next;
 
     uint64_t prev() const;
     int8_t order() const;
     bool allocated() const;
   } __attribute__((packed));
 
-  struct AllocatedBlock {
+  struct alignas(8) AllocatedBlock {
     // High bit: allocated (must be 1)
-    uint64_t size_allocated;
+    alignas(8) uint64_t size_allocated;
 
     uint64_t size() const;
     bool allocated() const;
   } __attribute__((packed));
 
-  union Block {
+  union alignas(8) Block {
     FreeBlock free;
     AllocatedBlock allocated;
   } __attribute__((packed));

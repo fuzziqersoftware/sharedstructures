@@ -112,10 +112,10 @@ public:
 private:
   std::shared_ptr<Pool> pool;
 
-  struct VectorBase {
-    std::atomic<uint64_t> pool_size; // This shadows Pool::Data
-    std::atomic<uint64_t> count;
-    std::atomic<T> data[0];
+  struct alignas(8) VectorBase {
+    alignas(8) std::atomic<uint64_t> pool_size; // This shadows Pool::Data
+    alignas(8) std::atomic<uint64_t> count;
+    alignas(T) std::atomic<T> data[0];
   } __attribute__((packed));
 
   VectorBase* base() {
